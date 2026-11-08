@@ -1,4 +1,4 @@
-# AI Game Engine
+# Football rating calculator
 
 We're building a production-grade, simple and straight-forward football player rating calculator for Windows. This is professional-grade software that needs to be stable, fully-tested, and real-world deployable. No hacks, no shortcuts - solid as a rock.
 
