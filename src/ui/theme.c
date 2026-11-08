@@ -242,32 +242,43 @@ void ui_format_wide(wchar_t *buffer, size_t count, const wchar_t *format, ...)
     va_end(args);
 }
 
+typedef struct {
+    COLORREF text;
+    COLORREF soft;
+} RatingBandColors;
+
+/* Rating bands: 80+ excellent, 65+ good, 50+ average (the default
+   starting rating), 40+ below average, below 40 poor. */
+static RatingBandColors rating_band_colors(double rating)
+{
+    RatingBandColors colors;
+    if (rating >= 80.0) {
+        colors.text = RGB(22, 111, 65);
+        colors.soft = UI_COLOR_ACCENT_SOFT;
+    } else if (rating >= 65.0) {
+        colors.text = UI_COLOR_BLUE;
+        colors.soft = UI_COLOR_BLUE_SOFT;
+    } else if (rating >= 50.0) {
+        colors.text = UI_COLOR_NEUTRAL;
+        colors.soft = UI_COLOR_NEUTRAL_SOFT;
+    } else if (rating >= 40.0) {
+        colors.text = UI_COLOR_AMBER;
+        colors.soft = UI_COLOR_AMBER_SOFT;
+    } else {
+        colors.text = UI_COLOR_DANGER;
+        colors.soft = UI_COLOR_DANGER_SOFT;
+    }
+    return colors;
+}
+
 COLORREF ui_rating_color(double rating)
 {
-    if (rating >= 85.0) {
-        return RGB(22, 111, 65);
-    }
-    if (rating >= 75.0) {
-        return UI_COLOR_BLUE;
-    }
-    if (rating >= 65.0) {
-        return UI_COLOR_AMBER;
-    }
-    return UI_COLOR_DANGER;
+    return rating_band_colors(rating).text;
 }
 
 COLORREF ui_rating_soft_color(double rating)
 {
-    if (rating >= 85.0) {
-        return UI_COLOR_ACCENT_SOFT;
-    }
-    if (rating >= 75.0) {
-        return UI_COLOR_BLUE_SOFT;
-    }
-    if (rating >= 65.0) {
-        return UI_COLOR_AMBER_SOFT;
-    }
-    return UI_COLOR_DANGER_SOFT;
+    return rating_band_colors(rating).soft;
 }
 
 void ui_draw_rating_badge(HDC dc, const UiTheme *theme, RECT rect,

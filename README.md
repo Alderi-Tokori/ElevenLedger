@@ -104,6 +104,8 @@ Ratings are long-term player ratings from 1.0 to 99.0. New players start at 50.0
 
 Matches are always replayed in date order from each player's starting rating. Deleting a match or changing a starting rating therefore updates the whole subsequent career, rather than leaving an inconsistent ledger.
 
+Rating badges use five bands: green from 80.0, blue from 65.0, neutral grey from 50.0 (average, and the default starting rating), amber from 40.0, and red below 40.0.
+
 Full formulas, a worked example and calibration notes are in [docs/rating-model.md](docs/rating-model.md).
 
 ## Project layout
