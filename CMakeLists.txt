@@ -1,0 +1,120 @@
+cmake_minimum_required(VERSION 3.21)
+
+project(PitchRate
+    VERSION 1.0.0
+    DESCRIPTION "Football player rating calculator for Windows"
+    LANGUAGES C RC
+)
+
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+
+option(PITCHRATE_BUILD_TESTS "Build the automated test suite" ON)
+option(PITCHRATE_BUILD_TOOLS "Build developer data tools" ON)
+
+if(NOT WIN32)
+    message(FATAL_ERROR "PitchRate is a Windows desktop application.")
+endif()
+
+if(CMAKE_SIZEOF_VOID_P LESS 8)
+    message(FATAL_ERROR "PitchRate requires a 64-bit build.")
+endif()
+
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+configure_file(
+    resources/app.rc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/app.rc
+    @ONLY
+)
+
+add_library(pitchrate_core STATIC
+    src/core/database.c
+    src/core/rating.c
+    src/core/storage.c
+    src/core/util.c
+)
+target_include_directories(pitchrate_core PUBLIC src)
+target_link_libraries(pitchrate_core PUBLIC shell32)
+target_compile_definitions(pitchrate_core PUBLIC
+    UNICODE
+    _UNICODE
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+    _CRT_SECURE_NO_WARNINGS
+    WINVER=0x0A00
+    _WIN32_WINNT=0x0A00
+)
+target_compile_options(pitchrate_core PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Wshadow>
+)
+
+add_executable(pitchrate WIN32
+    src/main.c
+    src/app.c
+    src/ui/theme.c
+    src/ui/controls.c
+    src/ui/page.c
+    src/ui/page_dashboard.c
+    src/ui/page_players.c
+    src/ui/page_teams.c
+    src/ui/page_matches.c
+    src/ui/page_guide.c
+    src/ui/dialogs.c
+    src/ui/dialog_match.c
+    src/ui/main_window.c
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/app.rc
+)
+target_include_directories(pitchrate PRIVATE
+    src
+    resources
+)
+target_link_libraries(pitchrate PRIVATE
+    pitchrate_core
+    comctl32
+    gdi32
+    user32
+    shell32
+    uxtheme
+)
+target_compile_definitions(pitchrate PRIVATE
+    PITCHRATE_VERSION="${PROJECT_VERSION}"
+)
+target_compile_options(pitchrate PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Wshadow>
+)
+if(MSVC)
+    target_compile_options(pitchrate PRIVATE /W4)
+    target_link_options(pitchrate PRIVATE /SUBSYSTEM:WINDOWS)
+else()
+    target_link_options(pitchrate PRIVATE -static -static-libgcc)
+endif()
+
+if(PITCHRATE_BUILD_TOOLS)
+    add_executable(pitchrate_demo_seed tools/demo_seed.c)
+    target_link_libraries(pitchrate_demo_seed PRIVATE pitchrate_core)
+    target_compile_options(pitchrate_demo_seed PRIVATE
+        $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic>
+    )
+endif()
+
+if(PITCHRATE_BUILD_TESTS)
+    enable_testing()
+    add_executable(pitchrate_tests
+        tests/test_main.c
+        tests/test_util.c
+        tests/test_rating.c
+        tests/test_database.c
+        tests/test_storage.c
+    )
+    target_link_libraries(pitchrate_tests PRIVATE pitchrate_core)
+    target_compile_options(pitchrate_tests PRIVATE
+        $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wpedantic;-Wshadow>
+    )
+    add_test(NAME pitchrate_tests COMMAND pitchrate_tests)
+endif()
+
+install(TARGETS pitchrate RUNTIME DESTINATION .)

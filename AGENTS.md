@@ -1,0 +1,184 @@
+# PitchRate Development Guide
+
+This document is the working contract for anyone modifying PitchRate. It is intentionally concrete. Keep it up to date when architecture, commands or invariants change.
+
+## Mission
+
+PitchRate is a production-grade, local-first Windows desktop application for football player ratings. It must remain stable, understandable, fully tested and deployable as a static GUI executable.
+
+Non-negotiables:
+
+- C17 and CMake.
+- Native Win32 GUI. Do not add a browser engine, .NET runtime, Python, or online service.
+- No data loss, no silent overwrites, no "temporary" hacks.
+- The core rating and storage logic must be testable without a display.
+- Every persisted mutation goes through the transactional app layer.
+- Unit tests must pass before a commit.
+- Git is local only. Never add a remote or push.
+
+Do not inspect or reuse code outside this working directory. Work from this repository and its documentation.
+
+## Build and verification commands
+
+Configure and build:
+
+```powershell
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+```
+
+Release:
+
+```powershell
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+Tests:
+
+```powershell
+ctest --test-dir build --output-on-failure
+.\build\pitchrate_tests.exe
+```
+
+Interactive GUI smoke test:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1
+```
+
+The expected result for every completed change is:
+
+- clean configure and build with no warnings,
+- all CTest tests passing,
+- GUI smoke test passing when UI behaviour changed,
+- no untracked generated data in the repository,
+- a reviewed diff.
+
+## Architecture
+
+```text
+src/app.c                 Application lifecycle, navigation state, save transactions
+src/main.c                WinMain, command line, DPI awareness
+src/core/util.c           UTF-8, dates, parsing, CRC-32
+src/core/rating.c         Pure rating calculations
+src/core/database.c       In-memory domain model, validation, chronological replay
+src/core/storage.c        Versioned checksummed file format, atomic save, recovery
+src/ui/theme.c            DPI-scaled fonts, colours, double-buffered paint helpers
+src/ui/controls.c         Custom buttons and checkbox, edits, combos, lists, modal loop
+src/ui/page.c             Shared page window and card/header/empty-state painting
+src/ui/page_*.c           Five application pages
+src/ui/dialogs.c          Shared modal shell and team/player dialogs
+src/ui/dialog_match.c     Record-match and match-details dialogs
+src/ui/main_window.c      Shell, sidebar navigation, keyboard accelerators
+```
+
+Layering rules:
+
+1. `src/core` must not depend on Win32 UI or the `App` type.
+2. UI code must not write the data file directly. Use `app_tx_begin`, `app_tx_commit` and `app_tx_abort`.
+3. Derived values (current ratings, appearance before/delta/after, match summaries, player totals) are recomputed. Only source data belongs in the file.
+4. The data format is versioned. Existing v1 files must keep loading. Add migration tests before changing it.
+
+## Rating model rules
+
+Source of truth: `src/core/rating.h` and `src/core/rating.c`. Full documentation: `docs/rating-model.md`.
+
+- Ratings: 1.0-99.0; default starting rating 70.0.
+- Performance: 1.0-10.0; neutral 6.0. New entries are quantized to two decimals.
+- Minutes: 1-120; player-impact weight caps at 90 minutes.
+- Home advantage: 4.0 rating points.
+- K factor: 16.0.
+- Performance weight: 0.75.
+- Shared team movement is split from the result, then each player's movement scales with participation.
+- Per-match movement is capped at 12.0 points.
+- New match recording rejects a team line-up above 1,320 player-minutes; this validation is intentionally not applied while loading legacy data.
+- Matches always replay in date order, then ID order.
+
+Any change to the model requires:
+
+- updated unit tests including randomized invariants,
+- updated expected numeric fixtures,
+- updated `docs/rating-model.md`,
+- updated in-app rating guide text,
+- an explicit note in the commit message.
+
+Never patch ratings in a page or dialog. Fix the engine.
+
+## Data safety rules
+
+- Every command that mutates data must clone a backup first (`app_tx_begin`).
+- A failed database mutation must call `app_tx_abort`.
+- A failed disk save must restore the in-memory database.
+- Never truncate or replace a valid file before the replacement has been fully written, flushed and checksummed.
+- Before promoting the primary to backup, validate the primary and the backup copy. A corrupt primary must not overwrite a good backup.
+- A primary that cannot be read or uses a different format version must never be silently replaced.
+- Recovery must preserve a damaged primary as `.corrupt` before restoring the backup.
+- No silent reset. If both primary and backup fail validation, stop and report the error.
+- All new file validation must reject duplicates, dangling IDs, invalid ranges, invalid UTF-8 and malformed records.
+- Update `docs/data-format.md` and storage tests for format changes.
+
+## UI rules
+
+- Native Win32 controls and custom GDI drawing; no external GUI libraries.
+- All dimensions must go through `ui_scale` or equivalent DPI scaling. Do not hard-code physical pixels in layout decisions.
+- Use `ui_canvas_begin` / `ui_canvas_end` for flicker-free page and dialog painting.
+- New pages should use the shared `Page` base and `page_draw_shell` / `page_draw_card`.
+- New toolbars use `ui_button_create` styles rather than native push buttons.
+- New confirmations must use `MB_ICONWARNING` and default to the safe choice.
+- All modal dialogs must disable their owner, support Tab and Escape, re-enable the owner, and use `ui_run_modal`.
+- Custom-class windows should set their window text explicitly after creation. Do not rely on the class's `WM_NCCREATE` path to retain text.
+- Pages and dialogs must tolerate DPI settings and available work-area clamping down to the documented minimum display. Do not assume the screen size; clamp all dimensions to non-negative values.
+- Text must be valid UTF-8 internally. Convert only at the Win32 boundary.
+- Lists must preserve selected IDs across refresh when possible.
+- Empty states must explain the next action, not just show an empty box.
+- All user-visible labels must be plain language and consistent with the rating guide.
+
+## Testing expectations
+
+Add tests for every bug fix and every new core behaviour. Tests live in `tests/` and are registered in the matching `g_*_tests` array plus `test_main.c` groups.
+
+Minimum coverage areas for changes:
+
+- rating maths and invariants,
+- date and UTF-8 validation,
+- database CRUD, references, replay, deletion and transfer behaviour,
+- storage round-trip, corruption, recovery and compatibility,
+- GUI starts, pages render, modal ownership and complete save flows.
+
+Do not weaken a test to make a failing change pass. Explain and test the intended behaviour instead.
+
+## Coding conventions
+
+- C17, four-space indentation, brace on the same line for functions/control flow.
+- Keep functions focused; static helpers in a translation unit when not shared.
+- Check every allocation and every Win32 call that can fail.
+- Prefer explicit ownership and cleanup over global mutable state.
+- Use `bool` from `<stdbool.h>`.
+- Use `uint64_t` IDs and never reuse IDs after deletion.
+- Error buffers are UTF-8 and sized at least 512 bytes for user-facing domain errors.
+- Avoid locale-dependent parsing in persisted formats. The format uses `.` for decimals.
+- Build with `-Wall -Wextra -Wpedantic -Wshadow`; do not leave warnings.
+- No dead code, debug logging, placeholder labels or silent unimplemented options.
+
+## Git workflow
+
+1. Work locally only. There is no remote.
+2. Before committing, inspect `git diff`, review for correctness, data-loss risk and style, and run all required tests.
+3. Make focused commits with an imperative subject, for example:
+   `Add checksummed backup recovery`.
+4. Never commit generated `build/`, data files, temporary screenshots or user data.
+5. Update `README.md`, `AGENTS.md`, docs or skills when behaviour or workflow changes.
+6. Do not use `git push`.
+
+## Definition of done
+
+A change is complete only when:
+
+- the implementation follows the layering and data rules,
+- tests cover the new behaviour and all tests pass,
+- the build is warning-free,
+- GUI smoke passes for UI changes,
+- documentation is current,
+- the diff has been reviewed,
+- there is a local commit.

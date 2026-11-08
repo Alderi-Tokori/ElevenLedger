@@ -1,0 +1,7 @@
+#ifndef PITCHRATE_RESOURCE_H
+#define PITCHRATE_RESOURCE_H
+
+#define IDI_APP 101
+#define IDR_MANIFEST 1
+
+#endif
