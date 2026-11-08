@@ -14,6 +14,7 @@ struct Page {
     int width;
     int height;
     RECT card;
+    WORD create_command;
 
     void (*on_create)(Page *page);
     void (*on_layout)(Page *page, int width, int height);

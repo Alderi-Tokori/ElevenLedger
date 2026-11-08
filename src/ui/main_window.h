@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #define CMD_NAVIGATE_FIRST 40001
+#define CMD_CREATE_ENTRY 40000
 
 struct App;
 

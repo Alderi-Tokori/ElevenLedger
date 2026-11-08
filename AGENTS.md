@@ -126,6 +126,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - All dimensions must go through `ui_scale` or equivalent DPI scaling. Do not hard-code physical pixels in layout decisions.
 - Use `ui_canvas_begin` / `ui_canvas_end` for flicker-free page and dialog painting.
 - New pages should use the shared `Page` base and `page_draw_shell` / `page_draw_card`.
+- Pages with a primary create action must set `Page.create_command` to the create button's command ID so Ctrl+N runs the same flow.
 - New toolbars use `ui_button_create` styles rather than native push buttons.
 - New confirmations must use `MB_ICONWARNING` and default to the safe choice.
 - All modal dialogs must disable their owner, support Tab and Escape, re-enable the owner, and use `ui_run_modal`.

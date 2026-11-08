@@ -280,6 +280,7 @@ Page *teams_page_create(App *app)
         free(teams);
         return NULL;
     }
+    teams->base.create_command = TEAM_ADD_ID;
 
     UiTheme *theme = &app->ui;
     teams->list = ui_list_create(teams->base.hwnd, TEAM_LIST_ID,

@@ -17,7 +17,7 @@
 #define NAV_COUNT 5
 
 #ifndef PITCHRATE_VERSION
-#define PITCHRATE_VERSION "1.6.1"
+#define PITCHRATE_VERSION "1.6.2"
 #endif
 
 static const wchar_t *g_navigation_labels[NAV_COUNT] = {
@@ -359,6 +359,15 @@ static LRESULT CALLBACK main_window_proc(HWND hwnd, UINT message,
     case WM_COMMAND:
         if (app != NULL) {
             int command = LOWORD(wparam);
+            if (command == CMD_CREATE_ENTRY) {
+                Page *page = app->pages[app->active_page];
+                if (page != NULL && page->create_command != 0) {
+                    SendMessageW(page->hwnd, WM_COMMAND,
+                                 MAKEWPARAM(page->create_command, BN_CLICKED),
+                                 0);
+                }
+                return 0;
+            }
             if (command >= CMD_NAVIGATE_FIRST &&
                 command < CMD_NAVIGATE_FIRST + PAGE_COUNT) {
                 app_navigate(app, (PageId)(command - CMD_NAVIGATE_FIRST));

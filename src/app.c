@@ -20,7 +20,7 @@
 #include <wchar.h>
 
 #ifndef PITCHRATE_VERSION
-#define PITCHRATE_VERSION "1.6.1"
+#define PITCHRATE_VERSION "1.6.2"
 #endif
 
 #define MAIN_WINDOW_CLASS_NAME L"PitchRateMainWindow"
@@ -194,7 +194,7 @@ static bool create_pages(App *app)
 
 static bool create_accelerators(App *app)
 {
-    ACCEL entries[PAGE_COUNT + 1];
+    ACCEL entries[PAGE_COUNT + 2];
     memset(entries, 0, sizeof(entries));
     for (int i = 0; i < PAGE_COUNT; ++i) {
         entries[i].fVirt = FVIRTKEY | FCONTROL;
@@ -204,7 +204,10 @@ static bool create_accelerators(App *app)
     entries[PAGE_COUNT].fVirt = FVIRTKEY;
     entries[PAGE_COUNT].key = VK_F1;
     entries[PAGE_COUNT].cmd = CMD_NAVIGATE_FIRST + PAGE_GUIDE;
-    app->accelerators = CreateAcceleratorTableW(entries, PAGE_COUNT + 1);
+    entries[PAGE_COUNT + 1].fVirt = FVIRTKEY | FCONTROL;
+    entries[PAGE_COUNT + 1].key = (WORD)L'N';
+    entries[PAGE_COUNT + 1].cmd = CMD_CREATE_ENTRY;
+    app->accelerators = CreateAcceleratorTableW(entries, PAGE_COUNT + 2);
     return app->accelerators != NULL;
 }
 

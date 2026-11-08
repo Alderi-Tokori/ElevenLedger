@@ -296,6 +296,7 @@ Page *matches_page_create(App *app)
         free(matches);
         return NULL;
     }
+    matches->base.create_command = MATCH_RECORD_ID;
 
     UiTheme *theme = &app->ui;
     matches->list = ui_list_create(matches->base.hwnd, MATCH_LIST_ID,

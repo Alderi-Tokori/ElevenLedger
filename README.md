@@ -55,6 +55,12 @@ By default, data is stored at:
 
 Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported PitchRate format version is never overwritten or silently downgraded. Legacy v1 files are loaded safely and upgraded to v2 on the next save.
 
+## Keyboard shortcuts
+
+- `Ctrl+1` to `Ctrl+5`: switch between Dashboard, Players, Teams, Matches and Rating guide.
+- `F1`: open the Rating guide.
+- `Ctrl+N`: open the current page's create flow (Add player, Add team or Record match). It does nothing on pages without a create action.
+
 To explore the application with a populated example:
 
 ```powershell

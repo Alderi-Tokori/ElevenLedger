@@ -147,14 +147,15 @@ try {
         return ($candidate -ne [IntPtr]::Zero -and
             [PitchRateSmoke]::WindowText($candidate) -eq "Players")
     }
-    $playersPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
-    [PitchRateSmoke]::PostMessage($playersPage, 0x0111, [IntPtr]1203, [IntPtr]::Zero) | Out-Null
+    # CMD_CREATE_ENTRY is the command Ctrl+N sends; it must open the page's create dialog.
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40000, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the player dialog" -Condition {
         $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
         return ($candidate -ne [IntPtr]::Zero -and
             [PitchRateSmoke]::IsWindowVisible($candidate) -and
             -not [PitchRateSmoke]::IsWindowEnabled($main))
     }
+    Write-Host "Create command OK: Players"
     $playerDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
     $defaultRatingEdit = [PitchRateSmoke]::FindChildById($playerDialog, 2103)
     if ($defaultRatingEdit -eq [IntPtr]::Zero) {
@@ -183,14 +184,14 @@ try {
 
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40003, [IntPtr]::Zero) | Out-Null
     Start-Sleep -Milliseconds 250
-    $teamsPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
-    [PitchRateSmoke]::PostMessage($teamsPage, 0x0111, [IntPtr]1101, [IntPtr]::Zero) | Out-Null
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40000, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the team dialog" -Condition {
         $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateTeamDialog")
         return ($candidate -ne [IntPtr]::Zero -and
             [PitchRateSmoke]::IsWindowVisible($candidate) -and
             -not [PitchRateSmoke]::IsWindowEnabled($main))
     }
+    Write-Host "Create command OK: Teams"
     $teamDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateTeamDialog")
     if ([PitchRateSmoke]::IsWindowEnabled($main)) {
         throw "The owner window stayed enabled while a modal dialog was open."
@@ -213,13 +214,14 @@ try {
         throw "The matches page is missing its match list."
     }
     $matchesBefore = [PitchRateSmoke]::SendMessage($matchesList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
-    [PitchRateSmoke]::PostMessage($matchesPage, 0x0111, [IntPtr]1301, [IntPtr]::Zero) | Out-Null
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40000, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the record-match dialog" -Condition {
         $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
         return ($candidate -ne [IntPtr]::Zero -and
             [PitchRateSmoke]::IsWindowVisible($candidate) -and
             -not [PitchRateSmoke]::IsWindowEnabled($main))
     }
+    Write-Host "Create command OK: Matches"
     $recordDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
     $lineupList = [PitchRateSmoke]::FindChildById($recordDialog, 2205)
     if ($lineupList -eq [IntPtr]::Zero) {

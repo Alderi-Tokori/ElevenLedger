@@ -472,6 +472,7 @@ Page *players_page_create(App *app)
         free(players);
         return NULL;
     }
+    players->base.create_command = PLAYER_ADD_ID;
 
     UiTheme *theme = &app->ui;
     players->list = ui_list_create(players->base.hwnd, PLAYER_LIST_ID,

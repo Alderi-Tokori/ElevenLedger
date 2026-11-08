@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.6.2 - 2026-11-08
+
+### Added
+
+- Ctrl+N now opens the same create flow as the current page's primary create button: Add player, Add team or Record match.
+
 ## 1.6.1 - 2026-11-08
 
 ### Changed
