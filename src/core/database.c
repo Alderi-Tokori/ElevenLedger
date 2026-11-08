@@ -206,6 +206,59 @@ const Player *db_last_added_player(const Database *db)
     return latest;
 }
 
+static bool normalize_player_name(const char *source, char *output,
+                                  size_t output_size)
+{
+    char temp[TEXT_TEMP_CAPACITY];
+    const char *text = source == NULL ? "" : source;
+    if (strlen(text) >= sizeof(temp)) {
+        return false;
+    }
+    util_str_copy(temp, sizeof(temp), text);
+    char *trimmed = util_trim(temp);
+    if (!util_text_valid(trimmed, PERSON_NAME_MAX, true)) {
+        return false;
+    }
+    util_str_copy(output, output_size, trimmed);
+    return true;
+}
+
+const Player *db_find_player_by_name(const Database *db,
+                                     const char *first_name,
+                                     const char *last_name,
+                                     size_t *out_count)
+{
+    if (out_count != NULL) {
+        *out_count = 0;
+    }
+    if (db == NULL) {
+        return NULL;
+    }
+    char first[PERSON_NAME_MAX + 1];
+    char last[PERSON_NAME_MAX + 1];
+    if (!normalize_player_name(first_name, first, sizeof(first)) ||
+        !normalize_player_name(last_name, last, sizeof(last))) {
+        return NULL;
+    }
+
+    const Player *match = NULL;
+    size_t count = 0;
+    for (size_t i = 0; i < db->player_count; ++i) {
+        const Player *player = &db->players[i];
+        if (util_ascii_iequal(player->first_name, first) &&
+            util_ascii_iequal(player->last_name, last)) {
+            if (match == NULL) {
+                match = player;
+            }
+            ++count;
+        }
+    }
+    if (out_count != NULL) {
+        *out_count = count;
+    }
+    return match;
+}
+
 static bool prepare_text(const char *source, size_t max_bytes,
                          bool allow_empty, char *output, size_t output_size,
                          const char *label, char *error, size_t error_size)

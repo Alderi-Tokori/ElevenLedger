@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.7.0 - 2026-11-08
+
+### Added
+
+- Adding a player whose name already exists now shows the existing player's club, current rating, starting rating and match count. The warning offers to add a duplicate player, move the existing player to the selected club, or cancel.
+
 ## 1.6.2 - 2026-11-08
 
 ### Added

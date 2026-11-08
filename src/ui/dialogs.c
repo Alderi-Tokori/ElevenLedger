@@ -35,6 +35,17 @@ enum {
     PLAYER_DIALOG_CANCEL_ID,
 };
 
+enum {
+    PLAYER_DUPLICATE_ADD_ID = 2400,
+    PLAYER_DUPLICATE_MOVE_ID,
+};
+
+typedef enum {
+    PLAYER_DUPLICATE_CANCEL = 0,
+    PLAYER_DUPLICATE_ADD,
+    PLAYER_DUPLICATE_MOVE
+} PlayerDuplicateChoice;
+
 typedef struct {
     App *app;
     HWND hwnd;
@@ -447,6 +458,154 @@ uint64_t dialog_edit_team(App *app, uint64_t team_id)
     return state.saved_id;
 }
 
+static void player_full_name(const Player *player, wchar_t *buffer,
+                             size_t count)
+{
+    wchar_t first[128];
+    wchar_t last[128];
+    ui_utf8_to_wide(player->first_name, first,
+                    sizeof(first) / sizeof(first[0]));
+    ui_utf8_to_wide(player->last_name, last,
+                    sizeof(last) / sizeof(last[0]));
+    if (first[0] != L'\0' && last[0] != L'\0') {
+        ui_format_wide(buffer, count, L"%ls %ls", first, last);
+    } else if (first[0] != L'\0') {
+        ui_format_wide(buffer, count, L"%ls", first);
+    } else {
+        ui_format_wide(buffer, count, L"%ls", last);
+    }
+}
+
+static PlayerDuplicateChoice player_duplicate_prompt(
+    App *app, HWND owner, const Player *duplicate, uint64_t target_team_id,
+    size_t duplicate_count)
+{
+    wchar_t name[160];
+    player_full_name(duplicate, name, sizeof(name) / sizeof(name[0]));
+
+    const Team *current_team = db_find_team(&app->db, duplicate->team_id);
+    const Team *target_team = db_find_team(&app->db, target_team_id);
+    wchar_t current_name[128] = L"an unknown club";
+    wchar_t target_name[128] = L"the selected club";
+    if (current_team != NULL) {
+        ui_utf8_to_wide(current_team->name, current_name,
+                        sizeof(current_name) / sizeof(current_name[0]));
+    }
+    if (target_team != NULL) {
+        ui_utf8_to_wide(target_team->name, target_name,
+                        sizeof(target_name) / sizeof(target_name[0]));
+    }
+    bool can_move = target_team != NULL &&
+                    target_team_id != duplicate->team_id;
+
+    wchar_t intro[512];
+    if (duplicate_count > 1) {
+        ui_format_wide(intro, sizeof(intro) / sizeof(intro[0]),
+                       L"%ls already exists in %ls. %zu players use this "
+                       L"name; the earliest one is shown below.",
+                       name, current_name, duplicate_count);
+    } else {
+        ui_format_wide(intro, sizeof(intro) / sizeof(intro[0]),
+                       L"%ls already exists in %ls.",
+                       name, current_name);
+    }
+
+    wchar_t content[2048];
+    wchar_t details[1024];
+    ui_format_wide(details, sizeof(details) / sizeof(details[0]),
+                   L"%ls\n\nCurrent rating: %.1f after %u matches\n"
+                   L"Starting rating: %.2f\nStatus: %ls",
+                   intro, duplicate->current_rating, duplicate->matches_played,
+                   duplicate->base_rating,
+                   duplicate->active ? L"Available for selection" : L"Archived");
+    wchar_t guidance[1024];
+    if (can_move) {
+        ui_format_wide(guidance, sizeof(guidance) / sizeof(guidance[0]),
+                       L"\n\nChoose \"Add duplicate\" to create a separate "
+                       L"player in %ls. Their appearances and ratings will be "
+                       L"tracked independently.\n\nChoose \"Move existing "
+                       L"player\" to change %ls's club to %ls instead. Their "
+                       L"name, starting rating and match history stay "
+                       L"unchanged.",
+                       target_name, name, target_name);
+    } else {
+        ui_format_wide(guidance, sizeof(guidance) / sizeof(guidance[0]),
+                       L"\n\n%ls already plays for %ls. Choose \"Add "
+                       L"duplicate\" to keep two separate records, or Cancel "
+                       L"to go back and change the name.",
+                       name, current_name);
+    }
+    ui_format_wide(content, sizeof(content) / sizeof(content[0]),
+                   L"%ls%ls", details, guidance);
+
+    TASKDIALOG_BUTTON buttons[2];
+    memset(buttons, 0, sizeof(buttons));
+    UINT button_count = 0;
+    buttons[button_count].nButtonID = PLAYER_DUPLICATE_ADD_ID;
+    buttons[button_count].pszButtonText = L"Add duplicate";
+    ++button_count;
+    if (can_move) {
+        buttons[button_count].nButtonID = PLAYER_DUPLICATE_MOVE_ID;
+        buttons[button_count].pszButtonText = L"Move existing player";
+        ++button_count;
+    }
+
+    TASKDIALOGCONFIG config;
+    memset(&config, 0, sizeof(config));
+    config.cbSize = sizeof(config);
+    config.hwndParent = owner != NULL ? owner : app->main_hwnd;
+    config.hInstance = app->instance;
+    config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION |
+                     TDF_POSITION_RELATIVE_TO_WINDOW;
+    config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
+    config.pszWindowTitle = L"Duplicate player - PitchRate";
+    config.pszMainIcon = TD_WARNING_ICON;
+    config.pszMainInstruction = L"A player with this name already exists";
+    config.pszContent = content;
+    config.cButtons = button_count;
+    config.pButtons = buttons;
+    config.nDefaultButton = IDCANCEL;
+
+    int pressed = IDCANCEL;
+    if (SUCCEEDED(TaskDialogIndirect(&config, &pressed, NULL, NULL))) {
+        if (pressed == PLAYER_DUPLICATE_ADD_ID) {
+            return PLAYER_DUPLICATE_ADD;
+        }
+        if (pressed == PLAYER_DUPLICATE_MOVE_ID) {
+            return PLAYER_DUPLICATE_MOVE;
+        }
+        return PLAYER_DUPLICATE_CANCEL;
+    }
+
+    wchar_t fallback[2304];
+    if (can_move) {
+        ui_format_wide(fallback, sizeof(fallback) / sizeof(fallback[0]),
+                       L"%ls\n\nYes: add a duplicate player in %ls.\n"
+                       L"No: move %ls to %ls.\n"
+                       L"Cancel: go back to the Add player form.",
+                       details, target_name, name, target_name);
+        int answer = MessageBoxW(config.hwndParent, fallback,
+                                 L"Duplicate player",
+                                 MB_YESNOCANCEL | MB_ICONWARNING |
+                                     MB_DEFBUTTON3);
+        if (answer == IDYES) {
+            return PLAYER_DUPLICATE_ADD;
+        }
+        if (answer == IDNO) {
+            return PLAYER_DUPLICATE_MOVE;
+        }
+        return PLAYER_DUPLICATE_CANCEL;
+    }
+
+    ui_format_wide(fallback, sizeof(fallback) / sizeof(fallback[0]),
+                   L"%ls\n\nYes: add a duplicate player.\n"
+                   L"No: go back to the Add player form.",
+                   details);
+    int answer = MessageBoxW(config.hwndParent, fallback, L"Duplicate player",
+                             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    return answer == IDYES ? PLAYER_DUPLICATE_ADD : PLAYER_DUPLICATE_CANCEL;
+}
+
 static LRESULT player_dialog_paint(PlayerDialogState *state, HWND hwnd)
 {
     PAINTSTRUCT paint;
@@ -587,6 +746,55 @@ static void player_dialog_save(PlayerDialogState *state)
         return;
     }
     bool active = ui_checkbox_get_checked(state->active);
+
+    if (state->player_id == 0) {
+        size_t duplicate_count = 0;
+        const Player *duplicate = db_find_player_by_name(
+            &state->app->db, first, last, &duplicate_count);
+        if (duplicate != NULL) {
+            PlayerDuplicateChoice choice = player_duplicate_prompt(
+                state->app, state->hwnd, duplicate, team_id,
+                duplicate_count);
+            if (choice == PLAYER_DUPLICATE_CANCEL) {
+                return;
+            }
+            if (choice == PLAYER_DUPLICATE_MOVE) {
+                uint64_t duplicate_id = duplicate->id;
+                char duplicate_first[PERSON_NAME_MAX + 1];
+                char duplicate_last[PERSON_NAME_MAX + 1];
+                util_str_copy(duplicate_first, sizeof(duplicate_first),
+                              duplicate->first_name);
+                util_str_copy(duplicate_last, sizeof(duplicate_last),
+                              duplicate->last_name);
+                double duplicate_rating = duplicate->base_rating;
+                bool duplicate_active = duplicate->active;
+
+                Database move_backup;
+                if (!app_tx_begin(state->app, &move_backup)) {
+                    return;
+                }
+                char move_error[512];
+                if (!db_update_player(&state->app->db, duplicate_id,
+                                      team_id, duplicate_first,
+                                      duplicate_last, duplicate_rating,
+                                      duplicate_active, move_error,
+                                      sizeof(move_error))) {
+                    app_tx_abort(state->app, &move_backup);
+                    ui_utf8_to_wide(move_error, state->error,
+                                    sizeof(state->error) /
+                                        sizeof(state->error[0]));
+                    InvalidateRect(state->hwnd, NULL, FALSE);
+                    return;
+                }
+                if (!app_tx_commit(state->app, &move_backup)) {
+                    return;
+                }
+                state->saved_id = duplicate_id;
+                DestroyWindow(state->hwnd);
+                return;
+            }
+        }
+    }
 
     Database backup;
     if (!app_tx_begin(state->app, &backup)) {

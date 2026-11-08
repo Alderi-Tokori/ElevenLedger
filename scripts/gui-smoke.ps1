@@ -21,6 +21,8 @@ public class PitchRateSmoke {
     [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
+    public static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, string lParam);
     [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
@@ -72,6 +74,18 @@ public class PitchRateSmoke {
         IntPtr found = IntPtr.Zero;
         EnumChildWindows(parent, (hWnd, lParam) => {
             if (GetDlgCtrlID(hWnd) == id) {
+                found = hWnd;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    public static IntPtr FindChildButtonByText(IntPtr parent, string text) {
+        IntPtr found = IntPtr.Zero;
+        EnumChildWindows(parent, (hWnd, lParam) => {
+            if (ClassName(hWnd) == "Button" && WindowText(hWnd) == text) {
                 found = hWnd;
                 return false;
             }
@@ -174,13 +188,99 @@ try {
     if ($selectedTeamIndex -ne 1) {
         throw "The Add Player team did not default to the previous player's team."
     }
-    [PitchRateSmoke]::PostMessage($playerDialog, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-    Wait-Until -Description "the player dialog to close and owner to re-enable" -Condition {
-        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero -and
-            [PitchRateSmoke]::IsWindowEnabled($main))
-    }
     Write-Host "Default starting rating OK: $defaultRating"
     Write-Host "Previous player's team default OK: $selectedTeamIndex"
+
+    $playersPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    $playerList = [PitchRateSmoke]::FindChildById($playersPage, 1200)
+    if ($playerList -eq [IntPtr]::Zero) {
+        throw "The players page is missing its player list."
+    }
+    $playersBefore = [PitchRateSmoke]::SendMessage(
+        $playerList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+
+    $playerFirst = [PitchRateSmoke]::FindChildById($playerDialog, 2100)
+    $playerLast = [PitchRateSmoke]::FindChildById($playerDialog, 2101)
+    $playerSave = [PitchRateSmoke]::FindChildById($playerDialog, 2105)
+    if ($playerFirst -eq [IntPtr]::Zero -or $playerLast -eq [IntPtr]::Zero -or
+        $playerSave -eq [IntPtr]::Zero) {
+        throw "The player dialog is missing its name fields or save button."
+    }
+    # Oliver Hart is a seeded Northbridge player. The default club is Riverside,
+    # so the duplicate warning must offer both adding a duplicate and moving him.
+    [PitchRateSmoke]::SendMessageText($playerFirst, 0x000C, [IntPtr]::Zero, "Oliver") | Out-Null
+    [PitchRateSmoke]::SendMessageText($playerLast, 0x000C, [IntPtr]::Zero, "Hart") | Out-Null
+    [PitchRateSmoke]::PostMessage($playerDialog, 0x0111, [IntPtr]2105, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the duplicate-player warning" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            ([PitchRateSmoke]::WindowText($candidate) -like "Duplicate player*") -and
+            -not [PitchRateSmoke]::IsWindowEnabled($playerDialog))
+    }
+    $duplicateDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770")
+    $addDuplicate = [PitchRateSmoke]::FindChildButtonByText(
+        $duplicateDialog, "Add duplicate")
+    $moveExisting = [PitchRateSmoke]::FindChildButtonByText(
+        $duplicateDialog, "Move existing player")
+    if ($addDuplicate -eq [IntPtr]::Zero -or $moveExisting -eq [IntPtr]::Zero) {
+        throw "The duplicate-player warning is missing its choices."
+    }
+    [PitchRateSmoke]::SendMessage($addDuplicate, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the duplicate player to be saved" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    $playersPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    $playerList = [PitchRateSmoke]::FindChildById($playersPage, 1200)
+    $playersAfter = [PitchRateSmoke]::SendMessage(
+        $playerList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($playersAfter -ne $playersBefore + 1) {
+        throw "The confirmed duplicate player was not added to the player list."
+    }
+    Write-Host "Duplicate player warning and add flow OK"
+
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40000, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the second player dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    $playerDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+    $playerFirst = [PitchRateSmoke]::FindChildById($playerDialog, 2100)
+    $playerLast = [PitchRateSmoke]::FindChildById($playerDialog, 2101)
+    [PitchRateSmoke]::SendMessageText($playerFirst, 0x000C, [IntPtr]::Zero, "Oliver") | Out-Null
+    [PitchRateSmoke]::SendMessageText($playerLast, 0x000C, [IntPtr]::Zero, "Hart") | Out-Null
+    [PitchRateSmoke]::PostMessage($playerDialog, 0x0111, [IntPtr]2105, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the second duplicate-player warning" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            ([PitchRateSmoke]::WindowText($candidate) -like "Duplicate player*") -and
+            -not [PitchRateSmoke]::IsWindowEnabled($playerDialog))
+    }
+    $duplicateDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770")
+    $moveExisting = [PitchRateSmoke]::FindChildButtonByText(
+        $duplicateDialog, "Move existing player")
+    if ($moveExisting -eq [IntPtr]::Zero) {
+        throw "The duplicate-player warning is missing its move choice."
+    }
+    [PitchRateSmoke]::SendMessage($moveExisting, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the existing player to be moved" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    $playersPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    $playerList = [PitchRateSmoke]::FindChildById($playersPage, 1200)
+    $playersAfterMove = [PitchRateSmoke]::SendMessage(
+        $playerList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($playersAfterMove -ne $playersAfter) {
+        throw "Moving the existing player changed the player count."
+    }
+    Write-Host "Duplicate player move flow OK"
 
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40003, [IntPtr]::Zero) | Out-Null
     Start-Sleep -Milliseconds 250

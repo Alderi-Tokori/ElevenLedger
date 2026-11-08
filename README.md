@@ -11,6 +11,7 @@ The application is a dependency-free C17 Win32 program. It does not use a browse
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.
 - Optional neutral venues that remove home advantage for cup finals and neutral-site fixtures.
+- Duplicate-name protection when adding players, with an option to add a duplicate or move the existing player to the selected club.
 - Match history with full before/change/after player breakdowns.
 - Tested data layer with checksummed files, backups and atomic writes.
 - Native, DPI-aware interface with dashboard, player, team, match and rating-guide pages.
@@ -86,7 +87,7 @@ Or run the executable directly for a per-test report:
 
 The suite covers date and UTF-8 validation, rating invariants, random-model fuzzing, database history replay, minutes and performance behaviour, storage round-trips, checksum failures, backup recovery, malformed data and relative paths.
 
-An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown and the complete record-and-save flow against a temporary data file:
+An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, the duplicate-player warning and the complete record-and-save flow against a temporary data file:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1

@@ -758,6 +758,58 @@ static bool test_player_transfer_preserves_historical_team(void)
     return true;
 }
 
+static bool test_find_player_by_name(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    char error[256];
+    uint64_t ada = 0;
+    uint64_t duplicate = 0;
+    uint64_t cher = 0;
+    uint64_t grace = 0;
+
+    CHECK(db_add_player(&db, alpha, "Ada", "Lovelace", 80.0, true,
+                        &ada, error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "  ada ", " lovelace ", 70.0, true,
+                        &duplicate, error, sizeof(error)));
+    CHECK(db_add_player(&db, alpha, "Cher", "", 60.0, true,
+                        &cher, error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Grace", "Hopper", 65.0, true,
+                        &grace, error, sizeof(error)));
+
+    size_t count = 0;
+    const Player *found = db_find_player_by_name(&db, " ADA ", "Lovelace",
+                                                 &count);
+    CHECK(found != NULL);
+    CHECK(found->id == ada);
+    CHECK(count == 2);
+
+    found = db_find_player_by_name(&db, "Cher", NULL, &count);
+    CHECK(found != NULL);
+    CHECK(found->id == cher);
+    CHECK(count == 1);
+
+    found = db_find_player_by_name(&db, "Grace", "Hopper", NULL);
+    CHECK(found != NULL);
+    CHECK(found->id == grace);
+
+    found = db_find_player_by_name(&db, "Ada", "Byron", &count);
+    CHECK(found == NULL);
+    CHECK(count == 0);
+
+    char too_long[PERSON_NAME_MAX + 2];
+    memset(too_long, 'a', sizeof(too_long) - 1);
+    too_long[sizeof(too_long) - 1] = '\0';
+    found = db_find_player_by_name(&db, too_long, "", &count);
+    CHECK(found == NULL);
+    CHECK(count == 0);
+
+    db_free(&db);
+    return true;
+}
+
 static bool test_team_stats_are_minutes_and_results_aware(void)
 {
     Database db;
@@ -796,6 +848,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_neutral_venue_match),
     TEST_CASE(test_recompute_sorts_matches_by_date),
     TEST_CASE(test_player_transfer_preserves_historical_team),
+    TEST_CASE(test_find_player_by_name),
     TEST_CASE(test_team_stats_are_minutes_and_results_aware),
 };
 

@@ -123,6 +123,16 @@ const Match *db_find_match(const Database *db, uint64_t id);
 /* Highest player ID, i.e. the most recently created player. */
 const Player *db_last_added_player(const Database *db);
 
+/*
+ * Finds the earliest-created player whose trimmed full name matches the
+ * supplied names (ASCII case-insensitive). When out_count is not NULL it
+ * receives the total number of players using that name.
+ */
+const Player *db_find_player_by_name(const Database *db,
+                                     const char *first_name,
+                                     const char *last_name,
+                                     size_t *out_count);
+
 bool db_add_team(Database *db, const char *name, const char *short_name,
                  const char *city, uint64_t *out_id,
                  char *error, size_t error_size);
