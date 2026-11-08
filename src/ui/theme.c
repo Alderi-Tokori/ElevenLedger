@@ -252,16 +252,17 @@ typedef struct {
 static RatingBandColors rating_band_colors(double rating)
 {
     RatingBandColors colors;
-    if (rating >= 80.0) {
+    /* Symmetric around 50.0, the zero-sum average rating. */
+    if (rating >= 65.0) {
         colors.text = RGB(22, 111, 65);
         colors.soft = UI_COLOR_ACCENT_SOFT;
-    } else if (rating >= 65.0) {
+    } else if (rating >= 55.0) {
         colors.text = UI_COLOR_BLUE;
         colors.soft = UI_COLOR_BLUE_SOFT;
-    } else if (rating >= 50.0) {
+    } else if (rating >= 45.0) {
         colors.text = UI_COLOR_NEUTRAL;
         colors.soft = UI_COLOR_NEUTRAL_SOFT;
-    } else if (rating >= 40.0) {
+    } else if (rating >= 35.0) {
         colors.text = UI_COLOR_AMBER;
         colors.soft = UI_COLOR_AMBER_SOFT;
     } else {

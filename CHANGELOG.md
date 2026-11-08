@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.6.1 - 2026-11-08
+
+### Changed
+
+- Rating badge colours are now symmetric around the zero-sum average of 50.0: green from 65.0, blue from 55.0, neutral grey from 45.0, amber from 35.0, and red below 35.0.
+
 ## 1.6.0 - 2026-11-08
 
 ### Changed
