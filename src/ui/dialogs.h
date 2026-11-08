@@ -13,6 +13,8 @@ uint64_t dialog_edit_team(App *app, uint64_t team_id);
 uint64_t dialog_edit_player(App *app, uint64_t player_id);
 /* Returns the new match ID, or 0 when cancelled. */
 uint64_t dialog_record_match(App *app);
+/* Returns true when the existing match was updated. */
+bool dialog_edit_match(App *app, HWND owner, uint64_t match_id);
 void dialog_match_details(App *app, uint64_t match_id);
 
 #endif

@@ -37,6 +37,7 @@ enum {
     DETAILS_LIST_ID = 2300,
     DETAILS_DELETE_ID,
     DETAILS_CLOSE_ID,
+    DETAILS_EDIT_ID,
 };
 
 typedef struct {
@@ -72,7 +73,9 @@ typedef struct {
     int cell_item;
     int cell_subitem;
     wchar_t error[512];
-    uint64_t new_match_id;
+    bool editing;
+    uint64_t match_id;
+    uint64_t saved_match_id;
     RECT label_date;
     RECT label_home_team;
     RECT label_home_score;
@@ -91,6 +94,7 @@ typedef struct {
     HWND hwnd;
     uint64_t match_id;
     HWND list;
+    HWND edit_button;
     HWND delete_button;
     HWND close_button;
     RECT scoreboard;
@@ -182,25 +186,49 @@ static void record_free_rows(RecordMatchState *state)
 static void record_cancel_cell_edit(RecordMatchState *state);
 static bool record_commit_cell_edit(RecordMatchState *state, bool accept);
 
-static int compare_players_by_name(const void *left, const void *right)
+static void lineup_row_init(LineupRow *row, const Player *player,
+                            uint64_t team_id, const Team *team)
 {
-    const Player *a = *(const Player *const *)left;
-    const Player *b = *(const Player *const *)right;
-    int result = strcmp(a->last_name, b->last_name);
+    memset(row, 0, sizeof(*row));
+    row->player_id = player->id;
+    row->team_id = team_id;
+    row->selected = false;
+    row->minutes = 90;
+    row->performance = RATING_NEUTRAL_PERFORMANCE;
+    row->current_rating = player->current_rating;
+    format_player_name(player, row->player_name, sizeof(row->player_name));
+    if (team != NULL) {
+        snprintf(row->team_name, sizeof(row->team_name), "%s", team->name);
+    } else {
+        snprintf(row->team_name, sizeof(row->team_name), "-");
+    }
+}
+
+static int compare_lineup_rows_by_name(const void *left, const void *right)
+{
+    const LineupRow *a = (const LineupRow *)left;
+    const LineupRow *b = (const LineupRow *)right;
+    int result = strcmp(a->player_name, b->player_name);
     if (result != 0) {
         return result;
     }
-    result = strcmp(a->first_name, b->first_name);
-    if (result != 0) {
-        return result;
-    }
-    if (a->id < b->id) {
+    if (a->player_id < b->player_id) {
         return -1;
     }
-    if (a->id > b->id) {
+    if (a->player_id > b->player_id) {
         return 1;
     }
     return 0;
+}
+
+static bool record_has_player(const RecordMatchState *state, uint64_t player_id)
+{
+    for (size_t i = 0; i < state->row_count; ++i) {
+        if (state->rows[i].player_id == player_id) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static void record_rebuild_rows(RecordMatchState *state)
@@ -215,87 +243,98 @@ static void record_rebuild_rows(RecordMatchState *state)
         return;
     }
     Database *db = &state->app->db;
-    size_t count = db_team_player_count(db, home_id, true) +
-                   db_team_player_count(db, away_id, true);
-    if (count == 0) {
+    if (state->editing) {
+        const Match *match = db_find_match(db, state->match_id);
+        if (match == NULL) {
+            record_show_error_wide(state, L"This match no longer exists.");
+            return;
+        }
+        home_id = match->home_team_id;
+        away_id = match->away_team_id;
+    }
+
+    size_t capacity = 0;
+    if (state->editing) {
+        capacity += db_match_appearance_count(db, state->match_id);
+    }
+    capacity += db_team_player_count(db, home_id, true);
+    capacity += db_team_player_count(db, away_id, true);
+    if (capacity == 0) {
         InvalidateRect(state->hwnd, NULL, FALSE);
         return;
     }
-    state->rows = calloc(count, sizeof(LineupRow));
+    state->rows = calloc(capacity, sizeof(*state->rows));
     if (state->rows == NULL) {
         record_show_error_wide(state, L"Not enough memory to load the line-ups.");
         return;
     }
 
+    const uint64_t teams[2] = { home_id, away_id };
+    for (int side = 0; side < 2; ++side) {
+        size_t side_start = state->row_count;
+        const Team *team = db_find_team(db, teams[side]);
+
+        if (state->editing) {
+            /*
+             * Start from the stored line-up. This includes players who have
+             * since transferred or been archived, and keeps their historical
+             * club side rather than their current club.
+             */
+            for (size_t i = 0; i < db->appearance_count; ++i) {
+                const Appearance *appearance = &db->appearances[i];
+                if (appearance->match_id != state->match_id ||
+                    appearance->team_id != teams[side]) {
+                    continue;
+                }
+                const Player *player =
+                    db_find_player(db, appearance->player_id);
+                if (player == NULL) {
+                    continue;
+                }
+                LineupRow *row = &state->rows[state->row_count++];
+                lineup_row_init(row, player, teams[side], team);
+                row->selected = true;
+                row->minutes = appearance->minutes;
+                row->performance = appearance->performance;
+            }
+        }
+
+        for (size_t i = 0; i < db->player_count; ++i) {
+            const Player *player = &db->players[i];
+            if (!player->active || player->team_id != teams[side] ||
+                record_has_player(state, player->id)) {
+                continue;
+            }
+            LineupRow *row = &state->rows[state->row_count++];
+            lineup_row_init(row, player, teams[side], team);
+        }
+        qsort(&state->rows[side_start], state->row_count - side_start,
+              sizeof(*state->rows), compare_lineup_rows_by_name);
+    }
+
     state->building = true;
     bool insert_failed = false;
-    const uint64_t teams[2] = { home_id, away_id };
-    for (int side = 0; side < 2 && !insert_failed; ++side) {
-        const Team *team = db_find_team(db, teams[side]);
-        size_t team_player_count = db_team_player_count(db, teams[side], true);
-        const Player **team_players = NULL;
-        if (team_player_count > 0) {
-            team_players = malloc(team_player_count * sizeof(*team_players));
-            if (team_players == NULL) {
-                record_show_error_wide(
-                    state, L"Not enough memory to load the line-ups.");
-                insert_failed = true;
-                break;
-            }
-            size_t used = 0;
-            for (size_t i = 0; i < db->player_count; ++i) {
-                const Player *player = &db->players[i];
-                if (player->active && player->team_id == teams[side]) {
-                    team_players[used++] = player;
-                }
-            }
-            qsort(team_players, team_player_count, sizeof(*team_players),
-                  compare_players_by_name);
+    for (size_t i = 0; i < state->row_count && !insert_failed; ++i) {
+        LineupRow *row = &state->rows[i];
+        char minutes[16];
+        char performance[16];
+        char rating[16];
+        snprintf(minutes, sizeof(minutes), "%d", row->minutes);
+        snprintf(performance, sizeof(performance), "%.2f",
+                 row->performance);
+        snprintf(rating, sizeof(rating), "%.1f", row->current_rating);
+        const char *columns[5] = {
+            row->player_name, row->team_name, minutes, performance, rating,
+        };
+        int list_index =
+            ui_list_add_row(state->list, columns, 5, (LPARAM)i);
+        if (list_index < 0) {
+            record_show_error_wide(
+                state, L"Could not add a player to the line-up list.");
+            insert_failed = true;
+            break;
         }
-        for (size_t player_index = 0;
-             player_index < team_player_count && !insert_failed;
-             ++player_index) {
-            const Player *player = team_players[player_index];
-            LineupRow *row = &state->rows[state->row_count];
-            memset(row, 0, sizeof(*row));
-            row->player_id = player->id;
-            row->team_id = player->team_id;
-            row->selected = false;
-            row->minutes = 90;
-            row->performance = RATING_NEUTRAL_PERFORMANCE;
-            row->current_rating = player->current_rating;
-            format_player_name(player, row->player_name,
-                               sizeof(row->player_name));
-            if (team != NULL) {
-                snprintf(row->team_name, sizeof(row->team_name), "%s",
-                         team->name);
-            } else {
-                snprintf(row->team_name, sizeof(row->team_name), "-");
-            }
-            char minutes[16];
-            char performance[16];
-            char rating[16];
-            snprintf(minutes, sizeof(minutes), "%d", row->minutes);
-            snprintf(performance, sizeof(performance), "%.2f",
-                     row->performance);
-            snprintf(rating, sizeof(rating), "%.1f",
-                     row->current_rating);
-            const char *columns[5] = {
-                row->player_name, row->team_name, minutes, performance,
-                rating,
-            };
-            int list_index = ui_list_add_row(
-                state->list, columns, 5, (LPARAM)state->row_count);
-            if (list_index < 0) {
-                record_show_error_wide(
-                    state, L"Could not add a player to the line-up list.");
-                insert_failed = true;
-                break;
-            }
-            ListView_SetCheckState(state->list, list_index, FALSE);
-            state->row_count++;
-        }
-        free(team_players);
+        ListView_SetCheckState(state->list, list_index, row->selected);
     }
     state->building = false;
     InvalidateRect(state->hwnd, NULL, FALSE);
@@ -626,8 +665,11 @@ static void record_paint(RecordMatchState *state, HWND hwnd)
     if (ui_canvas_begin(&canvas, hwnd, target, &state->app->ui,
                         UI_COLOR_BG)) {
         dialog_draw_chrome(
-            state->app, canvas.dc, client.right, L"Record a match",
-            L"Set the fixture and line-ups. Ratings are calculated on save.");
+            state->app, canvas.dc, client.right,
+            state->editing ? L"Edit match" : L"Record a match",
+            state->editing
+                ? L"Update the fixture and line-ups. Ratings are replayed from history on save."
+                : L"Set the fixture and line-ups. Ratings are calculated on save.");
         dialog_draw_label(state->app, canvas.dc, state->label_date.left,
                           state->label_date.top, L"Date");
         dialog_draw_label(state->app, canvas.dc,
@@ -645,11 +687,14 @@ static void record_paint(RecordMatchState *state, HWND hwnd)
         ui_draw_text(
             canvas.dc, state->app->ui.font_small, UI_COLOR_FAINT,
             state->info_rect,
-            L"Tick everyone who played. Double-click Minutes or Performance to edit. Performance is compared with the team average; 6.0 is the default.",
+            state->editing
+                ? L"Double-click Minutes or Performance to edit. Teams stay fixed; existing players keep their original club after a transfer or archive."
+                : L"Tick everyone who played. Double-click Minutes or Performance to edit. Performance is compared with the team average; 6.0 is the default.",
             DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         ui_draw_text(canvas.dc, state->app->ui.font_body_bold,
-                     UI_COLOR_TEXT, state->section_rect, L"Playing squads",
+                     UI_COLOR_TEXT, state->section_rect,
+                     state->editing ? L"Match line-up" : L"Playing squads",
                      DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         ui_fill_round_rect(canvas.dc, state->list_frame,
@@ -725,7 +770,7 @@ static void record_save(RecordMatchState *state)
     MatchPlayerInput *lineup = calloc(selected_count, sizeof(*lineup));
     if (lineup == NULL) {
         record_show_error_wide(state,
-                               L"Not enough memory to record the match.");
+                               L"Not enough memory to save the match.");
         return;
     }
     size_t used = 0;
@@ -755,8 +800,14 @@ static void record_save(RecordMatchState *state)
     }
     char error[512];
     uint64_t new_id = 0;
-    bool ok = db_add_match(&state->app->db, &input, &new_id,
-                           error, sizeof(error));
+    bool ok;
+    if (state->editing) {
+        ok = db_update_match(&state->app->db, state->match_id, &input,
+                             error, sizeof(error));
+    } else {
+        ok = db_add_match(&state->app->db, &input, &new_id,
+                          error, sizeof(error));
+    }
     free(lineup);
     if (!ok) {
         app_tx_abort(state->app, &backup);
@@ -766,7 +817,7 @@ static void record_save(RecordMatchState *state)
     if (!app_tx_commit(state->app, &backup)) {
         return;
     }
-    state->new_match_id = new_id;
+    state->saved_match_id = state->editing ? state->match_id : new_id;
     DestroyWindow(state->hwnd);
 }
 
@@ -888,6 +939,13 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
 
 static bool record_build(App *app, RecordMatchState *state)
 {
+    const Match *match = NULL;
+    if (state->editing) {
+        match = db_find_match(&app->db, state->match_id);
+        if (match == NULL) {
+            return false;
+        }
+    }
     UiTheme *theme = &app->ui;
     state->date = ui_edit_create(state->hwnd, RECORD_DATE_ID, L"",
                                  0, 0, 10, 10, theme->font_body, 10);
@@ -915,7 +973,8 @@ static bool record_build(App *app, RecordMatchState *state)
         L"Neutral venue (no home advantage)",
         0, 0, 10, 10, theme->font_body);
     state->save = ui_button_create(
-        state->hwnd, RECORD_SAVE_ID, L"Record match",
+        state->hwnd, RECORD_SAVE_ID,
+        state->editing ? L"Save changes" : L"Record match",
         0, 0, 10, 10, UI_BUTTON_PRIMARY, theme->font_button);
     state->cancel = ui_button_create(
         state->hwnd, RECORD_CANCEL_ID, L"Cancel",
@@ -938,17 +997,39 @@ static bool record_build(App *app, RecordMatchState *state)
 
     for (size_t i = 0; i < app->db.team_count; ++i) {
         const Team *team = &app->db.teams[i];
-        if (db_team_player_count(&app->db, team->id, true) == 0) {
+        bool include =
+            db_team_player_count(&app->db, team->id, true) > 0;
+        if (state->editing &&
+            (team->id == match->home_team_id ||
+             team->id == match->away_team_id)) {
+            include = true;
+        }
+        if (!include) {
             continue;
         }
         ui_combo_add_utf8(state->home_team, team->name, team->id);
         ui_combo_add_utf8(state->away_team, team->name, team->id);
     }
-    record_select_default_teams(state);
 
-    char today[11];
-    util_date_today(today);
-    ui_edit_set_utf8(state->date, today);
+    if (state->editing) {
+        ui_combo_select_data(state->home_team, match->home_team_id);
+        ui_combo_select_data(state->away_team, match->away_team_id);
+        EnableWindow(state->home_team, FALSE);
+        EnableWindow(state->away_team, FALSE);
+        ui_edit_set_utf8(state->date, match->date);
+        char score[16];
+        snprintf(score, sizeof(score), "%d", match->home_goals);
+        ui_edit_set_utf8(state->home_score, score);
+        snprintf(score, sizeof(score), "%d", match->away_goals);
+        ui_edit_set_utf8(state->away_score, score);
+        ui_checkbox_set_checked(state->neutral_venue,
+                                match->neutral_venue);
+    } else {
+        record_select_default_teams(state);
+        char today[11];
+        util_date_today(today);
+        ui_edit_set_utf8(state->date, today);
+    }
     ui_edit_set_cue(state->date, L"YYYY-MM-DD");
 
     RECT client;
@@ -959,19 +1040,18 @@ static bool record_build(App *app, RecordMatchState *state)
     return true;
 }
 
-uint64_t dialog_record_match(App *app)
+static uint64_t match_dialog_run(App *app, HWND owner, uint64_t match_id)
 {
-    if (!playable_team_count(&app->db)) {
-        MessageBoxW(app->main_hwnd,
-                    L"At least two teams with active players are needed to record a match.",
-                    L"PitchRate", MB_OK | MB_ICONINFORMATION);
-        return 0;
-    }
     RecordMatchState state;
     memset(&state, 0, sizeof(state));
     state.app = app;
+    state.editing = match_id != 0;
+    state.match_id = match_id;
+    HWND dialog_owner = owner != NULL ? owner : app->main_hwnd;
     HWND hwnd = dialog_create_shell(
-        app, RECORD_DIALOG_CLASS, L"Record match - PitchRate",
+        app, dialog_owner, RECORD_DIALOG_CLASS,
+        state.editing ? L"Edit match - PitchRate"
+                      : L"Record match - PitchRate",
         980, 650, &state);
     if (hwnd == NULL) {
         return 0;
@@ -982,9 +1062,30 @@ uint64_t dialog_record_match(App *app)
         record_free_rows(&state);
         return 0;
     }
-    ui_run_modal(hwnd, app->main_hwnd, RECORD_SAVE_ID);
+    ui_run_modal(hwnd, dialog_owner, RECORD_SAVE_ID);
+    uint64_t saved_match_id = state.saved_match_id;
     record_free_rows(&state);
-    return state.new_match_id;
+    return saved_match_id;
+}
+
+uint64_t dialog_record_match(App *app)
+{
+    if (!playable_team_count(&app->db)) {
+        MessageBoxW(app->main_hwnd,
+                    L"At least two teams with active players are needed to record a match.",
+                    L"PitchRate", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
+    return match_dialog_run(app, app->main_hwnd, 0);
+}
+
+bool dialog_edit_match(App *app, HWND owner, uint64_t match_id)
+{
+    if (app == NULL || match_id == 0 ||
+        db_find_match(&app->db, match_id) == NULL) {
+        return false;
+    }
+    return match_dialog_run(app, owner, match_id) != 0;
 }
 
 /* ------------------------------ Match details --------------------------- */
@@ -1151,10 +1252,14 @@ static void details_layout(MatchDetailsState *state, int width, int height)
     int button_y = height - ui_scale(theme, 60);
     int close_width = ui_scale(theme, 92);
     int delete_width = ui_scale(theme, 112);
+    int edit_width = ui_scale(theme, 104);
     MoveWindow(state->close_button, width - margin - close_width, button_y,
                close_width, button_height, TRUE);
     MoveWindow(state->delete_button, margin, button_y,
                delete_width, button_height, TRUE);
+    MoveWindow(state->edit_button,
+               margin + delete_width + ui_scale(theme, 10), button_y,
+               edit_width, button_height, TRUE);
     state->footer_line = (RECT){ margin, button_y - ui_scale(theme, 14),
                                  width - margin,
                                  button_y - ui_scale(theme, 13) };
@@ -1253,6 +1358,13 @@ LRESULT CALLBACK match_details_dialog_proc(HWND hwnd, UINT message,
             DestroyWindow(hwnd);
             return 0;
         }
+        if (LOWORD(wparam) == DETAILS_EDIT_ID) {
+            if (dialog_edit_match(state->app, hwnd, state->match_id)) {
+                details_refresh(state->list, state->app, state->match_id);
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+            return 0;
+        }
         if (LOWORD(wparam) == DETAILS_DELETE_ID) {
             const Match *match = db_find_match(&state->app->db,
                                                state->match_id);
@@ -1317,8 +1429,8 @@ void dialog_match_details(App *app, uint64_t match_id)
     state.app = app;
     state.match_id = match_id;
     HWND hwnd = dialog_create_shell(
-        app, DETAILS_DIALOG_CLASS, L"Match details - PitchRate",
-        940, 660, &state);
+        app, app->main_hwnd, DETAILS_DIALOG_CLASS,
+        L"Match details - PitchRate", 940, 660, &state);
     if (hwnd == NULL) {
         return;
     }
@@ -1326,14 +1438,17 @@ void dialog_match_details(App *app, uint64_t match_id)
     UiTheme *theme = &app->ui;
     state.list = ui_list_create(hwnd, DETAILS_LIST_ID, 0, 0, 10, 10,
                                 theme->font_body, theme->row_images);
+    state.edit_button = ui_button_create(
+        hwnd, DETAILS_EDIT_ID, L"Edit match",
+        0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     state.delete_button = ui_button_create(
         hwnd, DETAILS_DELETE_ID, L"Delete match",
         0, 0, 10, 10, UI_BUTTON_DANGER, theme->font_button);
     state.close_button = ui_button_create(
         hwnd, DETAILS_CLOSE_ID, L"Close",
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
-    if (state.list == NULL || state.delete_button == NULL ||
-        state.close_button == NULL) {
+    if (state.list == NULL || state.edit_button == NULL ||
+        state.delete_button == NULL || state.close_button == NULL) {
         DestroyWindow(hwnd);
         return;
     }

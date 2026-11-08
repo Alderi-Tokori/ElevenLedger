@@ -23,6 +23,8 @@ public class PitchRateSmoke {
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
     public static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, string lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
+    public static extern IntPtr SendMessageBuffer(IntPtr hWnd, uint message, IntPtr wParam, StringBuilder lParam);
     [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
@@ -41,6 +43,12 @@ public class PitchRateSmoke {
     public static string WindowText(IntPtr hWnd) {
         var value = new StringBuilder(512);
         GetWindowText(hWnd, value, value.Capacity);
+        return value.ToString();
+    }
+
+    public static string ControlText(IntPtr hWnd) {
+        var value = new StringBuilder(512);
+        SendMessageBuffer(hWnd, 0x000D, (IntPtr)value.Capacity, value);
         return value.ToString();
     }
 
@@ -346,6 +354,82 @@ try {
             [PitchRateSmoke]::IsWindowVisible($candidate))
     }
     $detailsDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDetailsDialog")
+    $editButton = [PitchRateSmoke]::FindChildById($detailsDialog, 2303)
+    if ($editButton -eq [IntPtr]::Zero) {
+        throw "The match-details dialog is missing its edit button."
+    }
+    [PitchRateSmoke]::PostMessage($detailsDialog, 0x0111, [IntPtr]2303, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the edit-match dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            ([PitchRateSmoke]::WindowText($candidate) -eq "Edit match - PitchRate") -and
+            -not [PitchRateSmoke]::IsWindowEnabled($detailsDialog))
+    }
+    $editDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
+    $editHomeTeam = [PitchRateSmoke]::FindChildById($editDialog, 2201)
+    $editAwayTeam = [PitchRateSmoke]::FindChildById($editDialog, 2202)
+    $editHomeScore = [PitchRateSmoke]::FindChildById($editDialog, 2203)
+    $editAwayScore = [PitchRateSmoke]::FindChildById($editDialog, 2204)
+    $editLineup = [PitchRateSmoke]::FindChildById($editDialog, 2205)
+    if ($editHomeTeam -eq [IntPtr]::Zero -or $editAwayTeam -eq [IntPtr]::Zero -or
+        $editHomeScore -eq [IntPtr]::Zero -or $editAwayScore -eq [IntPtr]::Zero -or
+        $editLineup -eq [IntPtr]::Zero) {
+        throw "The edit-match dialog is missing fixture or line-up controls."
+    }
+    if ([PitchRateSmoke]::IsWindowEnabled($editHomeTeam) -or
+        [PitchRateSmoke]::IsWindowEnabled($editAwayTeam)) {
+        throw "The edit-match dialog allowed the fixture teams to change."
+    }
+    $homeSelection = [PitchRateSmoke]::SendMessage(
+        $editHomeTeam, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    $awaySelection = [PitchRateSmoke]::SendMessage(
+        $editAwayTeam, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($homeSelection -lt 0 -or $awaySelection -lt 0 -or $homeSelection -eq $awaySelection) {
+        throw "The edit-match dialog did not preselect the fixture teams."
+    }
+    $editLineupCount = [PitchRateSmoke]::SendMessage(
+        $editLineup, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($editLineupCount -lt 2) {
+        throw "The edit-match dialog did not load the existing line-up."
+    }
+    $editDate = [PitchRateSmoke]::FindChildById($editDialog, 2200)
+    if ($editDate -eq [IntPtr]::Zero -or
+        [PitchRateSmoke]::ControlText($editDate) -notmatch '^\d{4}-\d{2}-\d{2}$') {
+        throw "The edit-match dialog did not prefill the match date."
+    }
+    [PitchRateSmoke]::SendMessageText($editAwayScore, 0x000C, [IntPtr]::Zero, "2") | Out-Null
+    if ([PitchRateSmoke]::ControlText($editAwayScore) -ne "2") {
+        throw "The edit-match dialog did not accept the new score."
+    }
+    [PitchRateSmoke]::PostMessage($editDialog, 0x0111, [IntPtr]2208, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the edited match to save" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($detailsDialog) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    [PitchRateSmoke]::PostMessage($detailsDialog, 0x0111, [IntPtr]2303, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the edited match to reopen" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($detailsDialog))
+    }
+    $editDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
+    $editAwayScore = [PitchRateSmoke]::FindChildById($editDialog, 2204)
+    if ($editAwayScore -eq [IntPtr]::Zero) {
+        throw "The reopened edit dialog is missing its away-score control."
+    }
+    $restoredAwayScore = [PitchRateSmoke]::ControlText($editAwayScore)
+    if ($restoredAwayScore -ne "2") {
+        throw "The edited score was not restored from the saved match (got '$restoredAwayScore')."
+    }
+    [PitchRateSmoke]::PostMessage($editDialog, 0x0111, [IntPtr]2209, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the edit-match dialog to cancel" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($detailsDialog))
+    }
+    Write-Host "Edit match flow OK"
     [PitchRateSmoke]::PostMessage($detailsDialog, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the details dialog to close" -Condition {
         return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDetailsDialog") -eq [IntPtr]::Zero)
@@ -353,6 +437,27 @@ try {
     Wait-Until -Description "the owner to be re-enabled" -Condition {
         return [PitchRateSmoke]::IsWindowEnabled($main)
     }
+    $matchesPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    $pageEditButton = [PitchRateSmoke]::FindChildById($matchesPage, 1303)
+    if ($pageEditButton -eq [IntPtr]::Zero -or
+        -not [PitchRateSmoke]::IsWindowEnabled($pageEditButton)) {
+        throw "The match list did not enable Edit match for the selected match."
+    }
+    [PitchRateSmoke]::PostMessage($matchesPage, 0x0111, [IntPtr]1303, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the match-list edit command" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            ([PitchRateSmoke]::WindowText($candidate) -eq "Edit match - PitchRate") -and
+            -not [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    $editDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
+    [PitchRateSmoke]::PostMessage($editDialog, 0x0111, [IntPtr]2209, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the match-list edit dialog to cancel" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    Write-Host "Match-list edit command OK"
     $matchesPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
     $matchesList = [PitchRateSmoke]::FindChildById($matchesPage, 1300)
     $matchesAfter = [PitchRateSmoke]::SendMessage($matchesList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()

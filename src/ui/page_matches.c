@@ -14,6 +14,7 @@ enum {
     MATCH_LIST_ID = 1300,
     MATCH_RECORD_ID = 1301,
     MATCH_VIEW_ID = 1302,
+    MATCH_EDIT_ID = 1303,
 };
 
 typedef struct {
@@ -21,6 +22,7 @@ typedef struct {
     HWND list;
     HWND record_button;
     HWND view_button;
+    HWND edit_button;
     bool populating;
     size_t visible_rows;
 } MatchesPage;
@@ -36,7 +38,9 @@ static uint64_t selected_match(MatchesPage *page)
 
 static void matches_update_buttons(MatchesPage *page)
 {
-    EnableWindow(page->view_button, selected_match(page) != 0);
+    bool selected = selected_match(page) != 0;
+    EnableWindow(page->view_button, selected);
+    EnableWindow(page->edit_button, selected);
 }
 
 static void matches_select_id(MatchesPage *page, uint64_t match_id)
@@ -149,12 +153,16 @@ static void matches_layout(Page *page, int width, int height)
     int top = ui_scale(theme, 24);
     int record_width = ui_scale(theme, 142);
     int view_width = ui_scale(theme, 108);
+    int edit_width = ui_scale(theme, 84);
     int right = page->width - margin;
     MoveWindow(matches->view_button, right - view_width, top,
                view_width, button_height, TRUE);
+    MoveWindow(matches->edit_button,
+               right - view_width - gap - edit_width, top,
+               edit_width, button_height, TRUE);
     MoveWindow(matches->record_button,
-               right - view_width - gap - record_width, top,
-               record_width, button_height, TRUE);
+               right - view_width - gap - edit_width - gap - record_width,
+               top, record_width, button_height, TRUE);
 
     static const int widths[7] = { 12, 22, 9, 22, 11, 12, 12 };
     ui_list_set_percent_widths(matches->list, widths, 7);
@@ -237,6 +245,13 @@ static LRESULT matches_message(Page *page, UINT message, WPARAM wparam,
             }
             return 0;
         }
+        if (command == MATCH_EDIT_ID) {
+            uint64_t match_id = selected_match(matches);
+            if (match_id != 0) {
+                dialog_edit_match(page->app, page->app->main_hwnd, match_id);
+            }
+            return 0;
+        }
         return 0;
     }
     if (message == WM_NOTIFY) {
@@ -308,8 +323,11 @@ Page *matches_page_create(App *app)
     matches->view_button = ui_button_create(
         matches->base.hwnd, MATCH_VIEW_ID, L"View details",
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
+    matches->edit_button = ui_button_create(
+        matches->base.hwnd, MATCH_EDIT_ID, L"Edit match",
+        0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     if (matches->list == NULL || matches->record_button == NULL ||
-        matches->view_button == NULL) {
+        matches->view_button == NULL || matches->edit_button == NULL) {
         page_destroy(&matches->base);
         free(matches);
         return NULL;
@@ -322,5 +340,6 @@ Page *matches_page_create(App *app)
     ui_list_add_column(matches->list, 5, L"Home change", 100);
     ui_list_add_column(matches->list, 6, L"Away change", 100);
     EnableWindow(matches->view_button, FALSE);
+    EnableWindow(matches->edit_button, FALSE);
     return &matches->base;
 }

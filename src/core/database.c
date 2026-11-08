@@ -153,6 +153,33 @@ static Player *find_player_mut(Database *db, uint64_t id)
     return NULL;
 }
 
+static Match *find_match_mut(Database *db, uint64_t id)
+{
+    for (size_t i = 0; i < db->match_count; ++i) {
+        if (db->matches[i].id == id) {
+            return &db->matches[i];
+        }
+    }
+    return NULL;
+}
+
+static const Appearance *find_match_appearance(const Database *db,
+                                               uint64_t match_id,
+                                               uint64_t player_id)
+{
+    if (db == NULL) {
+        return NULL;
+    }
+    for (size_t i = 0; i < db->appearance_count; ++i) {
+        const Appearance *appearance = &db->appearances[i];
+        if (appearance->match_id == match_id &&
+            appearance->player_id == player_id) {
+            return appearance;
+        }
+    }
+    return NULL;
+}
+
 const Team *db_find_team(const Database *db, uint64_t id)
 {
     if (db == NULL) {
@@ -864,19 +891,10 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
     return true;
 }
 
-bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
-                  char *error, size_t error_size)
+static bool prepare_match_input(const Database *db, const MatchInput *input,
+                                char *clean_date, size_t clean_date_size,
+                                char *error, size_t error_size)
 {
-    if (db == NULL || input == NULL) {
-        set_error(error, error_size, "Invalid match input.");
-        return false;
-    }
-    if (db->next_match_id == UINT64_MAX) {
-        set_error(error, error_size, "Match ID space exhausted.");
-        return false;
-    }
-
-    char clean_date[MATCH_DATE_MAX + 1];
     char date_temp[TEXT_TEMP_CAPACITY];
     util_str_copy(date_temp, sizeof(date_temp),
                   input->date == NULL ? "" : input->date);
@@ -885,7 +903,7 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
         set_error(error, error_size, "Use a valid date in YYYY-MM-DD format.");
         return false;
     }
-    util_str_copy(clean_date, sizeof(clean_date), trimmed_date);
+    util_str_copy(clean_date, clean_date_size, trimmed_date);
 
     const Team *home = db_find_team(db, input->home_team_id);
     const Team *away = db_find_team(db, input->away_team_id);
@@ -906,6 +924,58 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
         set_error(error, error_size, "Select at least one player for each team.");
         return false;
     }
+    return true;
+}
+
+static bool validate_lineup_entry(const Database *db, const MatchInput *input,
+                                  size_t index, const Player **out_player,
+                                  char *error, size_t error_size)
+{
+    const MatchPlayerInput *entry = &input->players[index];
+    const Player *player = db_find_player(db, entry->player_id);
+    if (player == NULL) {
+        set_error(error, error_size, "Line-up references an unknown player.");
+        return false;
+    }
+    if (entry->minutes < 1 || entry->minutes > 120) {
+        set_error(error, error_size,
+                  "Minutes played must be between 1 and 120.");
+        return false;
+    }
+    if (!isfinite(entry->performance) ||
+        entry->performance < 1.0 || entry->performance > 10.0) {
+        set_error(error, error_size,
+                  "Performance must be between 1.0 and 10.0.");
+        return false;
+    }
+    for (size_t j = 0; j < index; ++j) {
+        if (input->players[j].player_id == entry->player_id) {
+            set_error(error, error_size,
+                      "A player is selected more than once.");
+            return false;
+        }
+    }
+    *out_player = player;
+    return true;
+}
+
+bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
+                  char *error, size_t error_size)
+{
+    if (db == NULL || input == NULL) {
+        set_error(error, error_size, "Invalid match input.");
+        return false;
+    }
+    if (db->next_match_id == UINT64_MAX) {
+        set_error(error, error_size, "Match ID space exhausted.");
+        return false;
+    }
+
+    char clean_date[MATCH_DATE_MAX + 1];
+    if (!prepare_match_input(db, input, clean_date, sizeof(clean_date),
+                             error, error_size)) {
+        return false;
+    }
 
     size_t home_players = 0;
     size_t away_players = 0;
@@ -913,9 +983,9 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
     uint64_t away_minutes = 0;
     for (size_t i = 0; i < input->player_count; ++i) {
         const MatchPlayerInput *entry = &input->players[i];
-        const Player *player = db_find_player(db, entry->player_id);
-        if (player == NULL) {
-            set_error(error, error_size, "Line-up references an unknown player.");
+        const Player *player = NULL;
+        if (!validate_lineup_entry(db, input, i, &player,
+                                   error, error_size)) {
             return false;
         }
         if (!player->active) {
@@ -928,29 +998,12 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
                       "A selected player does not belong to either team.");
             return false;
         }
-        if (entry->minutes < 1 || entry->minutes > 120) {
-            set_error(error, error_size, "Minutes played must be between 1 and 120.");
-            return false;
-        }
-        if (!isfinite(entry->performance) ||
-            entry->performance < 1.0 || entry->performance > 10.0) {
-            set_error(error, error_size,
-                      "Performance must be between 1.0 and 10.0.");
-            return false;
-        }
         if (player->team_id == input->home_team_id) {
             home_players++;
             home_minutes += (uint64_t)entry->minutes;
         } else {
             away_players++;
             away_minutes += (uint64_t)entry->minutes;
-        }
-        for (size_t j = 0; j < i; ++j) {
-            if (input->players[j].player_id == entry->player_id) {
-                set_error(error, error_size,
-                          "A player is selected more than once.");
-                return false;
-            }
         }
     }
     if (home_players == 0 || away_players == 0) {
@@ -1004,6 +1057,130 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
         *out_id = new_match_id;
     }
     return true;
+}
+
+bool db_update_match(Database *db, uint64_t id, const MatchInput *input,
+                     char *error, size_t error_size)
+{
+    if (db == NULL || input == NULL) {
+        set_error(error, error_size, "Invalid match input.");
+        return false;
+    }
+    Match *match = find_match_mut(db, id);
+    if (match == NULL) {
+        set_error(error, error_size, "Match not found.");
+        return false;
+    }
+
+    char clean_date[MATCH_DATE_MAX + 1];
+    if (!prepare_match_input(db, input, clean_date, sizeof(clean_date),
+                             error, error_size)) {
+        return false;
+    }
+
+    size_t home_players = 0;
+    size_t away_players = 0;
+    uint64_t home_minutes = 0;
+    uint64_t away_minutes = 0;
+    for (size_t i = 0; i < input->player_count; ++i) {
+        const MatchPlayerInput *entry = &input->players[i];
+        const Player *player = NULL;
+        if (!validate_lineup_entry(db, input, i, &player,
+                                   error, error_size)) {
+            return false;
+        }
+
+        const Appearance *existing =
+            find_match_appearance(db, id, player->id);
+        uint64_t team_id =
+            existing != NULL ? existing->team_id : player->team_id;
+        if (team_id != input->home_team_id &&
+            team_id != input->away_team_id) {
+            if (existing != NULL) {
+                set_error(error, error_size,
+                          "A line-up player's original club is no longer part of this match.");
+            } else {
+                set_error(error, error_size,
+                          "A selected player does not belong to either team.");
+            }
+            return false;
+        }
+        if (existing == NULL && !player->active) {
+            set_error(error, error_size, "Line-up includes an archived player.");
+            return false;
+        }
+
+        if (team_id == input->home_team_id) {
+            home_players++;
+            home_minutes += (uint64_t)entry->minutes;
+        } else {
+            away_players++;
+            away_minutes += (uint64_t)entry->minutes;
+        }
+    }
+    if (home_players == 0 || away_players == 0) {
+        set_error(error, error_size, "Select at least one player for each team.");
+        return false;
+    }
+    if (home_minutes > 11u * 120u || away_minutes > 11u * 120u) {
+        set_error(error, error_size,
+                  "A team cannot have more than 1,320 player-minutes in one match.");
+        return false;
+    }
+
+    size_t previous_appearances = db_match_appearance_count(db, id);
+    Appearance *replacement =
+        calloc(input->player_count, sizeof(*replacement));
+    if (replacement == NULL) {
+        set_error(error, error_size, "Not enough memory to update the match.");
+        return false;
+    }
+    for (size_t i = 0; i < input->player_count; ++i) {
+        const MatchPlayerInput *entry = &input->players[i];
+        const Player *player = db_find_player(db, entry->player_id);
+        const Appearance *existing =
+            find_match_appearance(db, id, entry->player_id);
+        replacement[i].match_id = id;
+        replacement[i].player_id = entry->player_id;
+        replacement[i].team_id =
+            existing != NULL ? existing->team_id : player->team_id;
+        replacement[i].minutes = entry->minutes;
+        replacement[i].performance =
+            round(entry->performance * 100.0) / 100.0;
+    }
+
+    size_t kept_appearances = db->appearance_count - previous_appearances;
+    if (!grow_array((void **)&db->appearances, sizeof(Appearance),
+                    &db->appearance_capacity,
+                    kept_appearances + input->player_count)) {
+        free(replacement);
+        set_error(error, error_size, "Not enough memory to update the match.");
+        return false;
+    }
+
+    size_t write_index = 0;
+    for (size_t i = 0; i < db->appearance_count; ++i) {
+        if (db->appearances[i].match_id != id) {
+            if (write_index != i) {
+                db->appearances[write_index] = db->appearances[i];
+            }
+            write_index++;
+        }
+    }
+    memcpy(&db->appearances[write_index], replacement,
+           input->player_count * sizeof(*replacement));
+    db->appearance_count = write_index + input->player_count;
+    free(replacement);
+
+    util_str_copy(match->date, sizeof(match->date), clean_date);
+    match->home_team_id = input->home_team_id;
+    match->away_team_id = input->away_team_id;
+    match->home_goals = input->home_goals;
+    match->away_goals = input->away_goals;
+    match->neutral_venue = input->neutral_venue;
+    memset(&match->rating, 0, sizeof(match->rating));
+
+    return db_recompute_ratings(db, error, error_size);
 }
 
 bool db_delete_match(Database *db, uint64_t id,

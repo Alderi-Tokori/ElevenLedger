@@ -2,6 +2,14 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.8.0 - 2026-11-08
+
+### Added
+
+- Existing matches can be edited from the match list or the match details dialog. Date, score, venue, line-up, minutes and performance can change while the match ID and fixture teams stay fixed.
+- Existing line-up players remain available while editing and keep the club they represented, even if they have since transferred or been archived. New line-up players must currently belong to one of the two teams.
+- Saving an edit replays all matches chronologically and refreshes the match history.
+
 ## 1.7.0 - 2026-11-08
 
 ### Added

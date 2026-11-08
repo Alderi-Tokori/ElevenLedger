@@ -176,7 +176,7 @@ The database stores each appearance's inputs, not a mutable running total. On lo
 4. Appearance snapshots (`rating_before`, `rating_delta`, `rating_after`) are regenerated.
 5. Appearances are sorted by match and player for deterministic storage.
 
-This makes deleting a match, changing a starting rating or transferring a player safe and consistent. Changing a player's current club does not rewrite their historical appearances; the appearance retains the team that played the match. Match scores can be corrected by deleting the match and recording it again, which replays the subsequent history.
+This makes editing or deleting a match, changing a starting rating or transferring a player safe and consistent. Changing a player's current club does not rewrite their historical appearances; the appearance retains the team that played the match. When an existing match is edited, players already in its line-up keep the club they represented, even if they have since transferred or been archived. Saving the edit replays all subsequent history.
 
 ## Invariants covered by tests
 

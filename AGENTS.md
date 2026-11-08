@@ -69,7 +69,7 @@ src/ui/controls.c         Custom buttons and checkbox, edits, combos, lists, mod
 src/ui/page.c             Shared page window and card/header/empty-state painting
 src/ui/page_*.c           Five application pages
 src/ui/dialogs.c          Shared modal shell and team/player dialogs
-src/ui/dialog_match.c     Record-match and match-details dialogs
+src/ui/dialog_match.c     Record/edit-match and match-details dialogs
 src/ui/main_window.c      Shell, sidebar navigation, keyboard accelerators
 ```
 

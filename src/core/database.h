@@ -157,6 +157,16 @@ bool db_delete_player(Database *db, uint64_t id,
 
 bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
                   char *error, size_t error_size);
+/*
+ * Replaces the fixture and line-up of an existing match while preserving its
+ * ID. Players already in the match keep the team stored on their appearance,
+ * so a player who has since transferred or been archived still counts for the
+ * club they represented. A player who was not in the original line-up must be
+ * active and currently belong to one of the two selected teams. Ratings are
+ * replayed after the change.
+ */
+bool db_update_match(Database *db, uint64_t id, const MatchInput *input,
+                     char *error, size_t error_size);
 bool db_delete_match(Database *db, uint64_t id,
                      char *error, size_t error_size);
 

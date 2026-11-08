@@ -112,11 +112,12 @@ void dialogs_register_classes(HINSTANCE instance)
                           match_details_dialog_proc);
 }
 
-HWND dialog_create_shell(App *app, const wchar_t *class_name,
+HWND dialog_create_shell(App *app, HWND owner, const wchar_t *class_name,
                          const wchar_t *title, int client_width,
                          int client_height, void *state)
 {
     UiTheme *theme = &app->ui;
+    HWND dialog_owner = owner != NULL ? owner : app->main_hwnd;
     DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN |
                   WS_CLIPSIBLINGS;
     DWORD extended = WS_EX_DLGMODALFRAME | WS_EX_CONTROLPARENT;
@@ -132,7 +133,7 @@ HWND dialog_create_shell(App *app, const wchar_t *class_name,
     memset(&monitor, 0, sizeof(monitor));
     monitor.cbSize = sizeof(monitor);
     HMONITOR handle = MonitorFromWindow(
-        app->main_hwnd != NULL ? app->main_hwnd : GetDesktopWindow(),
+        dialog_owner != NULL ? dialog_owner : GetDesktopWindow(),
         MONITOR_DEFAULTTONEAREST);
     if (GetMonitorInfoW(handle, &monitor)) {
         int max_width = monitor.rcWork.right - monitor.rcWork.left -
@@ -156,10 +157,10 @@ HWND dialog_create_shell(App *app, const wchar_t *class_name,
     HWND hwnd = CreateWindowExW(
         extended, class_name, title, style,
         CW_USEDEFAULT, CW_USEDEFAULT, width + frame_width, height + frame_height,
-        app->main_hwnd, NULL, app->instance, state);
+        dialog_owner, NULL, app->instance, state);
     if (hwnd != NULL) {
         SetWindowTextW(hwnd, title);
-        ui_center_window(hwnd, app->main_hwnd);
+        ui_center_window(hwnd, dialog_owner);
     }
     return hwnd;
 }
@@ -413,7 +414,7 @@ uint64_t dialog_edit_team(App *app, uint64_t team_id)
     state.team_id = team_id;
 
     HWND hwnd = dialog_create_shell(
-        app, TEAM_DIALOG_CLASS,
+        app, app->main_hwnd, TEAM_DIALOG_CLASS,
         team_id == 0 ? L"Add team - PitchRate" : L"Edit team - PitchRate",
         500, 390, &state);
     if (hwnd == NULL) {
@@ -886,7 +887,7 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
     state.player_id = player_id;
 
     HWND hwnd = dialog_create_shell(
-        app, PLAYER_DIALOG_CLASS,
+        app, app->main_hwnd, PLAYER_DIALOG_CLASS,
         player_id == 0 ? L"Add player - PitchRate"
                        : L"Edit player - PitchRate",
         560, 470, &state);

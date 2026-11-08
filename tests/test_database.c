@@ -590,6 +590,22 @@ static bool test_match_total_minutes_guard(void)
     CHECK(strstr(error, "1,320") != NULL);
     CHECK(db.match_count == 0);
     CHECK(db.appearance_count == 0);
+
+    MatchPlayerInput valid_lineup[] = {
+        { home_players[0], 90, 6.0 },
+        { away_player, 90, 6.0 },
+    };
+    MatchInput valid = input;
+    valid.players = valid_lineup;
+    valid.player_count = 2;
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &valid, &match_id, error, sizeof(error)));
+    CHECK(db.match_count == 1);
+    CHECK(db.appearance_count == 2);
+    CHECK(!db_update_match(&db, match_id, &input, error, sizeof(error)));
+    CHECK(strstr(error, "1,320") != NULL);
+    CHECK(db.match_count == 1);
+    CHECK(db.appearance_count == 2);
     db_free(&db);
     return true;
 }
@@ -758,6 +774,306 @@ static bool test_player_transfer_preserves_historical_team(void)
     return true;
 }
 
+static bool test_update_match_replays_chronology(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    uint64_t players[4];
+    CHECK(add_four_players(&db, alpha, beta, players));
+    char error[256];
+
+    MatchPlayerInput lineup[] = {
+        { players[0], 90, 7.0 },
+        { players[1], 60, 6.0 },
+        { players[2], 90, 6.0 },
+        { players[3], 90, 5.0 },
+    };
+    MatchInput input = {
+        .date = "2026-10-04",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 2,
+        .away_goals = 0,
+        .players = lineup,
+        .player_count = 4,
+    };
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+
+    MatchInput later = input;
+    later.date = "2026-11-01";
+    later.home_goals = 1;
+    later.away_goals = 1;
+    uint64_t later_id = 0;
+    CHECK(db_add_match(&db, &later, &later_id, error, sizeof(error)));
+    CHECK(match_id != later_id);
+
+    uint64_t next_id_before = db.next_match_id;
+    MatchPlayerInput revised[] = {
+        { players[0], 45, 8.5 },
+        { players[1], 90, 5.0 },
+        { players[2], 90, 7.0 },
+        { players[3], 30, 6.0 },
+    };
+    MatchInput edit = input;
+    edit.date = "2026-09-15";
+    edit.home_goals = 0;
+    edit.away_goals = 3;
+    edit.neutral_venue = true;
+    edit.players = revised;
+    edit.player_count = 4;
+    CHECK(db_update_match(&db, match_id, &edit, error, sizeof(error)));
+    CHECK(db.next_match_id == next_id_before);
+    CHECK(db.match_count == 2);
+    CHECK(db.appearance_count == 8);
+    CHECK(db.matches[0].id == match_id);
+    CHECK(db.matches[1].id == later_id);
+
+    const Match *updated = db_find_match(&db, match_id);
+    CHECK(updated != NULL);
+    CHECK_STRING(updated->date, "2026-09-15");
+    CHECK(updated->home_goals == 0);
+    CHECK(updated->away_goals == 3);
+    CHECK(updated->neutral_venue);
+    CHECK(updated->rating.home_expected > 0.5);
+    CHECK(updated->rating.away_team_delta > 0.0);
+
+    const Appearance *star = find_appearance(&db, match_id, players[0]);
+    CHECK(star != NULL);
+    CHECK(star->minutes == 45);
+    CHECK_NEAR(star->performance, 8.5, 1e-12);
+    CHECK_NEAR(star->rating_before, 80.0, 1e-12);
+    const Appearance *later_star =
+        find_appearance(&db, later_id, players[0]);
+    CHECK(later_star != NULL);
+    CHECK_NEAR(later_star->rating_before, star->rating_after, 1e-12);
+
+    double first_total = 0.0;
+    for (size_t i = 0; i < db.appearance_count; ++i) {
+        if (db.appearances[i].match_id == match_id) {
+            first_total += db.appearances[i].rating_delta;
+        }
+    }
+    CHECK_NEAR(first_total, 0.0, 1e-9);
+    CHECK(db_find_player(&db, players[0])->matches_played == 2);
+    CHECK(db_find_player(&db, players[0])->minutes_played == 135);
+    CHECK(db_validate(&db, error, sizeof(error)));
+    db_free(&db);
+    return true;
+}
+
+static bool test_update_match_preserves_transferred_and_archived_players(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    uint64_t gamma = 0;
+    char error[256];
+    CHECK(db_add_team(&db, "Gamma Town", "GAM", "East", &gamma,
+                      error, sizeof(error)));
+
+    uint64_t home_player = 0;
+    uint64_t away_player = 0;
+    uint64_t new_home = 0;
+    uint64_t outsider = 0;
+    CHECK(db_add_player(&db, alpha, "Home", "Player", 72.0, true,
+                        &home_player, error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", 68.0, true,
+                        &away_player, error, sizeof(error)));
+    CHECK(db_add_player(&db, alpha, "New", "Teammate", 60.0, true,
+                        &new_home, error, sizeof(error)));
+    CHECK(db_add_player(&db, gamma, "Gamma", "Player", 70.0, true,
+                        &outsider, error, sizeof(error)));
+
+    MatchPlayerInput lineup[] = {
+        { home_player, 90, 6.5 },
+        { away_player, 90, 5.5 },
+    };
+    MatchInput input = {
+        .date = "2026-05-10",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 1,
+        .away_goals = 0,
+        .players = lineup,
+        .player_count = 2,
+    };
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+
+    CHECK(db_update_player(&db, home_player, gamma, "Home", "Player",
+                           72.0, true, error, sizeof(error)));
+    CHECK(db_set_player_active(&db, away_player, false,
+                               error, sizeof(error)));
+
+    MatchPlayerInput revised[] = {
+        { home_player, 75, 7.5 },
+        { new_home, 90, 6.0 },
+        { away_player, 80, 5.0 },
+    };
+    MatchInput edit = input;
+    edit.date = "2026-05-10";
+    edit.home_goals = 2;
+    edit.away_goals = 1;
+    edit.players = revised;
+    edit.player_count = 3;
+    CHECK(db_update_match(&db, match_id, &edit, error, sizeof(error)));
+    CHECK(db_validate(&db, error, sizeof(error)));
+
+    const Appearance *transferred =
+        find_appearance(&db, match_id, home_player);
+    const Appearance *archived =
+        find_appearance(&db, match_id, away_player);
+    const Appearance *added = find_appearance(&db, match_id, new_home);
+    CHECK(transferred != NULL && transferred->team_id == alpha);
+    CHECK(archived != NULL && archived->team_id == beta);
+    CHECK(added != NULL && added->team_id == alpha);
+    CHECK(db_find_player(&db, home_player)->team_id == gamma);
+    CHECK(!db_find_player(&db, away_player)->active);
+    CHECK(transferred->minutes == 75);
+    CHECK_NEAR(db_find_player(&db, home_player)->current_rating,
+               transferred->rating_after, 1e-12);
+
+    MatchPlayerInput invalid[] = {
+        { home_player, 90, 6.0 },
+        { away_player, 90, 6.0 },
+        { outsider, 90, 6.0 },
+    };
+    MatchInput bad = edit;
+    bad.players = invalid;
+    bad.player_count = 3;
+    size_t appearances_before = db.appearance_count;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+    CHECK(strstr(error, "does not belong") != NULL);
+    CHECK(db.appearance_count == appearances_before);
+    CHECK_STRING(db_find_match(&db, match_id)->date, "2026-05-10");
+
+    MatchPlayerInput moved_side[] = {
+        { home_player, 90, 6.0 },
+        { outsider, 90, 6.0 },
+    };
+    MatchInput changed_teams = bad;
+    changed_teams.home_team_id = gamma;
+    changed_teams.away_team_id = beta;
+    changed_teams.players = moved_side;
+    changed_teams.player_count = 2;
+    CHECK(!db_update_match(&db, match_id, &changed_teams,
+                           error, sizeof(error)));
+    CHECK(strstr(error, "original club") != NULL);
+    db_free(&db);
+    return true;
+}
+
+static bool test_update_match_validation(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    uint64_t players[4];
+    CHECK(add_four_players(&db, alpha, beta, players));
+    char error[256];
+
+    MatchPlayerInput lineup[] = {
+        { players[0], 90, 6.0 },
+        { players[2], 90, 6.0 },
+    };
+    MatchInput input = {
+        .date = "2026-10-04",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 1,
+        .away_goals = 1,
+        .players = lineup,
+        .player_count = 2,
+    };
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+    size_t appearances_before = db.appearance_count;
+
+    MatchInput bad = input;
+    CHECK(!db_update_match(&db, 999, &bad, error, sizeof(error)));
+    CHECK(strstr(error, "not found") != NULL);
+
+    bad.date = "2026-02-30";
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+    CHECK(strstr(error, "valid date") != NULL);
+    CHECK_STRING(db_find_match(&db, match_id)->date, "2026-10-04");
+
+    bad = input;
+    bad.home_team_id = beta;
+    bad.away_team_id = beta;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+
+    bad = input;
+    bad.home_goals = 100;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+
+    bad = input;
+    bad.players = NULL;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+
+    MatchPlayerInput duplicate[] = {
+        { players[0], 90, 6.0 },
+        { players[0], 90, 6.0 },
+        { players[2], 90, 6.0 },
+    };
+    bad = input;
+    bad.players = duplicate;
+    bad.player_count = 3;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+    CHECK(strstr(error, "more than once") != NULL);
+
+    MatchPlayerInput bad_minutes[] = {
+        { players[0], 0, 6.0 },
+        { players[2], 90, 6.0 },
+    };
+    bad = input;
+    bad.players = bad_minutes;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+
+    MatchPlayerInput bad_performance[] = {
+        { players[0], 90, 11.0 },
+        { players[2], 90, 6.0 },
+    };
+    bad = input;
+    bad.players = bad_performance;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+
+    MatchPlayerInput only_home[] = {
+        { players[0], 90, 6.0 },
+        { players[1], 90, 6.0 },
+    };
+    bad = input;
+    bad.players = only_home;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+    CHECK(strstr(error, "each team") != NULL);
+
+    uint64_t substitute = 0;
+    CHECK(db_add_player(&db, alpha, "Late", "Substitute", 60.0, true,
+                        &substitute, error, sizeof(error)));
+    CHECK(db_set_player_active(&db, substitute, false, error, sizeof(error)));
+    MatchPlayerInput archived[] = {
+        { players[0], 90, 6.0 },
+        { players[2], 90, 6.0 },
+        { substitute, 90, 6.0 },
+    };
+    bad = input;
+    bad.players = archived;
+    bad.player_count = 3;
+    CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
+    CHECK(strstr(error, "archived") != NULL);
+
+    CHECK(db.appearance_count == appearances_before);
+    CHECK_STRING(db_find_match(&db, match_id)->date, "2026-10-04");
+    CHECK(db_validate(&db, error, sizeof(error)));
+    db_free(&db);
+    return true;
+}
+
 static bool test_find_player_by_name(void)
 {
     Database db;
@@ -848,6 +1164,9 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_neutral_venue_match),
     TEST_CASE(test_recompute_sorts_matches_by_date),
     TEST_CASE(test_player_transfer_preserves_historical_team),
+    TEST_CASE(test_update_match_replays_chronology),
+    TEST_CASE(test_update_match_preserves_transferred_and_archived_players),
+    TEST_CASE(test_update_match_validation),
     TEST_CASE(test_find_player_by_name),
     TEST_CASE(test_team_stats_are_minutes_and_results_aware),
 };

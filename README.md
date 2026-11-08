@@ -10,6 +10,7 @@ The application is a dependency-free C17 Win32 program. It does not use a browse
 - Match recording with per-player minutes and a 1-10 individual performance input.
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.
+- Recorded matches can be edited; existing line-up players keep the club they represented even after a transfer or archive.
 - Optional neutral venues that remove home advantage for cup finals and neutral-site fixtures.
 - Duplicate-name protection when adding players, with an option to add a duplicate or move the existing player to the selected club.
 - Match history with full before/change/after player breakdowns.
