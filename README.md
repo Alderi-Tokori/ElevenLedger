@@ -54,7 +54,7 @@ By default, data is stored at:
 %LOCALAPPDATA%\PitchRate\data.frc
 ```
 
-Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported PitchRate format version is never overwritten or silently downgraded. Legacy v1 files are loaded safely and upgraded to v2 on the next save.
+Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported PitchRate format version is never overwritten or silently downgraded. Legacy v1 and v2 files are loaded safely and upgraded to v3 on the next save.
 
 ## Keyboard shortcuts
 
