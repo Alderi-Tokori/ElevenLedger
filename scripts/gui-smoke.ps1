@@ -166,6 +166,95 @@ function Wait-Until {
     throw "Timed out waiting for $Description."
 }
 
+function Invoke-MouseClick {
+    param([int]$X, [int]$Y)
+    [PitchRateSmoke]::SetCursorPos($X, $Y) | Out-Null
+    [PitchRateSmoke]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [PitchRateSmoke]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Click-ListHeader {
+    param(
+        [IntPtr]$Main,
+        [IntPtr]$List,
+        [int]$Column
+    )
+    [PitchRateSmoke]::ForceForeground($Main)
+    $listRect = New-Object PitchRateSmoke+RECT
+    [PitchRateSmoke]::GetWindowRect($List, [ref]$listRect) | Out-Null
+    $header = [PitchRateSmoke]::SendMessage(
+        $List, 0x101F, [IntPtr]::Zero, [IntPtr]::Zero)
+    $headerRect = New-Object PitchRateSmoke+RECT
+    [PitchRateSmoke]::GetWindowRect($header, [ref]$headerRect) | Out-Null
+    $x = 2
+    for ($i = 0; $i -lt $Column; $i++) {
+        $x += [int][PitchRateSmoke]::SendMessage(
+            $List, 0x101D, [IntPtr]$i, [IntPtr]::Zero).ToInt64()
+    }
+    $x += [int]([PitchRateSmoke]::SendMessage(
+        $List, 0x101D, [IntPtr]$Column, [IntPtr]::Zero).ToInt64() / 2)
+    $y = ($headerRect.Top - $listRect.Top) +
+         [int](($headerRect.Bottom - $headerRect.Top) / 2)
+    $point = New-Object PitchRateSmoke+POINT
+    $point.X = $x
+    $point.Y = $y
+    [PitchRateSmoke]::ClientToScreen($List, [ref]$point) | Out-Null
+    Invoke-MouseClick -X $point.X -Y $point.Y
+    Start-Sleep -Milliseconds 200
+}
+
+function Read-ListFirstCell {
+    param(
+        [IntPtr]$Main,
+        [IntPtr]$List,
+        [string]$DialogClass,
+        [int]$ControlId,
+        [int]$SecondControlId,
+        [int]$CancelId
+    )
+    [PitchRateSmoke]::ForceForeground($Main)
+    [PitchRateSmoke]::SendMessage(
+        $List, 0x1013, [IntPtr]0, [IntPtr]0) | Out-Null
+    $listRect = New-Object PitchRateSmoke+RECT
+    [PitchRateSmoke]::GetWindowRect($List, [ref]$listRect) | Out-Null
+    $header = [PitchRateSmoke]::SendMessage(
+        $List, 0x101F, [IntPtr]::Zero, [IntPtr]::Zero)
+    $headerRect = New-Object PitchRateSmoke+RECT
+    [PitchRateSmoke]::GetWindowRect($header, [ref]$headerRect) | Out-Null
+    $spacing = [PitchRateSmoke]::SendMessage(
+        $List, 0x1033, [IntPtr]0, [IntPtr]0).ToInt64()
+    $rowHeight = [int](($spacing -shr 16) -band 0xFFFF)
+    if ($rowHeight -le 0) {
+        $rowHeight = 28
+    }
+    $x = $listRect.Left + 40
+    $y = $headerRect.Bottom + [int]($rowHeight / 2)
+    Invoke-MouseClick -X $x -Y $y
+    Start-Sleep -Milliseconds 40
+    Invoke-MouseClick -X $x -Y $y
+    Wait-Until -Description "the $DialogClass row dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, $DialogClass)
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate))
+    }
+    $dialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, $DialogClass)
+    $text = [PitchRateSmoke]::ControlText(
+        [PitchRateSmoke]::FindChildById($dialog, $ControlId))
+    if ($SecondControlId -ne 0) {
+        $text = ($text + " " + [PitchRateSmoke]::ControlText(
+            [PitchRateSmoke]::FindChildById($dialog, $SecondControlId))).Trim()
+    }
+    [PitchRateSmoke]::PostMessage(
+        $dialog, 0x0111, [IntPtr]$CancelId, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the $DialogClass dialog to close" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, $DialogClass) -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($Main))
+    }
+    return $text
+}
+
 function Assert-CellEditor {
     param(
         [IntPtr]$Dialog,
@@ -259,6 +348,86 @@ try {
         }
         Write-Host "Page OK: $expectedTitle"
     }
+
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40002, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the Players page for sorting" -Condition {
+        $candidate = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::WindowText($candidate) -eq "Players")
+    }
+    $sortPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    $sortList = [PitchRateSmoke]::FindChildById($sortPage, 1200)
+    if ($sortList -eq [IntPtr]::Zero) {
+        throw "The players page is missing its list for sorting."
+    }
+    $firstPlayer = Read-ListFirstCell -Main $main -List $sortList `
+        -DialogClass "PitchRatePlayerDialog" -ControlId 2100 `
+        -SecondControlId 2101 -CancelId 2106
+    if ($firstPlayer -ne "Callum Reid") {
+        throw "Players are not sorted by name ascending by default (got '$firstPlayer')."
+    }
+    Click-ListHeader -Main $main -List $sortList -Column 0
+    $firstPlayer = Read-ListFirstCell -Main $main -List $sortList `
+        -DialogClass "PitchRatePlayerDialog" -ControlId 2100 `
+        -SecondControlId 2101 -CancelId 2106
+    if ($firstPlayer -ne "Tomas Novak") {
+        throw "Clicking the Player header did not sort names descending (got '$firstPlayer')."
+    }
+    Click-ListHeader -Main $main -List $sortList -Column 0
+    $firstPlayer = Read-ListFirstCell -Main $main -List $sortList `
+        -DialogClass "PitchRatePlayerDialog" -ControlId 2100 `
+        -SecondControlId 2101 -CancelId 2106
+    if ($firstPlayer -ne "Callum Reid") {
+        throw "Clicking the Player header again did not sort names ascending (got '$firstPlayer')."
+    }
+    Write-Host "Player header sorting OK"
+
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40003, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the Teams page for sorting" -Condition {
+        $candidate = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::WindowText($candidate) -eq "Teams")
+    }
+    $sortPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    $sortList = [PitchRateSmoke]::FindChildById($sortPage, 1100)
+    if ($sortList -eq [IntPtr]::Zero) {
+        throw "The teams page is missing its list for sorting."
+    }
+    $firstTeam = Read-ListFirstCell -Main $main -List $sortList `
+        -DialogClass "PitchRateTeamDialog" -ControlId 2000 `
+        -SecondControlId 0 -CancelId 2004
+    if ($firstTeam -ne "Northbridge FC") {
+        throw "Teams are not sorted by name ascending by default (got '$firstTeam')."
+    }
+    Click-ListHeader -Main $main -List $sortList -Column 0
+    $firstTeam = Read-ListFirstCell -Main $main -List $sortList `
+        -DialogClass "PitchRateTeamDialog" -ControlId 2000 `
+        -SecondControlId 0 -CancelId 2004
+    if ($firstTeam -ne "Riverside Athletic") {
+        throw "Clicking the Team header did not sort names descending (got '$firstTeam')."
+    }
+    Click-ListHeader -Main $main -List $sortList -Column 0
+    $firstTeam = Read-ListFirstCell -Main $main -List $sortList `
+        -DialogClass "PitchRateTeamDialog" -ControlId 2000 `
+        -SecondControlId 0 -CancelId 2004
+    if ($firstTeam -ne "Northbridge FC") {
+        throw "Clicking the Team header again did not sort names ascending (got '$firstTeam')."
+    }
+    Click-ListHeader -Main $main -List $sortList -Column 5
+    $firstTeam = Read-ListFirstCell -Main $main -List $sortList `
+        -DialogClass "PitchRateTeamDialog" -ControlId 2000 `
+        -SecondControlId 0 -CancelId 2004
+    if ($firstTeam -ne "Riverside Athletic") {
+        throw "Clicking the Record header did not sort records ascending (got '$firstTeam')."
+    }
+    Click-ListHeader -Main $main -List $sortList -Column 5
+    $firstTeam = Read-ListFirstCell -Main $main -List $sortList `
+        -DialogClass "PitchRateTeamDialog" -ControlId 2000 `
+        -SecondControlId 0 -CancelId 2004
+    if ($firstTeam -ne "Northbridge FC") {
+        throw "Clicking the Record header again did not sort records descending (got '$firstTeam')."
+    }
+    Write-Host "Team header sorting OK"
 
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40002, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the Players page for the player dialog" -Condition {

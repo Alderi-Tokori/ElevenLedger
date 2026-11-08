@@ -648,12 +648,15 @@ static LRESULT CALLBACK checkbox_window_proc(HWND hwnd, UINT message,
 }
 
 HWND ui_list_create(HWND parent, int id, int x, int y, int width, int height,
-                    HFONT font, HIMAGELIST row_images)
+                    HFONT font, HIMAGELIST row_images, bool sortable)
 {
+    DWORD style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS |
+                  LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS;
+    if (!sortable) {
+        style |= LVS_NOSORTHEADER;
+    }
     HWND list = CreateWindowExW(
-        0, WC_LISTVIEWW, L"",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS | LVS_REPORT |
-            LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
+        0, WC_LISTVIEWW, L"", style,
         x, y, width, height, parent, (HMENU)(INT_PTR)id,
         g_control_instance, NULL);
     if (list == NULL) {
@@ -687,6 +690,47 @@ void ui_list_add_column(HWND list, int index, const wchar_t *title, int width)
     column.iSubItem = index;
     column.fmt = LVCFMT_LEFT;
     SendMessageW(list, LVM_INSERTCOLUMNW, (WPARAM)index, (LPARAM)&column);
+}
+
+void ui_list_set_sort_indicator(HWND list, int column, bool ascending)
+{
+    HWND header = (HWND)SendMessageW(list, LVM_GETHEADER, 0, 0);
+    if (header == NULL) {
+        return;
+    }
+    int count = (int)SendMessageW(header, HDM_GETITEMCOUNT, 0, 0);
+    for (int i = 0; i < count; ++i) {
+        HDITEMW item;
+        memset(&item, 0, sizeof(item));
+        item.mask = HDI_FORMAT;
+        if (!SendMessageW(header, HDM_GETITEMW, (WPARAM)i, (LPARAM)&item)) {
+            continue;
+        }
+        item.fmt &= ~(HDF_SORTUP | HDF_SORTDOWN);
+        if (i == column) {
+            item.fmt |= ascending ? HDF_SORTUP : HDF_SORTDOWN;
+        }
+        SendMessageW(header, HDM_SETITEMW, (WPARAM)i, (LPARAM)&item);
+    }
+}
+
+int ui_text_compare(const wchar_t *left, const wchar_t *right)
+{
+    if (left == NULL) {
+        left = L"";
+    }
+    if (right == NULL) {
+        right = L"";
+    }
+    int result = CompareStringEx(LOCALE_NAME_USER_DEFAULT, NORM_IGNORECASE,
+                                 left, -1, right, -1, NULL, NULL, 0);
+    if (result == CSTR_LESS_THAN) {
+        return -1;
+    }
+    if (result == CSTR_GREATER_THAN) {
+        return 1;
+    }
+    return 0;
 }
 
 void ui_list_set_percent_widths(HWND list, const int *percents, int count)

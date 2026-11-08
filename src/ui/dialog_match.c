@@ -1216,10 +1216,10 @@ static bool record_build(App *app, RecordMatchState *state)
                                        theme->font_body, 2);
     state->home_list = ui_list_create(state->hwnd, RECORD_LIST_ID,
                                       0, 0, 10, 10, theme->font_body,
-                                      theme->row_images);
+                                      theme->row_images, false);
     state->away_list = ui_list_create(state->hwnd, RECORD_AWAY_LIST_ID,
                                       0, 0, 10, 10, theme->font_body,
-                                      theme->row_images);
+                                      theme->row_images, false);
     state->home_add = ui_button_create(
         state->hwnd, RECORD_HOME_ADD_ID, L"Add player",
         0, 0, 10, 10, UI_BUTTON_SOFT, theme->font_small_bold);
@@ -1698,7 +1698,7 @@ void dialog_match_details(App *app, uint64_t match_id)
     state.hwnd = hwnd;
     UiTheme *theme = &app->ui;
     state.list = ui_list_create(hwnd, DETAILS_LIST_ID, 0, 0, 10, 10,
-                                theme->font_body, theme->row_images);
+                                theme->font_body, theme->row_images, false);
     state.edit_button = ui_button_create(
         hwnd, DETAILS_EDIT_ID, L"Edit match",
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);

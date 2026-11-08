@@ -138,6 +138,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Pages and dialogs must tolerate DPI settings and available work-area clamping down to the documented minimum display. Do not assume the screen size; clamp all dimensions to non-negative values.
 - Text must be valid UTF-8 internally. Convert only at the Win32 boundary.
 - Lists must preserve selected IDs across refresh when possible.
+- The Players and Teams lists sort by the clicked column: the first click sorts ascending, the next click sorts descending, and the active column shows a direction arrow. Both default to name ascending, and sorting runs after filtering.
 - Empty states must explain the next action, not just show an empty box.
 - All user-visible labels must be plain language and consistent with the rating guide.
 

@@ -43,13 +43,15 @@ void ui_checkbox_set_checked(HWND checkbox, bool checked);
 bool ui_checkbox_get_checked(HWND checkbox);
 
 HWND ui_list_create(HWND parent, int id, int x, int y, int width, int height,
-                    HFONT font, HIMAGELIST row_images);
+                    HFONT font, HIMAGELIST row_images, bool sortable);
 void ui_list_add_column(HWND list, int index, const wchar_t *title, int width);
 void ui_list_set_percent_widths(HWND list, const int *percents, int count);
 int ui_list_add_row(HWND list, const char **utf8_columns, int column_count,
                     LPARAM item_data);
 LRESULT ui_list_custom_draw(NMLVCUSTOMDRAW *custom_draw, HIMAGELIST row_images);
 bool ui_list_selected_data(HWND list, LPARAM *out_data);
+void ui_list_set_sort_indicator(HWND list, int column, bool ascending);
+int ui_text_compare(const wchar_t *left, const wchar_t *right);
 
 void ui_center_window(HWND window, HWND owner);
 

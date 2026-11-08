@@ -17,6 +17,22 @@ enum {
     TEAM_DELETE_ID = 1103,
 };
 
+typedef enum {
+    TEAM_COLUMN_NAME = 0,
+    TEAM_COLUMN_SHORT,
+    TEAM_COLUMN_CITY,
+    TEAM_COLUMN_SQUAD,
+    TEAM_COLUMN_RATING,
+    TEAM_COLUMN_RECORD,
+    TEAM_COLUMN_COUNT
+} TeamColumn;
+
+typedef struct {
+    const Database *db;
+    int column;
+    bool ascending;
+} TeamSortContext;
+
 typedef struct {
     Page base;
     HWND list;
@@ -24,6 +40,8 @@ typedef struct {
     HWND edit_button;
     HWND delete_button;
     bool populating;
+    int sort_column;
+    bool sort_ascending;
 } TeamsPage;
 
 static uint64_t selected_team(TeamsPage *page)
@@ -33,6 +51,142 @@ static uint64_t selected_team(TeamsPage *page)
         return 0;
     }
     return (uint64_t)data;
+}
+
+static int teams_compare_values(uint64_t left, uint64_t right)
+{
+    if (left < right) {
+        return -1;
+    }
+    if (left > right) {
+        return 1;
+    }
+    return 0;
+}
+
+static void teams_optional_text(const char *value, wchar_t *buffer,
+                                size_t count)
+{
+    if (value == NULL || value[0] == '\0' ||
+        !ui_utf8_to_wide(value, buffer, count)) {
+        ui_format_wide(buffer, count, L"-");
+    }
+}
+
+static int teams_compare_names(const Team *left, const Team *right)
+{
+    wchar_t left_name[128];
+    wchar_t right_name[128];
+    ui_utf8_to_wide(left->name, left_name,
+                    sizeof(left_name) / sizeof(left_name[0]));
+    ui_utf8_to_wide(right->name, right_name,
+                    sizeof(right_name) / sizeof(right_name[0]));
+    return ui_text_compare(left_name, right_name);
+}
+
+static int teams_compare_columns(const TeamSortContext *context,
+                                 const Team *left, const Team *right)
+{
+    int result = 0;
+    switch (context->column) {
+    case TEAM_COLUMN_NAME:
+        result = teams_compare_names(left, right);
+        break;
+    case TEAM_COLUMN_SHORT: {
+        wchar_t left_short[32];
+        wchar_t right_short[32];
+        teams_optional_text(left->short_name, left_short,
+                            sizeof(left_short) / sizeof(left_short[0]));
+        teams_optional_text(right->short_name, right_short,
+                            sizeof(right_short) / sizeof(right_short[0]));
+        result = ui_text_compare(left_short, right_short);
+        break;
+    }
+    case TEAM_COLUMN_CITY: {
+        wchar_t left_city[128];
+        wchar_t right_city[128];
+        teams_optional_text(left->city, left_city,
+                            sizeof(left_city) / sizeof(left_city[0]));
+        teams_optional_text(right->city, right_city,
+                            sizeof(right_city) / sizeof(right_city[0]));
+        result = ui_text_compare(left_city, right_city);
+        break;
+    }
+    case TEAM_COLUMN_SQUAD: {
+        TeamStats left_stats;
+        TeamStats right_stats;
+        db_team_stats(context->db, left->id, &left_stats);
+        db_team_stats(context->db, right->id, &right_stats);
+        result = teams_compare_values(left_stats.active_players,
+                                      right_stats.active_players);
+        if (result == 0) {
+            result = teams_compare_values(left_stats.roster_size,
+                                          right_stats.roster_size);
+        }
+        break;
+    }
+    case TEAM_COLUMN_RATING: {
+        TeamStats left_stats;
+        TeamStats right_stats;
+        db_team_stats(context->db, left->id, &left_stats);
+        db_team_stats(context->db, right->id, &right_stats);
+        bool left_rated = left_stats.active_players > 0;
+        bool right_rated = right_stats.active_players > 0;
+        if (left_rated != right_rated) {
+            return left_rated ? -1 : 1;
+        }
+        if (left_rated) {
+            if (left_stats.average_rating < right_stats.average_rating) {
+                result = -1;
+            } else if (left_stats.average_rating >
+                       right_stats.average_rating) {
+                result = 1;
+            }
+        }
+        break;
+    }
+    case TEAM_COLUMN_RECORD: {
+        TeamStats left_stats;
+        TeamStats right_stats;
+        db_team_stats(context->db, left->id, &left_stats);
+        db_team_stats(context->db, right->id, &right_stats);
+        result = teams_compare_values((uint64_t)left_stats.wins,
+                                      (uint64_t)right_stats.wins);
+        if (result == 0) {
+            result = teams_compare_values((uint64_t)left_stats.draws,
+                                          (uint64_t)right_stats.draws);
+        }
+        if (result == 0) {
+            result = teams_compare_values((uint64_t)left_stats.losses,
+                                          (uint64_t)right_stats.losses);
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    if (!context->ascending) {
+        result = -result;
+    }
+    if (result == 0 && context->column != TEAM_COLUMN_NAME) {
+        result = teams_compare_names(left, right);
+    }
+    if (result == 0) {
+        result = teams_compare_values(left->id, right->id);
+    }
+    return result;
+}
+
+static int CALLBACK teams_compare_items(LPARAM left_data, LPARAM right_data,
+                                        LPARAM context_data)
+{
+    TeamSortContext *context = (TeamSortContext *)context_data;
+    const Team *left = db_find_team(context->db, (uint64_t)left_data);
+    const Team *right = db_find_team(context->db, (uint64_t)right_data);
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+    return teams_compare_columns(context, left, right);
 }
 
 static void teams_update_buttons(TeamsPage *page)
@@ -97,8 +251,18 @@ static void teams_refresh(Page *page)
             rating,
             record,
         };
-        ui_list_add_row(teams->list, columns, 6, (LPARAM)team->id);
+        ui_list_add_row(teams->list, columns, TEAM_COLUMN_COUNT,
+                        (LPARAM)team->id);
     }
+    TeamSortContext sort_context = {
+        .db = db,
+        .column = teams->sort_column,
+        .ascending = teams->sort_ascending,
+    };
+    SendMessageW(teams->list, LVM_SORTITEMS, (WPARAM)&sort_context,
+                 (LPARAM)teams_compare_items);
+    ui_list_set_sort_indicator(teams->list, teams->sort_column,
+                               teams->sort_ascending);
     teams->populating = false;
     if (previous != 0 && db_find_team(db, previous) != NULL) {
         teams_select_id(teams, previous);
@@ -237,6 +401,20 @@ static LRESULT teams_message(Page *page, UINT message, WPARAM wparam,
                 teams_update_buttons(teams);
             }
             return 0;
+        case LVN_COLUMNCLICK: {
+            NMLISTVIEW *click = (NMLISTVIEW *)lparam;
+            if (click->iSubItem >= 0 &&
+                click->iSubItem < TEAM_COLUMN_COUNT) {
+                if (click->iSubItem == teams->sort_column) {
+                    teams->sort_ascending = !teams->sort_ascending;
+                } else {
+                    teams->sort_column = click->iSubItem;
+                    teams->sort_ascending = true;
+                }
+                teams_refresh(page);
+            }
+            return 0;
+        }
         case NM_DBLCLK:
             if (selected_team(teams) != 0) {
                 dialog_edit_team(page->app, selected_team(teams));
@@ -281,11 +459,13 @@ Page *teams_page_create(App *app)
         return NULL;
     }
     teams->base.create_command = TEAM_ADD_ID;
+    teams->sort_column = TEAM_COLUMN_NAME;
+    teams->sort_ascending = true;
 
     UiTheme *theme = &app->ui;
     teams->list = ui_list_create(teams->base.hwnd, TEAM_LIST_ID,
                                  0, 0, 10, 10, theme->font_body,
-                                 theme->row_images);
+                                 theme->row_images, true);
     if (teams->list == NULL) {
         page_destroy(&teams->base);
         free(teams);

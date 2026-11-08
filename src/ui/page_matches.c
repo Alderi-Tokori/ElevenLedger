@@ -310,7 +310,7 @@ Page *matches_page_create(App *app)
     UiTheme *theme = &app->ui;
     matches->list = ui_list_create(matches->base.hwnd, MATCH_LIST_ID,
                                    0, 0, 10, 10, theme->font_body,
-                                   theme->row_images);
+                                   theme->row_images, false);
     matches->record_button = ui_button_create(
         matches->base.hwnd, MATCH_RECORD_ID, L"+  Record match",
         0, 0, 10, 10, UI_BUTTON_PRIMARY, theme->font_button);

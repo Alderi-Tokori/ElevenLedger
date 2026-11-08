@@ -21,6 +21,22 @@ enum {
     PLAYER_DELETE_ID = 1206,
 };
 
+typedef enum {
+    PLAYER_COLUMN_NAME = 0,
+    PLAYER_COLUMN_TEAM,
+    PLAYER_COLUMN_RATING,
+    PLAYER_COLUMN_MATCHES,
+    PLAYER_COLUMN_MINUTES,
+    PLAYER_COLUMN_STATUS,
+    PLAYER_COLUMN_COUNT
+} PlayerColumn;
+
+typedef struct {
+    const Database *db;
+    int column;
+    bool ascending;
+} PlayerSortContext;
+
 typedef struct {
     Page base;
     HWND list;
@@ -32,6 +48,8 @@ typedef struct {
     HWND delete_button;
     bool populating;
     size_t visible_rows;
+    int sort_column;
+    bool sort_ascending;
 } PlayersPage;
 
 static uint64_t selected_player(PlayersPage *page)
@@ -85,6 +103,102 @@ static void players_player_name(const Player *player, wchar_t *buffer,
     } else {
         ui_format_wide(buffer, count, L"%ls", last);
     }
+}
+
+static void players_team_name(const Database *db, uint64_t team_id,
+                              wchar_t *buffer, size_t count)
+{
+    const Team *team = db_find_team(db, team_id);
+    if (team == NULL) {
+        ui_format_wide(buffer, count, L"-");
+        return;
+    }
+    ui_utf8_to_wide(team->name, buffer, count);
+}
+
+static int compare_values(uint64_t left, uint64_t right)
+{
+    if (left < right) {
+        return -1;
+    }
+    if (left > right) {
+        return 1;
+    }
+    return 0;
+}
+
+static int players_compare_names(const Player *left, const Player *right)
+{
+    wchar_t left_name[160];
+    wchar_t right_name[160];
+    players_player_name(left, left_name,
+                        sizeof(left_name) / sizeof(left_name[0]));
+    players_player_name(right, right_name,
+                        sizeof(right_name) / sizeof(right_name[0]));
+    return ui_text_compare(left_name, right_name);
+}
+
+static int players_compare_columns(const PlayerSortContext *context,
+                                   const Player *left, const Player *right)
+{
+    int result = 0;
+    switch (context->column) {
+    case PLAYER_COLUMN_NAME:
+        result = players_compare_names(left, right);
+        break;
+    case PLAYER_COLUMN_TEAM: {
+        wchar_t left_team[128];
+        wchar_t right_team[128];
+        players_team_name(context->db, left->team_id, left_team,
+                          sizeof(left_team) / sizeof(left_team[0]));
+        players_team_name(context->db, right->team_id, right_team,
+                          sizeof(right_team) / sizeof(right_team[0]));
+        result = ui_text_compare(left_team, right_team);
+        break;
+    }
+    case PLAYER_COLUMN_RATING:
+        if (left->current_rating < right->current_rating) {
+            result = -1;
+        } else if (left->current_rating > right->current_rating) {
+            result = 1;
+        }
+        break;
+    case PLAYER_COLUMN_MATCHES:
+        result = compare_values(left->matches_played, right->matches_played);
+        break;
+    case PLAYER_COLUMN_MINUTES:
+        result = compare_values(left->minutes_played, right->minutes_played);
+        break;
+    case PLAYER_COLUMN_STATUS:
+        result = compare_values(left->active ? 0u : 1u,
+                                right->active ? 0u : 1u);
+        break;
+    default:
+        break;
+    }
+    if (!context->ascending) {
+        result = -result;
+    }
+    if (result == 0 && context->column != PLAYER_COLUMN_NAME) {
+        result = players_compare_names(left, right);
+    }
+    if (result == 0) {
+        result = compare_values(left->id, right->id);
+    }
+    return result;
+}
+
+static int CALLBACK players_compare_items(LPARAM left_data,
+                                          LPARAM right_data,
+                                          LPARAM context_data)
+{
+    PlayerSortContext *context = (PlayerSortContext *)context_data;
+    const Player *left = db_find_player(context->db, (uint64_t)left_data);
+    const Player *right = db_find_player(context->db, (uint64_t)right_data);
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+    return players_compare_columns(context, left, right);
 }
 
 static void players_select_id(PlayersPage *page, uint64_t player_id)
@@ -201,11 +315,20 @@ static void players_refresh(Page *page)
         const char *columns[6] = {
             name_utf8, team_utf8, rating, matches, minutes, status,
         };
-        if (ui_list_add_row(players->list, columns, 6,
+        if (ui_list_add_row(players->list, columns, PLAYER_COLUMN_COUNT,
                             (LPARAM)player->id) >= 0) {
             players->visible_rows++;
         }
     }
+    PlayerSortContext sort_context = {
+        .db = db,
+        .column = players->sort_column,
+        .ascending = players->sort_ascending,
+    };
+    SendMessageW(players->list, LVM_SORTITEMS, (WPARAM)&sort_context,
+                 (LPARAM)players_compare_items);
+    ui_list_set_sort_indicator(players->list, players->sort_column,
+                               players->sort_ascending);
     players->populating = false;
 
     if (previous != 0 && db_find_player(db, previous) != NULL) {
@@ -427,6 +550,20 @@ static LRESULT players_message(Page *page, UINT message, WPARAM wparam,
                 players_update_buttons(players);
             }
             return 0;
+        case LVN_COLUMNCLICK: {
+            NMLISTVIEW *click = (NMLISTVIEW *)lparam;
+            if (click->iSubItem >= 0 &&
+                click->iSubItem < PLAYER_COLUMN_COUNT) {
+                if (click->iSubItem == players->sort_column) {
+                    players->sort_ascending = !players->sort_ascending;
+                } else {
+                    players->sort_column = click->iSubItem;
+                    players->sort_ascending = true;
+                }
+                players_refresh(page);
+            }
+            return 0;
+        }
         case NM_DBLCLK: {
             uint64_t player_id = selected_player(players);
             if (player_id != 0) {
@@ -473,11 +610,13 @@ Page *players_page_create(App *app)
         return NULL;
     }
     players->base.create_command = PLAYER_ADD_ID;
+    players->sort_column = PLAYER_COLUMN_NAME;
+    players->sort_ascending = true;
 
     UiTheme *theme = &app->ui;
     players->list = ui_list_create(players->base.hwnd, PLAYER_LIST_ID,
                                    0, 0, 10, 10, theme->font_body,
-                                   theme->row_images);
+                                   theme->row_images, true);
     players->search = ui_edit_create(players->base.hwnd, PLAYER_SEARCH_ID,
                                      L"", 0, 0, 10, 10, theme->font_body, 80);
     players->team_filter = ui_combo_create(players->base.hwnd,

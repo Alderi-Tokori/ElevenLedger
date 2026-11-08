@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.10.0 - 2026-11-09
+
+### Added
+
+- Player and team lists can be sorted by clicking a column header. The first click sorts ascending and the next click sorts descending; the active column shows a direction arrow. Both lists start sorted by name ascending.
+
 ## 1.9.5 - 2026-11-08
 
 ### Changed

@@ -41,8 +41,9 @@ PitchRate uses native Win32 with GDI drawing. There is no web runtime or third-p
 - Use `ui_button_create` styles for primary/secondary/danger/ghost/soft actions.
 - Use the custom checkbox for themed consistent checkboxes.
 - Use `ui_list_create` and `ui_list_custom_draw` for tables; keep row image height for readable rows.
+- Sortable lists use `LVM_SORTITEMS` with a per-refresh sort context and show `HDF_SORTUP`/`HDF_SORTDOWN` through `ui_list_set_sort_indicator`. Players and Teams default to name ascending; the first header click sorts ascending and the next click reverses it.
 - Avoid cross-process pointer-based ListView messages in tests; they are unsafe outside the process. Use real clicks or command messages for automation.
-- Keep search filters and selected IDs across refresh.
+- Keep search filters, sort order and selected IDs across refresh.
 - Enable Edit/Delete/View buttons only when a row is selected.
 
 ## Verification
