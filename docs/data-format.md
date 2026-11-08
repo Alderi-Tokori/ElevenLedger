@@ -38,7 +38,7 @@ END
 CRC32|<8 uppercase hex digits>
 ```
 
-`neutral_venue` is `0` or `1`. `active` is `0` or `1`. Performance is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored.
+`neutral_venue` is `0` or `1`. `active` is `0` or `1`. Performance is stored with two-decimal quantization. `starting_rating` accepts any finite number, including negative values or values above `99.0`, and is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored.
 
 ### Format v1 and v2 compatibility
 

@@ -88,19 +88,13 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1
 
 ## Rating model in one minute
 
-Ratings are long-term player ratings from 1.0 to 99.0. New players start at 50.0 by default, and that baseline can be changed per player. A separate 1-10 match performance input describes the player's individual display.
+Ratings are long-term player ratings with no fixed upper or lower bound. New players start at 50.0 by default, and that baseline can be any finite number. A separate 1-10 match performance input describes the player's individual display.
 
 1. The line-up strength of each team is the minutes-weighted average of its players' ratings before kick-off.
 2. An Elo-style expectation is calculated with a 4.0-point home advantage, or no advantage when the match is marked as a neutral venue.
-3. A shared team movement is calculated from the result, expectation and goal margin.
-4. Each player's movement is:
-
-   ```text
-   shared team movement x (min(minutes, 90) / 90)
-   + (performance - 6.0) x 0.75 x (min(minutes, 90) / 90)
-   ```
-
-5. The adjustment is capped at 12.0 points per match and the final rating stays within 1.0-99.0. New match recording rejects a team line-up above 1,320 player-minutes; legacy data remains loadable.
+3. A shared team result pool is calculated from the result, expectation and goal margin. The winning team gains exactly what the losing team loses.
+4. Each team's pool is shared across its line-up in proportion to minutes played. Individual performance is measured against the team's minutes-weighted average, so it moves points between team-mates rather than creating them.
+5. Every match is zero-sum: the sum of all player rating changes is zero. There is no per-match movement cap and no final rating clamp. New match recording rejects a team line-up above 1,320 player-minutes; legacy data remains loadable.
 
 Matches are always replayed in date order from each player's starting rating. Deleting a match or changing a starting rating therefore updates the whole subsequent career, rather than leaving an inconsistent ledger.
 

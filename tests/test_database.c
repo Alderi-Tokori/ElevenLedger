@@ -96,7 +96,7 @@ static bool test_player_crud_and_archive(void)
     CHECK(!db_add_player(&db, alpha, "", "",
                          70.0, true, NULL, error, sizeof(error)));
     CHECK(!db_add_player(&db, alpha, "Test", NULL,
-                         100.0, true, NULL, error, sizeof(error)));
+                         INFINITY, true, NULL, error, sizeof(error)));
     CHECK(db_add_player(&db, alpha, "  Ada ", " Lovelace ",
                         82.46, true, &player_id,
                         error, sizeof(error)));
@@ -122,6 +122,33 @@ static bool test_player_crud_and_archive(void)
     CHECK(db_delete_player(&db, player_id, error, sizeof(error)));
     CHECK(db_find_player(&db, player_id) == NULL);
     CHECK(db_delete_player(&db, player_id, error, sizeof(error)) == false);
+    db_free(&db);
+    return true;
+}
+
+static bool test_player_starting_rating_is_unbounded(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    char error[256];
+    uint64_t high = 0;
+    uint64_t low = 0;
+
+    CHECK(db_add_player(&db, alpha, "High", "Rating", 150.0, true,
+                        &high, error, sizeof(error)));
+    CHECK_NEAR(db_find_player(&db, high)->base_rating, 150.0, 1e-12);
+    CHECK_NEAR(db_find_player(&db, high)->current_rating, 150.0, 1e-12);
+    CHECK(db_add_player(&db, beta, "Low", "Rating", -25.0, true,
+                        &low, error, sizeof(error)));
+    CHECK_NEAR(db_find_player(&db, low)->base_rating, -25.0, 1e-12);
+    CHECK_NEAR(db_find_player(&db, low)->current_rating, -25.0, 1e-12);
+
+    CHECK(db_update_player(&db, high, alpha, "High", "Rating", 120.5, true,
+                           error, sizeof(error)));
+    CHECK_NEAR(db_find_player(&db, high)->base_rating, 120.5, 1e-12);
+    CHECK(db_validate(&db, error, sizeof(error)));
     db_free(&db);
     return true;
 }
@@ -208,6 +235,19 @@ static bool test_record_match_and_delete(void)
     CHECK_NEAR(star->rating_after,
                db_find_player(&db, players[0])->current_rating, 1e-12);
     CHECK(star->rating_delta > 0.0);
+    double match_total = 0.0;
+    for (size_t i = 0; i < db.appearance_count; ++i) {
+        if (db.appearances[i].match_id == match_id) {
+            match_total += db.appearances[i].rating_delta;
+        }
+    }
+    CHECK_NEAR(match_total, 0.0, 1e-9);
+
+    double player_total = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        player_total += db_find_player(&db, players[i])->current_rating;
+    }
+    CHECK_NEAR(player_total, 80.0 + 70.0 + 75.0 + 65.0, 1e-9);
 
     TeamStats stats;
     db_team_stats(&db, alpha, &stats);
@@ -745,6 +785,7 @@ static bool test_team_stats_are_minutes_and_results_aware(void)
 const TestCase g_database_tests[] = {
     TEST_CASE(test_team_crud_and_validation),
     TEST_CASE(test_player_crud_and_archive),
+    TEST_CASE(test_player_starting_rating_is_unbounded),
     TEST_CASE(test_last_added_player),
     TEST_CASE(test_record_match_and_delete),
     TEST_CASE(test_match_validation),

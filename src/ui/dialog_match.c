@@ -262,7 +262,7 @@ static void record_rebuild_rows(RecordMatchState *state)
             row->team_id = player->team_id;
             row->selected = false;
             row->minutes = 90;
-            row->performance = 6.0;
+            row->performance = RATING_NEUTRAL_PERFORMANCE;
             row->current_rating = player->current_rating;
             format_player_name(player, row->player_name,
                                sizeof(row->player_name));
@@ -645,7 +645,7 @@ static void record_paint(RecordMatchState *state, HWND hwnd)
         ui_draw_text(
             canvas.dc, state->app->ui.font_small, UI_COLOR_FAINT,
             state->info_rect,
-            L"Tick everyone who played. Double-click Minutes or Performance to edit. Performance 6.0 is neutral.",
+            L"Tick everyone who played. Double-click Minutes or Performance to edit. Performance is compared with the team average; 6.0 is the default.",
             DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         ui_draw_text(canvas.dc, state->app->ui.font_body_bold,

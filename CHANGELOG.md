@@ -2,6 +2,15 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.6.0 - 2026-11-08
+
+### Changed
+
+- The rating model is now zero-sum: each team receives one result pool, split across its line-up by minutes, and the winning team's total gain exactly equals the losing team's total loss.
+- Individual performance is measured against the team's minutes-weighted average. It redistributes rating points between team-mates instead of creating or removing them.
+- Removed the 1.0-99.0 rating bounds, the per-match ±12.0 movement cap and the 1.0-99.0 starting-rating limit. Ratings and starting values accept any finite number.
+- Updated the rating guide, worked example, documentation and tests for the zero-sum model.
+
 ## 1.5.0 - 2026-11-08
 
 ### Changed

@@ -76,6 +76,14 @@ static bool test_number_parsing(void)
     CHECK(!util_parse_double("inf", 1.0, 10.0, &number));
     CHECK(!util_parse_double("10.01", 1.0, 10.0, &number));
     CHECK(!util_parse_double("1.0x", 1.0, 10.0, &number));
+
+    CHECK(util_parse_finite_double("-250.5", &number));
+    CHECK_NEAR(number, -250.5, 1e-12);
+    CHECK(util_parse_finite_double("150", &number));
+    CHECK_NEAR(number, 150.0, 1e-12);
+    CHECK(!util_parse_finite_double("nan", &number));
+    CHECK(!util_parse_finite_double("inf", &number));
+    CHECK(!util_parse_finite_double("1.0x", &number));
     return true;
 }
 

@@ -571,10 +571,10 @@ static void player_dialog_save(PlayerDialogState *state)
     ui_edit_get_utf8(state->rating, rating_text, sizeof(rating_text));
 
     double rating = 0.0;
-    if (!util_parse_double(rating_text, RATING_MIN, RATING_MAX, &rating)) {
+    if (!util_parse_finite_double(rating_text, &rating)) {
         ui_format_wide(state->error,
                        sizeof(state->error) / sizeof(state->error[0]),
-                       L"Starting rating must be between 1.0 and 99.0.");
+                       L"Starting rating must be a finite number.");
         InvalidateRect(state->hwnd, NULL, FALSE);
         return;
     }

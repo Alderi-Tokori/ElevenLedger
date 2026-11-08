@@ -4,20 +4,27 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define RATING_MIN 1.0
-#define RATING_MAX 99.0
 #define RATING_DEFAULT 50.0
 #define RATING_NEUTRAL_PERFORMANCE 6.0
 #define RATING_K_FACTOR 16.0
 #define RATING_HOME_ADVANTAGE 4.0
 #define RATING_PERFORMANCE_WEIGHT 0.75
-#define RATING_MAX_MATCH_DELTA 12.0
 
 typedef struct {
     double rating;
     int minutes;
     double performance;
 } RatingPlayerInput;
+
+/*
+ * Team-wide totals used to keep every match zero-sum. Result points are shared
+ * in proportion to participation; performance only reallocates points between
+ * team-mates. Both fields are validated as finite by the rating functions.
+ */
+typedef struct {
+    double total_participation;
+    double weighted_performance;
+} RatingTeamContext;
 
 typedef struct {
     double home_strength;
@@ -28,11 +35,13 @@ typedef struct {
     double away_team_delta;
     double margin_multiplier;
     double home_result;
+    RatingTeamContext home_context;
+    RatingTeamContext away_context;
 } RatingMatchSummary;
 
 /*
- * Minutes 1-120, performance 1-10, ratings 1-99. A neutral venue removes the
- * home-advantage adjustment from the expected result.
+ * Minutes 1-120, performance 1-10. Ratings can be any finite value. A neutral
+ * venue removes the home-advantage adjustment from the expected result.
  */
 bool rating_compute_match(RatingMatchSummary *out,
                           const RatingPlayerInput *home, size_t home_count,
@@ -41,12 +50,21 @@ bool rating_compute_match(RatingMatchSummary *out,
                           bool neutral_venue,
                           char *error, size_t error_size);
 
-/* Computes only the team-level part from already weighted line-up strengths. */
+/* Computes the team result from already weighted line-up strengths. */
 bool rating_match_summary(RatingMatchSummary *out,
                           double home_strength, double away_strength,
+                          const RatingTeamContext *home_context,
+                          const RatingTeamContext *away_context,
                           int home_goals, int away_goals,
                           bool neutral_venue,
                           char *error, size_t error_size);
+
+/*
+ * Validates a line-up and returns its minutes-weighted strength plus the
+ * participation and performance totals needed for zero-sum player movement.
+ */
+bool rating_team_profile(const RatingPlayerInput *players, size_t count,
+                         double *strength, RatingTeamContext *context);
 
 double rating_team_strength(const RatingPlayerInput *players, size_t count,
                             bool *valid);
@@ -54,8 +72,10 @@ double rating_team_strength(const RatingPlayerInput *players, size_t count,
 double rating_participation(int minutes);
 
 /*
- * Applies the shared team result to one player and adds the individual
- * performance adjustment. All adjustments are weighted by minutes played.
+ * Applies the shared team result to one player. The result share is scaled by
+ * participation within the team, while the performance component is measured
+ * against the team's participation-weighted average performance. Consequently
+ * the deltas of all players in a match add up to zero.
  */
 bool rating_player_change(const RatingMatchSummary *summary, bool home_team,
                           double rating_before, int minutes,

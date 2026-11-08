@@ -17,14 +17,16 @@ PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/databas
 
 ## Model contract
 
-- Long-term ratings are 1.0-99.0.
-- Match performance is 1.0-10.0 with 6.0 neutral.
+- Long-term ratings have no fixed lower or upper bound; starting ratings must be finite.
+- Match performance is 1.0-10.0 with 6.0 as the default input.
 - Participation is `min(minutes, 90)/90`.
 - Line-up strength is minutes-weighted.
 - Expected result uses a 40-point Elo scale. Normal matches add +4.0 home advantage; neutral-venue matches add 0.0.
-- Shared team movement uses K=16, actual minus expected, times a goal-margin factor.
-- Player movement = `team_delta * participation + (performance - 6) * 0.75 * participation`.
-- Player movement is capped at ±12 per match.
+- Team movement uses K=16, actual minus expected, times a goal-margin factor. It is one pool for the whole team, not a per-player amount.
+- The pool is split by `participation / team_participation`.
+- Performance is `(performance - team_weighted_average_performance) * 0.75 * participation`. It only redistributes points between team-mates.
+- There is no per-match movement cap and no rating clamp.
+- Every match conserves rating points: all player deltas sum to zero.
 - Matches are replayed by date and ID from each player's starting rating.
 
 ## Change checklist
@@ -43,11 +45,13 @@ PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/databas
 ## Invariants that must never regress
 
 - Home and away expectations sum to 1.
-- Home and away shared movements are exact opposites.
-- Player changes stay within ±12 and final ratings within 1-99.
-- `rating_after = rating_before + rating_delta` after rounding (within 0.01).
+- Home and away team movements are exact opposites.
+- Each team's player deltas sum to its team movement.
+- All player deltas in a match sum to zero.
+- There is no per-match cap and no final rating clamp.
+- `rating_after = rating_before + rating_delta` (within floating-point tolerance).
 - Increasing performance never decreases a player's delta.
-- Increasing minutes never decreases result movement.
+- Increasing minutes never reduces a player's share of the result pool.
 - Deleting or changing history replays chronological state consistently.
 - Derived fields are not persisted as source data.
 

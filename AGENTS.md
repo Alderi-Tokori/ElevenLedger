@@ -84,15 +84,16 @@ Layering rules:
 
 Source of truth: `src/core/rating.h` and `src/core/rating.c`. Full documentation: `docs/rating-model.md`.
 
-- Ratings: 1.0-99.0; default starting rating 50.0 (`RATING_DEFAULT`).
+- Ratings have no fixed lower or upper bound; default starting rating 50.0 (`RATING_DEFAULT`), any finite starting value is accepted.
 - Players have no stored or input position; do not reintroduce position as an implicit rating factor.
-- Performance: 1.0-10.0; neutral 6.0. New entries are quantized to two decimals.
+- Performance: 1.0-10.0; default 6.0. New entries are quantized to two decimals.
 - Minutes: 1-120; player-impact weight caps at 90 minutes.
 - Home advantage: 4.0 rating points for normal matches, 0.0 for neutral-venue matches.
 - K factor: 16.0.
 - Performance weight: 0.75.
-- Shared team movement is split from the result, then each player's movement scales with participation.
-- Per-match movement is capped at 12.0 points.
+- The team result creates one zero-sum pool: the winning team's total gain equals the losing team's total loss.
+- Each team's pool is shared by participation. Performance is measured against the team's minutes-weighted average and only redistributes points within that team.
+- Every match is zero-sum: all player deltas add up to zero. Do not add a per-match movement cap or a final rating clamp.
 - New match recording rejects a team line-up above 1,320 player-minutes; this validation is intentionally not applied while loading legacy data.
 - Matches always replay in date order, then ID order.
 

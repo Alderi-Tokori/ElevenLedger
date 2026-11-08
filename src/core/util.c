@@ -191,6 +191,11 @@ bool util_parse_double(const char *text, double min_value, double max_value,
     return true;
 }
 
+bool util_parse_finite_double(const char *text, double *out)
+{
+    return util_parse_double(text, -INFINITY, INFINITY, out);
+}
+
 static bool is_leap_year(int year)
 {
     return ((year % 4) == 0 && (year % 100) != 0) || (year % 400) == 0;

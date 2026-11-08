@@ -12,22 +12,6 @@ static void set_error(char *error, size_t error_size, const char *message)
     }
 }
 
-static double round_to_2(double value)
-{
-    return round(value * 100.0) / 100.0;
-}
-
-static double clamp_double(double value, double low, double high)
-{
-    if (value < low) {
-        return low;
-    }
-    if (value > high) {
-        return high;
-    }
-    return value;
-}
-
 double rating_participation(int minutes)
 {
     if (minutes <= 0) {
@@ -37,43 +21,56 @@ double rating_participation(int minutes)
     return (double)capped / 90.0;
 }
 
-double rating_team_strength(const RatingPlayerInput *players, size_t count,
-                            bool *valid)
+bool rating_team_profile(const RatingPlayerInput *players, size_t count,
+                         double *strength, RatingTeamContext *context)
 {
-    if (valid != NULL) {
-        *valid = false;
-    }
-    if (players == NULL || count == 0) {
-        return 0.0;
+    if (players == NULL || count == 0 || strength == NULL || context == NULL) {
+        return false;
     }
 
     double weighted_sum = 0.0;
     double weight_total = 0.0;
+    double performance_total = 0.0;
     for (size_t i = 0; i < count; ++i) {
         if (!isfinite(players[i].rating) ||
-            players[i].rating < RATING_MIN ||
-            players[i].rating > RATING_MAX ||
             players[i].minutes < 1 || players[i].minutes > 120 ||
             !isfinite(players[i].performance) ||
             players[i].performance < 1.0 ||
             players[i].performance > 10.0) {
-            return 0.0;
+            return false;
         }
         double weight = rating_participation(players[i].minutes);
         weighted_sum += players[i].rating * weight;
         weight_total += weight;
+        performance_total += players[i].performance * weight;
     }
-    if (weight_total <= 0.0) {
-        return 0.0;
+    if (weight_total <= 0.0 ||
+        !isfinite(weighted_sum) || !isfinite(performance_total)) {
+        return false;
     }
+
+    *strength = weighted_sum / weight_total;
+    context->total_participation = weight_total;
+    context->weighted_performance = performance_total;
+    return isfinite(*strength);
+}
+
+double rating_team_strength(const RatingPlayerInput *players, size_t count,
+                            bool *valid)
+{
+    double strength = 0.0;
+    RatingTeamContext context;
+    bool ok = rating_team_profile(players, count, &strength, &context);
     if (valid != NULL) {
-        *valid = true;
+        *valid = ok;
     }
-    return weighted_sum / weight_total;
+    return ok ? strength : 0.0;
 }
 
 bool rating_match_summary(RatingMatchSummary *out,
                           double home_strength, double away_strength,
+                          const RatingTeamContext *home_context,
+                          const RatingTeamContext *away_context,
                           int home_goals, int away_goals,
                           bool neutral_venue,
                           char *error, size_t error_size)
@@ -84,10 +81,18 @@ bool rating_match_summary(RatingMatchSummary *out,
     }
     memset(out, 0, sizeof(*out));
 
-    if (!isfinite(home_strength) || !isfinite(away_strength) ||
-        home_strength < RATING_MIN || home_strength > RATING_MAX ||
-        away_strength < RATING_MIN || away_strength > RATING_MAX) {
-        set_error(error, error_size, "Team ratings must be between 1 and 99.");
+    if (!isfinite(home_strength) || !isfinite(away_strength)) {
+        set_error(error, error_size, "Team ratings must be finite numbers.");
+        return false;
+    }
+    if (home_context == NULL || away_context == NULL ||
+        !isfinite(home_context->total_participation) ||
+        home_context->total_participation <= 0.0 ||
+        !isfinite(home_context->weighted_performance) ||
+        !isfinite(away_context->total_participation) ||
+        away_context->total_participation <= 0.0 ||
+        !isfinite(away_context->weighted_performance)) {
+        set_error(error, error_size, "Invalid team line-up context.");
         return false;
     }
     if (home_goals < 0 || home_goals > 99 ||
@@ -132,6 +137,8 @@ bool rating_match_summary(RatingMatchSummary *out,
     out->away_team_delta = -home_delta;
     out->margin_multiplier = margin;
     out->home_result = actual_home;
+    out->home_context = *home_context;
+    out->away_context = *away_context;
     return true;
 }
 
@@ -142,17 +149,21 @@ bool rating_compute_match(RatingMatchSummary *out,
                           bool neutral_venue,
                           char *error, size_t error_size)
 {
-    bool home_valid = false;
-    bool away_valid = false;
-    double home_strength = rating_team_strength(home, home_count, &home_valid);
-    double away_strength = rating_team_strength(away, away_count, &away_valid);
+    double home_strength = 0.0;
+    double away_strength = 0.0;
+    RatingTeamContext home_context;
+    RatingTeamContext away_context;
 
-    if (!home_valid || !away_valid) {
+    if (!rating_team_profile(home, home_count, &home_strength,
+                             &home_context) ||
+        !rating_team_profile(away, away_count, &away_strength,
+                             &away_context)) {
         set_error(error, error_size,
                   "Each team needs at least one valid player.");
         return false;
     }
     return rating_match_summary(out, home_strength, away_strength,
+                                &home_context, &away_context,
                                 home_goals, away_goals, neutral_venue,
                                 error, error_size);
 }
@@ -163,35 +174,40 @@ bool rating_player_change(const RatingMatchSummary *summary, bool home_team,
                           double *rating_after)
 {
     if (summary == NULL || rating_delta == NULL || rating_after == NULL ||
-        !isfinite(rating_before) || rating_before < RATING_MIN ||
-        rating_before > RATING_MAX ||
+        !isfinite(rating_before) ||
         minutes < 1 || minutes > 120 ||
         !isfinite(performance) || performance < 1.0 || performance > 10.0) {
+        return false;
+    }
+
+    const RatingTeamContext *context =
+        home_team ? &summary->home_context : &summary->away_context;
+    if (!isfinite(context->total_participation) ||
+        context->total_participation <= 0.0 ||
+        !isfinite(context->weighted_performance)) {
         return false;
     }
 
     double participation = rating_participation(minutes);
     double team_delta = home_team ? summary->home_team_delta
                                   : summary->away_team_delta;
-    double result_component = team_delta * participation;
+    double team_average =
+        context->weighted_performance / context->total_participation;
+    double result_component =
+        team_delta * (participation / context->total_participation);
     double performance_component =
-        (performance - RATING_NEUTRAL_PERFORMANCE) *
+        (performance - team_average) *
         RATING_PERFORMANCE_WEIGHT * participation;
 
     double proposed_delta = result_component + performance_component;
-    proposed_delta = clamp_double(proposed_delta,
-                                  -RATING_MAX_MATCH_DELTA,
-                                  RATING_MAX_MATCH_DELTA);
-
-    double proposed_rating = clamp_double(rating_before + proposed_delta,
-                                          RATING_MIN, RATING_MAX);
-    proposed_rating = round_to_2(proposed_rating);
-    double delta = round_to_2(proposed_rating - rating_before);
-
-    if (delta == 0.0) {
-        delta = 0.0; /* normalize negative zero */
+    double proposed_rating = rating_before + proposed_delta;
+    if (!isfinite(proposed_delta) || !isfinite(proposed_rating)) {
+        return false;
     }
-    *rating_delta = delta;
+    if (proposed_delta == 0.0) {
+        proposed_delta = 0.0; /* normalize negative zero */
+    }
+    *rating_delta = proposed_delta;
     *rating_after = proposed_rating;
     return true;
 }

@@ -600,6 +600,32 @@ static bool test_save_preserves_good_backup_when_primary_is_corrupt(void)
     return true;
 }
 
+static bool test_unbounded_starting_rating_roundtrip(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    const char *content =
+        "PITCHRATE|3\n"
+        "TEAM|1|Alpha||\n"
+        "PLAYER|1|1|High|Rating|150.00|1\n"
+        "PLAYER|2|1|Low|Rating|-25.00|1\n"
+        "END\n";
+    CHECK(write_raw_data_file(paths.data_path, content));
+    Database loaded;
+    char error[768];
+    StorageStatus status = storage_load(paths.data_path, &loaded,
+                                        error, sizeof(error));
+    CHECK(status == STORAGE_OK);
+    CHECK(loaded.player_count == 2);
+    CHECK_NEAR(loaded.players[0].base_rating, 150.0, 1e-12);
+    CHECK_NEAR(loaded.players[0].current_rating, 150.0, 1e-12);
+    CHECK_NEAR(loaded.players[1].base_rating, -25.0, 1e-12);
+    CHECK_NEAR(loaded.players[1].current_rating, -25.0, 1e-12);
+    db_free(&loaded);
+    cleanup_test_paths(&paths);
+    return true;
+}
+
 static bool test_bom_and_crlf_are_accepted(void)
 {
     TestPaths paths;
@@ -861,6 +887,7 @@ const TestCase g_storage_tests[] = {
     TEST_CASE(test_locked_primary_is_not_replaced_from_backup),
     TEST_CASE(test_save_preserves_good_backup_when_primary_is_corrupt),
     TEST_CASE(test_bom_and_crlf_are_accepted),
+    TEST_CASE(test_unbounded_starting_rating_roundtrip),
     TEST_CASE(test_v2_position_fields_are_ignored),
     TEST_CASE(test_legacy_v1_minutes_and_precision_are_loadable),
     TEST_CASE(test_embedded_nul_is_rejected),

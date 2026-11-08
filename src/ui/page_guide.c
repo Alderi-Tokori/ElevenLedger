@@ -90,21 +90,28 @@ static void draw_example(Page *page, HDC dc, RECT panel)
 
     RatingPlayerInput home[] = {
         { .rating = 70.0, .minutes = 90, .performance = 7.0 },
+        { .rating = 70.0, .minutes = 90, .performance = 6.0 },
     };
     RatingPlayerInput away[] = {
+        { .rating = 70.0, .minutes = 90, .performance = 6.0 },
         { .rating = 70.0, .minutes = 90, .performance = 6.0 },
     };
     RatingMatchSummary summary;
     char error[128];
     double delta = 0.0;
     double after = 0.0;
-    bool valid = rating_compute_match(&summary, home, 1, away, 1, 2, 0,
+    bool valid = rating_compute_match(&summary, home, 2, away, 2, 2, 0,
                                       false, error, sizeof(error)) &&
                  rating_player_change(&summary, true, 70.0, 90, 7.0,
                                       &delta, &after);
     if (!valid) {
         return;
     }
+    double team_average =
+        summary.home_context.weighted_performance /
+        summary.home_context.total_participation;
+    double performance_adjustment =
+        (7.0 - team_average) * RATING_PERFORMANCE_WEIGHT;
 
     RECT text = {
         panel.left + ui_scale(theme, 18),
@@ -115,14 +122,16 @@ static void draw_example(Page *page, HDC dc, RECT panel)
     wchar_t body[512];
     ui_format_wide(
         body, sizeof(body) / sizeof(body[0]),
-        L"Two 70.0 teams in a normal home match. Home wins 2-0. One player completes 90 minutes at 7.0.\n\n"
+        L"Two 70.0 teams in a normal home match. Home wins 2-0. Two home players complete 90 minutes: 7.0 and 6.0.\n\n"
         L"Expected home result: %.1f%%\n"
-        L"Team result movement: %+.2f\n"
+        L"Team result pool: %+.2f\n"
+        L"Team average performance: %.2f\n"
+        L"7.0 player result share: %+.2f\n"
         L"Performance adjustment: %+.2f\n"
         L"Player rating: 70.00 -> %.2f",
         summary.home_expected * 100.0, summary.home_team_delta,
-        (7.0 - RATING_NEUTRAL_PERFORMANCE) * RATING_PERFORMANCE_WEIGHT,
-        after);
+        team_average, delta - performance_adjustment,
+        performance_adjustment, after);
     ui_draw_text(dc, theme->font_small, UI_COLOR_MUTED, text, body,
                  DT_LEFT | DT_TOP | DT_WORDBREAK);
 }
@@ -208,8 +217,8 @@ static void guide_paint(Page *page, HDC dc)
     const wchar_t *step_bodies[] = {
         L"The line-up rating is a minutes-weighted average of the players on the pitch. More time means more influence.",
         L"An Elo-style expectation compares the two line-ups before kick-off. Normal matches add a 4.0-point home advantage; neutral-venue matches apply none.",
-        L"Team movement = 16 x (actual result - expected result) x goal-margin factor. A draw has margin 1.00; a 3+ goal win reaches 1.45.",
-        L"Player movement = team movement x (capped minutes/90) + (performance - 6.0) x 0.75 x (capped minutes/90). The participation cap is 90 minutes; a match is capped at 12.0 points and ratings stay within 1-99.",
+        L"Team movement = 16 x (actual result - expected result) x goal-margin factor. A draw has margin 1.00; a 3+ goal win reaches 1.45. The winners' total gain equals the losers' total loss.",
+        L"Each team shares its result movement across the line-up by minutes. Individual performance is measured against the team average and shifts points between team-mates. Every match conserves rating points, with no fixed upper or lower rating limit.",
     };
     for (int i = 0; i < circles; ++i) {
         RECT area = {

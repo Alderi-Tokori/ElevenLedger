@@ -369,9 +369,13 @@ bool db_add_player(Database *db, uint64_t team_id,
         set_error(error, error_size, "Select a valid team.");
         return false;
     }
-    if (!isfinite(base_rating) ||
-        base_rating < RATING_MIN || base_rating > RATING_MAX) {
-        set_error(error, error_size, "Starting rating must be between 1 and 99.");
+    if (!isfinite(base_rating)) {
+        set_error(error, error_size, "Starting rating must be a finite number.");
+        return false;
+    }
+    double rounded_base = round_rating(base_rating);
+    if (!isfinite(rounded_base)) {
+        set_error(error, error_size, "Starting rating is too large.");
         return false;
     }
     if (db->next_player_id == UINT64_MAX) {
@@ -404,7 +408,7 @@ bool db_add_player(Database *db, uint64_t team_id,
     player->team_id = team_id;
     util_str_copy(player->first_name, sizeof(player->first_name), clean_first);
     util_str_copy(player->last_name, sizeof(player->last_name), clean_last);
-    player->base_rating = round_rating(base_rating);
+    player->base_rating = rounded_base;
     player->current_rating = player->base_rating;
     player->active = active;
     if (out_id != NULL) {
@@ -440,9 +444,13 @@ bool db_update_player(Database *db, uint64_t id, uint64_t team_id,
         set_error(error, error_size, "Select a valid team.");
         return false;
     }
-    if (!isfinite(base_rating) ||
-        base_rating < RATING_MIN || base_rating > RATING_MAX) {
-        set_error(error, error_size, "Starting rating must be between 1 and 99.");
+    if (!isfinite(base_rating)) {
+        set_error(error, error_size, "Starting rating must be a finite number.");
+        return false;
+    }
+    double rounded_base = round_rating(base_rating);
+    if (!isfinite(rounded_base)) {
+        set_error(error, error_size, "Starting rating is too large.");
         return false;
     }
 
@@ -460,7 +468,7 @@ bool db_update_player(Database *db, uint64_t id, uint64_t team_id,
     player->team_id = team_id;
     util_str_copy(player->first_name, sizeof(player->first_name), clean_first);
     util_str_copy(player->last_name, sizeof(player->last_name), clean_last);
-    player->base_rating = round_rating(base_rating);
+    player->base_rating = rounded_base;
     player->active = active;
 
     if (player->base_rating != previous_base) {
@@ -616,8 +624,6 @@ bool db_validate(const Database *db, char *error, size_t error_size)
         const Player *player = &db->players[i];
         if (player->id == 0 || db_find_team(db, player->team_id) == NULL ||
             !isfinite(player->base_rating) ||
-            player->base_rating < RATING_MIN ||
-            player->base_rating > RATING_MAX ||
             !util_text_valid(player->first_name, PERSON_NAME_MAX, true) ||
             !util_text_valid(player->last_name, PERSON_NAME_MAX, true) ||
             (player->first_name[0] == '\0' && player->last_name[0] == '\0')) {
@@ -731,6 +737,8 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
         double away_weight = 0.0;
         double home_weighted_rating = 0.0;
         double away_weighted_rating = 0.0;
+        double home_weighted_performance = 0.0;
+        double away_weighted_performance = 0.0;
 
         for (size_t i = start; i < end; ++i) {
             Appearance *appearance = &db->appearances[i];
@@ -744,9 +752,13 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
             if (appearance->team_id == match->home_team_id) {
                 home_weight += weight;
                 home_weighted_rating += player->current_rating * weight;
+                home_weighted_performance +=
+                    appearance->performance * weight;
             } else {
                 away_weight += weight;
                 away_weighted_rating += player->current_rating * weight;
+                away_weighted_performance +=
+                    appearance->performance * weight;
             }
         }
         if (home_weight <= 0.0 || away_weight <= 0.0) {
@@ -754,10 +766,19 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
             return false;
         }
 
+        RatingTeamContext home_context = {
+            .total_participation = home_weight,
+            .weighted_performance = home_weighted_performance,
+        };
+        RatingTeamContext away_context = {
+            .total_participation = away_weight,
+            .weighted_performance = away_weighted_performance,
+        };
         double home_strength = home_weighted_rating / home_weight;
         double away_strength = away_weighted_rating / away_weight;
         RatingMatchSummary summary;
         if (!rating_match_summary(&summary, home_strength, away_strength,
+                                  &home_context, &away_context,
                                   match->home_goals, match->away_goals,
                                   match->neutral_venue,
                                   error, error_size)) {

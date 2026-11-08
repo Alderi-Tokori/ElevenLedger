@@ -700,12 +700,10 @@ static bool parse_player_record(Database *db, char **fields, size_t count,
     if (values_ok && file_version <= 2) {
         /* Legacy position is validated but intentionally discarded. */
         values_ok = util_parse_int(fields[5], 0, 3, &position) &&
-                    util_parse_double(fields[6], RATING_MIN, RATING_MAX,
-                                      &base_rating) &&
+                    util_parse_finite_double(fields[6], &base_rating) &&
                     util_parse_int(fields[7], 0, 1, &active);
     } else if (values_ok) {
-        values_ok = util_parse_double(fields[5], RATING_MIN, RATING_MAX,
-                                      &base_rating) &&
+        values_ok = util_parse_finite_double(fields[5], &base_rating) &&
                     util_parse_int(fields[6], 0, 1, &active);
     }
     if (!values_ok) {
@@ -727,7 +725,12 @@ static bool parse_player_record(Database *db, char **fields, size_t count,
                         sizeof(player->last_name), error, error_size)) {
         return false;
     }
-    player->base_rating = round(base_rating * 100.0) / 100.0;
+    double rounded_base = round(base_rating * 100.0) / 100.0;
+    if (!isfinite(rounded_base)) {
+        set_error(error, error_size, "Invalid player record values.");
+        return false;
+    }
+    player->base_rating = rounded_base;
     player->current_rating = player->base_rating;
     player->active = active != 0;
     db->player_count++;

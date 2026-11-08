@@ -27,6 +27,8 @@ bool util_ascii_iequal(const char *a, const char *b);
 bool util_parse_int(const char *text, int min_value, int max_value, int *out);
 bool util_parse_double(const char *text, double min_value, double max_value,
                        double *out);
+/* Accepts every finite number, with no lower or upper bound. */
+bool util_parse_finite_double(const char *text, double *out);
 
 /* YYYY-MM-DD, years 1900-2200 inclusive. */
 bool util_date_valid(const char *date);
