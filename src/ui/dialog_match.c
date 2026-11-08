@@ -43,6 +43,14 @@ enum {
     DETAILS_EDIT_ID,
 };
 
+enum {
+    LINEUP_COLUMN_PLAYER = 0,
+    LINEUP_COLUMN_MINUTES,
+    LINEUP_COLUMN_PERFORMANCE,
+    LINEUP_COLUMN_RATING,
+    LINEUP_COLUMN_COUNT,
+};
+
 typedef struct {
     uint64_t player_id;
     uint64_t team_id;
@@ -428,10 +436,11 @@ static void record_rebuild_rows(RecordMatchState *state,
         snprintf(performance, sizeof(performance), "%.2f",
                  row->performance);
         snprintf(rating, sizeof(rating), "%.1f", row->current_rating);
-        const char *columns[4] = {
+        const char *columns[LINEUP_COLUMN_COUNT] = {
             row->player_name, minutes, performance, rating,
         };
-        int list_index = ui_list_add_row(list, columns, 4, (LPARAM)i);
+        int list_index = ui_list_add_row(list, columns, LINEUP_COLUMN_COUNT,
+                                         (LPARAM)i);
         if (list_index < 0) {
             record_show_error_wide(
                 state, L"Could not add a player to a line-up list.");
@@ -511,7 +520,8 @@ static void record_begin_cell_edit(RecordMatchState *state, HWND list,
 {
     size_t row = 0;
     if (!record_row_from_item(state, list, item, &row) ||
-        (subitem != 2 && subitem != 3)) {
+        (subitem != LINEUP_COLUMN_MINUTES &&
+         subitem != LINEUP_COLUMN_PERFORMANCE)) {
         return;
     }
     if (state->cell_edit != NULL &&
@@ -543,7 +553,7 @@ static void record_begin_cell_edit(RecordMatchState *state, HWND list,
                  (WPARAM)state->app->ui.font_body, TRUE);
     SetPropW(edit, CELL_EDITOR_PROPERTY, (HANDLE)1);
     wchar_t text[32];
-    if (subitem == 2) {
+    if (subitem == LINEUP_COLUMN_MINUTES) {
         ui_format_wide(text, sizeof(text) / sizeof(text[0]), L"%d",
                        state->rows[row].minutes);
     } else {
@@ -577,7 +587,7 @@ static bool record_commit_cell_edit(RecordMatchState *state, bool accept)
     if (accept && list != NULL && row < state->row_count) {
         char utf8[128];
         ui_wide_to_utf8(text, utf8, sizeof(utf8));
-        if (subitem == 2) {
+        if (subitem == LINEUP_COLUMN_MINUTES) {
             int minutes = 0;
             if (!util_parse_int(utf8, 1, 120, &minutes)) {
                 record_show_error_wide(
@@ -587,7 +597,7 @@ static bool record_commit_cell_edit(RecordMatchState *state, bool accept)
                 return false;
             }
             state->rows[row].minutes = minutes;
-        } else if (subitem == 3) {
+        } else if (subitem == LINEUP_COLUMN_PERFORMANCE) {
             double performance = 0.0;
             if (!util_parse_double(utf8, 1.0, 10.0, &performance)) {
                 record_show_error_wide(
@@ -605,7 +615,7 @@ static bool record_commit_cell_edit(RecordMatchState *state, bool accept)
         wchar_t display[32];
         LVITEMW value;
         memset(&value, 0, sizeof(value));
-        if (subitem == 2) {
+        if (subitem == LINEUP_COLUMN_MINUTES) {
             ui_format_wide(display, sizeof(display) / sizeof(display[0]),
                            L"%d", state->rows[row].minutes);
         } else {
@@ -858,9 +868,9 @@ static void record_layout(RecordMatchState *state, int width, int height)
                                     ui_scale(theme, 30),
                                 height - ui_scale(theme, 8) };
 
-    static const int widths[4] = { 44, 16, 20, 20 };
-    ui_list_set_percent_widths(state->home_list, widths, 4);
-    ui_list_set_percent_widths(state->away_list, widths, 4);
+    static const int widths[LINEUP_COLUMN_COUNT] = { 44, 16, 20, 20 };
+    ui_list_set_percent_widths(state->home_list, widths, LINEUP_COLUMN_COUNT);
+    ui_list_set_percent_widths(state->away_list, widths, LINEUP_COLUMN_COUNT);
 }
 
 static void record_draw_team_heading(RecordMatchState *state, HDC dc,
@@ -1167,7 +1177,8 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
             hit.pt = point;
             ListView_SubItemHitTest(list, &hit);
             if (hit.iItem >= 0 &&
-                (hit.iSubItem == 2 || hit.iSubItem == 3)) {
+                (hit.iSubItem == LINEUP_COLUMN_MINUTES ||
+                 hit.iSubItem == LINEUP_COLUMN_PERFORMANCE)) {
                 record_begin_cell_edit(state, list, hit.iItem,
                                        hit.iSubItem);
             }
@@ -1248,10 +1259,14 @@ static bool record_build(App *app, RecordMatchState *state)
     for (int side = 0; side < 2; ++side) {
         SendMessageW(lists[side], LVM_SETEXTENDEDLISTVIEWSTYLE,
                      LVS_EX_CHECKBOXES, LVS_EX_CHECKBOXES);
-        ui_list_add_column(lists[side], 0, L"Player", 220);
-        ui_list_add_column(lists[side], 1, L"Minutes", 80);
-        ui_list_add_column(lists[side], 2, L"Perf", 100);
-        ui_list_add_column(lists[side], 3, L"Rating", 100);
+        ui_list_add_column(lists[side], LINEUP_COLUMN_PLAYER,
+                           L"Player", 220);
+        ui_list_add_column(lists[side], LINEUP_COLUMN_MINUTES,
+                           L"Minutes", 80);
+        ui_list_add_column(lists[side], LINEUP_COLUMN_PERFORMANCE,
+                           L"Perf", 100);
+        ui_list_add_column(lists[side], LINEUP_COLUMN_RATING,
+                           L"Rating", 100);
     }
 
     for (size_t i = 0; i < app->db.team_count; ++i) {

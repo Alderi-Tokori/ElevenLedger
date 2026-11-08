@@ -88,7 +88,7 @@ Or run the executable directly for a per-test report:
 
 The suite covers date and UTF-8 validation, rating invariants, random-model fuzzing, database history replay, minutes and performance behaviour, storage round-trips, checksum failures, backup recovery, malformed data and relative paths.
 
-An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, side-by-side match line-ups, player creation and duplicate detection from the match dialog, and the complete record-and-save flow against a temporary data file:
+An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, side-by-side match line-ups, inline minutes/performance editing, player creation and duplicate detection from the match dialog, and the complete record-and-save flow against a temporary data file:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1

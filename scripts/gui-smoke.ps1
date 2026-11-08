@@ -30,9 +30,22 @@ public class PitchRateSmoke {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint attach, uint attachTo, bool value);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X, Y; }
 
     public static string ClassName(IntPtr hWnd) {
         var value = new StringBuilder(128);
@@ -101,6 +114,36 @@ public class PitchRateSmoke {
         }, IntPtr.Zero);
         return found;
     }
+
+    public static IntPtr FindChildEditByText(IntPtr parent, string text) {
+        IntPtr found = IntPtr.Zero;
+        EnumChildWindows(parent, (hWnd, lParam) => {
+            if (ClassName(hWnd) == "Edit" && IsWindowVisible(hWnd) &&
+                ControlText(hWnd) == text) {
+                found = hWnd;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    public static void ForceForeground(IntPtr window) {
+        IntPtr foreground = GetForegroundWindow();
+        uint foregroundPid;
+        uint foregroundThread = GetWindowThreadProcessId(foreground, out foregroundPid);
+        uint currentThread = GetCurrentThreadId();
+        if (foregroundThread != 0 && foregroundThread != currentThread) {
+            AttachThreadInput(currentThread, foregroundThread, true);
+        }
+        ShowWindow(window, 9);
+        BringWindowToTop(window);
+        SetForegroundWindow(window);
+        SetFocus(window);
+        if (foregroundThread != 0 && foregroundThread != currentThread) {
+            AttachThreadInput(currentThread, foregroundThread, false);
+        }
+    }
 }
 '@
 
@@ -120,6 +163,53 @@ function Wait-Until {
         Start-Sleep -Milliseconds 100
     }
     throw "Timed out waiting for $Description."
+}
+
+function Assert-CellEditor {
+    param(
+        [IntPtr]$Dialog,
+        [IntPtr]$List,
+        [int]$SubItem,
+        [string]$ExpectedText,
+        [string]$Label
+    )
+
+    [PitchRateSmoke]::ForceForeground($Dialog)
+    $listRect = New-Object PitchRateSmoke+RECT
+    [PitchRateSmoke]::GetWindowRect($List, [ref]$listRect) | Out-Null
+    $header = [PitchRateSmoke]::SendMessage($List, 0x101F, [IntPtr]::Zero, [IntPtr]::Zero)
+    $headerRect = New-Object PitchRateSmoke+RECT
+    [PitchRateSmoke]::GetWindowRect($header, [ref]$headerRect) | Out-Null
+
+    $x = 2
+    for ($i = 0; $i -lt $SubItem; $i++) {
+        $x += [int][PitchRateSmoke]::SendMessage(
+            $List, 0x101D, [IntPtr]$i, [IntPtr]::Zero).ToInt64()
+    }
+    $x += [int]([PitchRateSmoke]::SendMessage(
+        $List, 0x101D, [IntPtr]$SubItem, [IntPtr]::Zero).ToInt64() / 2)
+    $y = ($headerRect.Bottom - $listRect.Top) + 12
+
+    $point = New-Object PitchRateSmoke+POINT
+    $point.X = $x
+    $point.Y = $y
+    [PitchRateSmoke]::ClientToScreen($List, [ref]$point) | Out-Null
+    [PitchRateSmoke]::SetCursorPos($point.X, $point.Y) | Out-Null
+    [PitchRateSmoke]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [PitchRateSmoke]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 40
+    [PitchRateSmoke]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [PitchRateSmoke]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+
+    Wait-Until -Description "$Label cell editor" -Condition {
+        return ([PitchRateSmoke]::FindChildEditByText($Dialog, $ExpectedText) -ne [IntPtr]::Zero)
+    }
+    $editor = [PitchRateSmoke]::FindChildEditByText($Dialog, $ExpectedText)
+    [PitchRateSmoke]::PostMessage($editor, 0x0100, [IntPtr]0x1B, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "$Label cell editor to close" -Condition {
+        return ([PitchRateSmoke]::FindChildEditByText($Dialog, $ExpectedText) -eq [IntPtr]::Zero)
+    }
+    Write-Host "Cell editing OK: $Label"
 }
 
 $exe = (Resolve-Path $ExePath).Path
@@ -349,6 +439,15 @@ try {
         throw "The record-match dialog did not split both teams into their own lists."
     }
     Write-Host "Side-by-side line-up lists OK"
+
+    Assert-CellEditor -Dialog $recordDialog -List $homeLineupList `
+        -SubItem 1 -ExpectedText "90" -Label "home minutes"
+    Assert-CellEditor -Dialog $recordDialog -List $homeLineupList `
+        -SubItem 2 -ExpectedText "6.00" -Label "home performance"
+    Assert-CellEditor -Dialog $recordDialog -List $awayLineupList `
+        -SubItem 1 -ExpectedText "90" -Label "away minutes"
+    Assert-CellEditor -Dialog $recordDialog -List $awayLineupList `
+        -SubItem 2 -ExpectedText "6.00" -Label "away performance"
 
     $homeTeamCombo = [PitchRateSmoke]::FindChildById($recordDialog, 2201)
     $homeTeamIndex = [PitchRateSmoke]::SendMessage(

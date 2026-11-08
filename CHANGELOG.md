@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.9.3 - 2026-11-08
+
+### Fixed
+
+- Double-click editing of Minutes and Performance works again in the match form. The editable columns now use named column constants, so removing the Team column cannot leave the cell editor pointing at the wrong fields.
+
 ## 1.9.2 - 2026-11-08
 
 ### Fixed
