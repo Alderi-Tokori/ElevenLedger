@@ -331,14 +331,143 @@ try {
     }
     Write-Host "Create command OK: Matches"
     $recordDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
-    $lineupList = [PitchRateSmoke]::FindChildById($recordDialog, 2205)
-    if ($lineupList -eq [IntPtr]::Zero) {
-        throw "The record-match dialog is missing its line-up list."
+    $homeLineupList = [PitchRateSmoke]::FindChildById($recordDialog, 2205)
+    $awayLineupList = [PitchRateSmoke]::FindChildById($recordDialog, 2211)
+    $homeAddPlayer = [PitchRateSmoke]::FindChildById($recordDialog, 2212)
+    $awayAddPlayer = [PitchRateSmoke]::FindChildById($recordDialog, 2213)
+    if ($homeLineupList -eq [IntPtr]::Zero -or
+        $awayLineupList -eq [IntPtr]::Zero -or
+        $homeAddPlayer -eq [IntPtr]::Zero -or
+        $awayAddPlayer -eq [IntPtr]::Zero) {
+        throw "The record-match dialog is missing its side-by-side line-up lists or add-player buttons."
     }
-    $lineupCount = [PitchRateSmoke]::SendMessage($lineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
-    if ($lineupCount -lt 2) {
-        throw "The record-match dialog did not load any players."
+    $homeLineupCount = [PitchRateSmoke]::SendMessage(
+        $homeLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    $awayLineupCount = [PitchRateSmoke]::SendMessage(
+        $awayLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($homeLineupCount -lt 1 -or $awayLineupCount -lt 1) {
+        throw "The record-match dialog did not split both teams into their own lists."
     }
+    Write-Host "Side-by-side line-up lists OK"
+
+    $homeTeamCombo = [PitchRateSmoke]::FindChildById($recordDialog, 2201)
+    $homeTeamIndex = [PitchRateSmoke]::SendMessage(
+        $homeTeamCombo, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    $homeTeamData = [PitchRateSmoke]::SendMessage(
+        $homeTeamCombo, 0x0150, [IntPtr]$homeTeamIndex, [IntPtr]::Zero).ToInt64()
+    [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, [IntPtr]2212, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the add-player dialog from the match dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($recordDialog))
+    }
+    $addPlayerDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+    $addPlayerTeam = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2102)
+    if ($addPlayerTeam -eq [IntPtr]::Zero -or
+        [PitchRateSmoke]::IsWindowEnabled($addPlayerTeam)) {
+        throw "The add-player dialog did not lock the team selected by the match line-up."
+    }
+    $addTeamIndex = [PitchRateSmoke]::SendMessage(
+        $addPlayerTeam, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    $addTeamData = [PitchRateSmoke]::SendMessage(
+        $addPlayerTeam, 0x0150, [IntPtr]$addTeamIndex, [IntPtr]::Zero).ToInt64()
+    if ($addTeamData -ne $homeTeamData) {
+        throw "The add-player dialog opened for the wrong team."
+    }
+    $addFirst = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2100)
+    $addLast = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2101)
+    $addSave = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2105)
+    [PitchRateSmoke]::SendMessageText($addFirst, 0x000C, [IntPtr]::Zero, "Smoke") | Out-Null
+    [PitchRateSmoke]::SendMessageText($addLast, 0x000C, [IntPtr]::Zero, "Signing") | Out-Null
+    [PitchRateSmoke]::PostMessage($addPlayerDialog, 0x0111, [IntPtr]2105, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the player added from the match dialog" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($recordDialog))
+    }
+    $homeLineupCountAfter = [PitchRateSmoke]::SendMessage(
+        $homeLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($homeLineupCountAfter -ne $homeLineupCount + 1) {
+        throw "The player created from the match dialog was not added to that team's list."
+    }
+    Write-Host "Add player from match dialog OK"
+
+    [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, [IntPtr]2212, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the second add-player dialog from the match dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($recordDialog))
+    }
+    $addPlayerDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+    $addFirst = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2100)
+    $addLast = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2101)
+    [PitchRateSmoke]::SendMessageText($addFirst, 0x000C, [IntPtr]::Zero, "Smoke") | Out-Null
+    [PitchRateSmoke]::SendMessageText($addLast, 0x000C, [IntPtr]::Zero, "Signing") | Out-Null
+    [PitchRateSmoke]::PostMessage($addPlayerDialog, 0x0111, [IntPtr]2105, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the duplicate warning from the match dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            ([PitchRateSmoke]::WindowText($candidate) -like "Duplicate player*") -and
+            -not [PitchRateSmoke]::IsWindowEnabled($addPlayerDialog))
+    }
+    $matchDuplicateDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770")
+    $addDuplicateButton = [PitchRateSmoke]::FindChildButtonByText(
+        $matchDuplicateDialog, "Add duplicate")
+    if ($addDuplicateButton -eq [IntPtr]::Zero) {
+        throw "The duplicate warning from the match dialog is missing its add choice."
+    }
+    [PitchRateSmoke]::SendMessage($addDuplicateButton, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the duplicate player added from the match dialog" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "#32770") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($recordDialog))
+    }
+    $homeLineupCountAfterDuplicate = [PitchRateSmoke]::SendMessage(
+        $homeLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($homeLineupCountAfterDuplicate -ne $homeLineupCount + 2) {
+        throw "The duplicate player confirmed from the match dialog was not added to the team's list."
+    }
+    Write-Host "Duplicate warning from match dialog OK"
+
+    $awayTeamCombo = [PitchRateSmoke]::FindChildById($recordDialog, 2202)
+    $awayTeamIndex = [PitchRateSmoke]::SendMessage(
+        $awayTeamCombo, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    $awayTeamData = [PitchRateSmoke]::SendMessage(
+        $awayTeamCombo, 0x0150, [IntPtr]$awayTeamIndex, [IntPtr]::Zero).ToInt64()
+    [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, [IntPtr]2213, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the away add-player dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($recordDialog))
+    }
+    $addPlayerDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+    $addPlayerTeam = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2102)
+    $addTeamIndex = [PitchRateSmoke]::SendMessage(
+        $addPlayerTeam, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    $addTeamData = [PitchRateSmoke]::SendMessage(
+        $addPlayerTeam, 0x0150, [IntPtr]$addTeamIndex, [IntPtr]::Zero).ToInt64()
+    if ($addTeamData -ne $awayTeamData) {
+        throw "The away add-player button opened the wrong team."
+    }
+    $addFirst = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2100)
+    $addLast = [PitchRateSmoke]::FindChildById($addPlayerDialog, 2101)
+    [PitchRateSmoke]::SendMessageText($addFirst, 0x000C, [IntPtr]::Zero, "Smoke") | Out-Null
+    [PitchRateSmoke]::SendMessageText($addLast, 0x000C, [IntPtr]::Zero, "Visitor") | Out-Null
+    [PitchRateSmoke]::PostMessage($addPlayerDialog, 0x0111, [IntPtr]2105, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the away player added from the match dialog" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($recordDialog))
+    }
+    $awayLineupCountAfter = [PitchRateSmoke]::SendMessage(
+        $awayLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($awayLineupCountAfter -ne $awayLineupCount + 1) {
+        throw "The player created from the away list was not added to that team's list."
+    }
+    Write-Host "Add player from away list OK"
+
     $neutralCheckbox = [PitchRateSmoke]::FindChildById($recordDialog, 2210)
     if ($neutralCheckbox -eq [IntPtr]::Zero) {
         throw "The record-match dialog is missing its neutral-venue control."
@@ -372,9 +501,10 @@ try {
     $editHomeScore = [PitchRateSmoke]::FindChildById($editDialog, 2203)
     $editAwayScore = [PitchRateSmoke]::FindChildById($editDialog, 2204)
     $editLineup = [PitchRateSmoke]::FindChildById($editDialog, 2205)
+    $editAwayLineup = [PitchRateSmoke]::FindChildById($editDialog, 2211)
     if ($editHomeTeam -eq [IntPtr]::Zero -or $editAwayTeam -eq [IntPtr]::Zero -or
         $editHomeScore -eq [IntPtr]::Zero -or $editAwayScore -eq [IntPtr]::Zero -or
-        $editLineup -eq [IntPtr]::Zero) {
+        $editLineup -eq [IntPtr]::Zero -or $editAwayLineup -eq [IntPtr]::Zero) {
         throw "The edit-match dialog is missing fixture or line-up controls."
     }
     if ([PitchRateSmoke]::IsWindowEnabled($editHomeTeam) -or
@@ -390,8 +520,10 @@ try {
     }
     $editLineupCount = [PitchRateSmoke]::SendMessage(
         $editLineup, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
-    if ($editLineupCount -lt 2) {
-        throw "The edit-match dialog did not load the existing line-up."
+    $editAwayLineupCount = [PitchRateSmoke]::SendMessage(
+        $editAwayLineup, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($editLineupCount -lt 1 -or $editAwayLineupCount -lt 1) {
+        throw "The edit-match dialog did not load both sides of the existing line-up."
     }
     $editDate = [PitchRateSmoke]::FindChildById($editDialog, 2200)
     if ($editDate -eq [IntPtr]::Zero -or

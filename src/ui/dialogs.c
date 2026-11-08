@@ -67,8 +67,10 @@ typedef struct {
 typedef struct {
     App *app;
     HWND hwnd;
+    HWND owner;
     uint64_t player_id;
     uint64_t saved_id;
+    uint64_t fixed_team_id;
     HWND first_name;
     HWND last_name;
     HWND team;
@@ -879,15 +881,18 @@ LRESULT CALLBACK player_dialog_proc(HWND hwnd, UINT message,
     return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
-uint64_t dialog_edit_player(App *app, uint64_t player_id)
+static uint64_t player_dialog_run(App *app, HWND owner, uint64_t player_id,
+                                  uint64_t fixed_team_id)
 {
     PlayerDialogState state;
     memset(&state, 0, sizeof(state));
     state.app = app;
+    state.owner = owner != NULL ? owner : app->main_hwnd;
     state.player_id = player_id;
+    state.fixed_team_id = fixed_team_id;
 
     HWND hwnd = dialog_create_shell(
-        app, app->main_hwnd, PLAYER_DIALOG_CLASS,
+        app, state.owner, PLAYER_DIALOG_CLASS,
         player_id == 0 ? L"Add player - PitchRate"
                        : L"Edit player - PitchRate",
         560, 470, &state);
@@ -946,12 +951,14 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
         SetWindowTextW(state.rating, rating_text);
         ui_checkbox_set_checked(state.active, player->active);
     } else {
-        const Player *previous = db_last_added_player(&app->db);
-        if (previous != NULL &&
-            db_find_team(&app->db, previous->team_id) != NULL) {
-            ui_combo_select_data(state.team, previous->team_id);
-        } else if (app->db.team_count > 0) {
-            SendMessageW(state.team, CB_SETCURSEL, 0, 0);
+        if (fixed_team_id == 0) {
+            const Player *previous = db_last_added_player(&app->db);
+            if (previous != NULL &&
+                db_find_team(&app->db, previous->team_id) != NULL) {
+                ui_combo_select_data(state.team, previous->team_id);
+            } else if (app->db.team_count > 0) {
+                SendMessageW(state.team, CB_SETCURSEL, 0, 0);
+            }
         }
         if (player_id != 0) {
             ui_format_wide(state.error,
@@ -959,11 +966,29 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
                            L"Player not found.");
         }
     }
+    if (fixed_team_id != 0) {
+        ui_combo_select_data(state.team, fixed_team_id);
+        EnableWindow(state.team, FALSE);
+    }
 
     RECT client;
     GetClientRect(hwnd, &client);
     player_dialog_layout(&state, client.right, client.bottom);
     InvalidateRect(hwnd, NULL, FALSE);
-    ui_run_modal(hwnd, app->main_hwnd, PLAYER_DIALOG_SAVE_ID);
+    ui_run_modal(hwnd, state.owner, PLAYER_DIALOG_SAVE_ID);
     return state.saved_id;
+}
+
+uint64_t dialog_edit_player(App *app, uint64_t player_id)
+{
+    return player_dialog_run(app, NULL, player_id, 0);
+}
+
+uint64_t dialog_add_player_for_team(App *app, HWND owner, uint64_t team_id)
+{
+    if (app == NULL || team_id == 0 ||
+        db_find_team(&app->db, team_id) == NULL) {
+        return 0;
+    }
+    return player_dialog_run(app, owner, 0, team_id);
 }

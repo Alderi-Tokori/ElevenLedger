@@ -11,6 +11,12 @@ void dialogs_register_classes(HINSTANCE instance);
 uint64_t dialog_edit_team(App *app, uint64_t team_id);
 /* Pass player_id 0 for a new player. Returns the created or edited player ID. */
 uint64_t dialog_edit_player(App *app, uint64_t player_id);
+/*
+ * Opens the Add player form for a fixed team, owned by another dialog.
+ * Returns the new player ID, or the moved player's ID when the duplicate-name
+ * flow reassigns an existing player to the team.
+ */
+uint64_t dialog_add_player_for_team(App *app, HWND owner, uint64_t team_id);
 /* Returns the new match ID, or 0 when cancelled. */
 uint64_t dialog_record_match(App *app);
 /* Returns true when the existing match was updated. */

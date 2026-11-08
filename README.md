@@ -7,7 +7,7 @@ The application is a dependency-free C17 Win32 program. It does not use a browse
 ## Highlights
 
 - Multiple clubs and squads with availability and starting ratings.
-- Match recording with per-player minutes and a 1-10 individual performance input.
+- Match recording with side-by-side home and away squads, inline player creation, per-player minutes and a 1-10 individual performance input.
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.
 - Recorded matches can be edited; existing line-up players keep the club they represented even after a transfer or archive.
@@ -88,7 +88,7 @@ Or run the executable directly for a per-test report:
 
 The suite covers date and UTF-8 validation, rating invariants, random-model fuzzing, database history replay, minutes and performance behaviour, storage round-trips, checksum failures, backup recovery, malformed data and relative paths.
 
-An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, the duplicate-player warning and the complete record-and-save flow against a temporary data file:
+An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, side-by-side match line-ups, player creation and duplicate detection from the match dialog, and the complete record-and-save flow against a temporary data file:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1

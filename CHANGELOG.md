@@ -2,6 +2,14 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.9.0 - 2026-11-08
+
+### Changed
+
+- The Record match and Edit match dialogs now show the home and away squads in separate side-by-side lists, making it clear which players belong to each team.
+- Each squad list has an Add player button that creates a player for that team without leaving the match dialog. The form keeps the selected team fixed and applies the same validation and duplicate-name warning as the Players page.
+- A player created from a squad list is selected automatically for that side, while unsaved line-up selections, minutes and performance values are preserved.
+
 ## 1.8.0 - 2026-11-08
 
 ### Added
