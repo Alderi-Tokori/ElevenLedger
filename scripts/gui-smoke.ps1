@@ -141,6 +141,35 @@ try {
         Write-Host "Page OK: $expectedTitle"
     }
 
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40002, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the Players page for the player dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::WindowText($candidate) -eq "Players")
+    }
+    $playersPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    [PitchRateSmoke]::PostMessage($playersPage, 0x0111, [IntPtr]1203, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the player dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    $playerDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+    $defaultRatingEdit = [PitchRateSmoke]::FindChildById($playerDialog, 2103)
+    if ($defaultRatingEdit -eq [IntPtr]::Zero) {
+        throw "The player dialog is missing its starting-rating control."
+    }
+    $defaultRating = [PitchRateSmoke]::WindowText($defaultRatingEdit)
+    if ($defaultRating -ne "50.00") {
+        throw "Unexpected default starting rating: '$defaultRating'."
+    }
+    [PitchRateSmoke]::PostMessage($playerDialog, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the player dialog to close" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero)
+    }
+    Write-Host "Default starting rating OK: $defaultRating"
+
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40003, [IntPtr]::Zero) | Out-Null
     Start-Sleep -Milliseconds 250
     $teamsPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)

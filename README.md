@@ -88,7 +88,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1
 
 ## Rating model in one minute
 
-Ratings are long-term player ratings from 1.0 to 99.0. A separate 1-10 match performance input describes the player's individual display.
+Ratings are long-term player ratings from 1.0 to 99.0. New players start at 50.0 by default, and that baseline can be changed per player. A separate 1-10 match performance input describes the player's individual display.
 
 1. The line-up strength of each team is the minutes-weighted average of its players' ratings before kick-off.
 2. An Elo-style expectation is calculated with a 4.0-point home advantage, or no advantage when the match is marked as a neutral venue.

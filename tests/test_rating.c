@@ -14,6 +14,14 @@ static RatingPlayerInput player(double rating, int minutes, double performance)
     return input;
 }
 
+static bool test_default_rating(void)
+{
+    CHECK_NEAR(RATING_DEFAULT, 50.0, 1e-12);
+    CHECK(RATING_DEFAULT >= RATING_MIN);
+    CHECK(RATING_DEFAULT <= RATING_MAX);
+    return true;
+}
+
 static bool test_expected_score_curve(void)
 {
     RatingPlayerInput home[] = { player(70.0, 90, 6.0) };
@@ -305,6 +313,7 @@ static bool test_randomized_invariants(void)
 }
 
 const TestCase g_rating_tests[] = {
+    TEST_CASE(test_default_rating),
     TEST_CASE(test_expected_score_curve),
     TEST_CASE(test_equal_home_win_values),
     TEST_CASE(test_goal_margin_amplifies_change),

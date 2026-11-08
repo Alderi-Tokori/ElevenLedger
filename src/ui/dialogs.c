@@ -694,7 +694,12 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
                                      0, 0, 10, 10, theme->font_body, 48);
     state.team = ui_combo_create(hwnd, PLAYER_DIALOG_TEAM_ID,
                                  0, 0, 10, 10, theme->font_body);
-    state.rating = ui_edit_create(hwnd, PLAYER_DIALOG_RATING_ID, L"70.0",
+    wchar_t default_rating[32];
+    ui_format_wide(default_rating,
+                   sizeof(default_rating) / sizeof(default_rating[0]),
+                   L"%.2f", RATING_DEFAULT);
+    state.rating = ui_edit_create(hwnd, PLAYER_DIALOG_RATING_ID,
+                                  default_rating,
                                   0, 0, 10, 10, theme->font_body, 16);
     state.active = ui_checkbox_create(hwnd, PLAYER_DIALOG_ACTIVE_ID,
                                       L"Available for selection",

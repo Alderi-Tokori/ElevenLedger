@@ -84,7 +84,7 @@ Layering rules:
 
 Source of truth: `src/core/rating.h` and `src/core/rating.c`. Full documentation: `docs/rating-model.md`.
 
-- Ratings: 1.0-99.0; default starting rating 70.0.
+- Ratings: 1.0-99.0; default starting rating 50.0 (`RATING_DEFAULT`).
 - Players have no stored or input position; do not reintroduce position as an implicit rating factor.
 - Performance: 1.0-10.0; neutral 6.0. New entries are quantized to two decimals.
 - Minutes: 1-120; player-impact weight caps at 90 minutes.

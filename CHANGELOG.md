@@ -2,6 +2,13 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.3.0 - 2026-11-08
+
+### Changed
+
+- Centralized the default starting rating in `RATING_DEFAULT` and changed it from 70.0 to 50.0.
+- The Add Player form now reads the default from the shared rating constant instead of hardcoding a duplicate value.
+
 ## 1.2.0 - 2026-11-08
 
 ### Changed

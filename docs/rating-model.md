@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The model tracks a long-term player rating on a **1.0 to 99.0** scale. It also accepts a separate **1-10 match performance** value. The long-term rating represents current form and strength; the match performance represents how well the player performed in that one fixture.
+The model tracks a long-term player rating on a **1.0 to 99.0** scale. New players start at **50.0** by default, but every player's starting rating is editable. It also accepts a separate **1-10 match performance** value. The long-term rating represents current form and strength; the match performance represents how well the player performed in that one fixture.
 
 The calculation is deliberately small, deterministic and auditable:
 
@@ -34,6 +34,7 @@ New matches require at least one player from each team and reject a line-up whos
 
 | Constant | Value | Meaning |
 | --- | ---: | --- |
+| `RATING_DEFAULT` | 50.0 | Default starting rating for a new player |
 | `RATING_K_FACTOR` | 16.0 | Base result sensitivity |
 | `RATING_HOME_ADVANTAGE` | 4.0 | Rating-point home advantage |
 | `RATING_PERFORMANCE_WEIGHT` | 0.75 | Weight of the performance input |
