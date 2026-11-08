@@ -129,6 +129,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - New confirmations must use `MB_ICONWARNING` and default to the safe choice.
 - All modal dialogs must disable their owner, support Tab and Escape, re-enable the owner, and use `ui_run_modal`.
 - Custom-class windows should set their window text explicitly after creation. Do not rely on the class's `WM_NCCREATE` path to retain text.
+- When adding a player, default the team to the most recently created player's team; use `db_last_added_player` rather than array order guesses.
 - Pages and dialogs must tolerate DPI settings and available work-area clamping down to the documented minimum display. Do not assume the screen size; clamp all dimensions to non-negative values.
 - Text must be valid UTF-8 internally. Convert only at the Win32 boundary.
 - Lists must preserve selected IDs across refresh when possible.

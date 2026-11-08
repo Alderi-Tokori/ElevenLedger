@@ -126,6 +126,35 @@ static bool test_player_crud_and_archive(void)
     return true;
 }
 
+static bool test_last_added_player(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    CHECK(db_last_added_player(&db) == NULL);
+
+    char error[256];
+    uint64_t first = 0;
+    uint64_t second = 0;
+    CHECK(db_add_player(&db, alpha, "First", "Player", 50.0, true,
+                        &first, error, sizeof(error)));
+    CHECK(db_last_added_player(&db) != NULL);
+    CHECK(db_last_added_player(&db)->id == first);
+    CHECK(db_last_added_player(&db)->team_id == alpha);
+
+    CHECK(db_add_player(&db, beta, "Second", "Player", 55.0, true,
+                        &second, error, sizeof(error)));
+    CHECK(db_last_added_player(&db)->id == second);
+    CHECK(db_last_added_player(&db)->team_id == beta);
+
+    CHECK(db_delete_player(&db, second, error, sizeof(error)));
+    CHECK(db_last_added_player(&db)->id == first);
+    CHECK(db_last_added_player(&db)->team_id == alpha);
+    db_free(&db);
+    return true;
+}
+
 static bool test_record_match_and_delete(void)
 {
     Database db;
@@ -716,6 +745,7 @@ static bool test_team_stats_are_minutes_and_results_aware(void)
 const TestCase g_database_tests[] = {
     TEST_CASE(test_team_crud_and_validation),
     TEST_CASE(test_player_crud_and_archive),
+    TEST_CASE(test_last_added_player),
     TEST_CASE(test_record_match_and_delete),
     TEST_CASE(test_match_validation),
     TEST_CASE(test_backdated_matches_replay_chronologically),

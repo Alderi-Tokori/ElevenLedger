@@ -737,7 +737,11 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
         SetWindowTextW(state.rating, rating_text);
         ui_checkbox_set_checked(state.active, player->active);
     } else {
-        if (app->db.team_count > 0) {
+        const Player *previous = db_last_added_player(&app->db);
+        if (previous != NULL &&
+            db_find_team(&app->db, previous->team_id) != NULL) {
+            ui_combo_select_data(state.team, previous->team_id);
+        } else if (app->db.team_count > 0) {
             SendMessageW(state.team, CB_SETCURSEL, 0, 0);
         }
         if (player_id != 0) {

@@ -164,11 +164,22 @@ try {
     if ($defaultRating -ne "50.00") {
         throw "Unexpected default starting rating: '$defaultRating'."
     }
+    $playerTeamCombo = [PitchRateSmoke]::FindChildById($playerDialog, 2102)
+    if ($playerTeamCombo -eq [IntPtr]::Zero) {
+        throw "The player dialog is missing its team control."
+    }
+    $selectedTeamIndex = [PitchRateSmoke]::SendMessage(
+        $playerTeamCombo, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($selectedTeamIndex -ne 1) {
+        throw "The Add Player team did not default to the previous player's team."
+    }
     [PitchRateSmoke]::PostMessage($playerDialog, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-    Wait-Until -Description "the player dialog to close" -Condition {
-        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero)
+    Wait-Until -Description "the player dialog to close and owner to re-enable" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($main))
     }
     Write-Host "Default starting rating OK: $defaultRating"
+    Write-Host "Previous player's team default OK: $selectedTeamIndex"
 
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40003, [IntPtr]::Zero) | Out-Null
     Start-Sleep -Milliseconds 250
@@ -188,11 +199,9 @@ try {
         throw "The team dialog is missing its save button."
     }
     [PitchRateSmoke]::PostMessage($teamDialog, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-    Wait-Until -Description "the team dialog to close" -Condition {
-        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateTeamDialog") -eq [IntPtr]::Zero)
-    }
-    if (-not [PitchRateSmoke]::IsWindowEnabled($main)) {
-        throw "The owner window was not re-enabled after closing the dialog."
+    Wait-Until -Description "the team dialog to close and owner to re-enable" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateTeamDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($main))
     }
     Write-Host "Modal team dialog OK"
 

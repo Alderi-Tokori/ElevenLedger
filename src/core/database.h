@@ -120,6 +120,9 @@ const Team *db_find_team(const Database *db, uint64_t id);
 const Player *db_find_player(const Database *db, uint64_t id);
 const Match *db_find_match(const Database *db, uint64_t id);
 
+/* Highest player ID, i.e. the most recently created player. */
+const Player *db_last_added_player(const Database *db);
+
 bool db_add_team(Database *db, const char *name, const char *short_name,
                  const char *city, uint64_t *out_id,
                  char *error, size_t error_size);

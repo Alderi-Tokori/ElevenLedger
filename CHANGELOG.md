@@ -2,6 +2,13 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.4.0 - 2026-11-08
+
+### Changed
+
+- Add Player now pre-selects the team of the most recently added player, falling back to the first team when no players exist.
+- Added a database helper and automated coverage for the most recently created player.
+
 ## 1.3.0 - 2026-11-08
 
 ### Changed

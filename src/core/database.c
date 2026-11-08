@@ -192,6 +192,20 @@ const Match *db_find_match(const Database *db, uint64_t id)
     return NULL;
 }
 
+const Player *db_last_added_player(const Database *db)
+{
+    if (db == NULL) {
+        return NULL;
+    }
+    const Player *latest = NULL;
+    for (size_t i = 0; i < db->player_count; ++i) {
+        if (latest == NULL || db->players[i].id > latest->id) {
+            latest = &db->players[i];
+        }
+    }
+    return latest;
+}
+
 static bool prepare_text(const char *source, size_t max_bytes,
                          bool allow_empty, char *output, size_t output_size,
                          const char *label, char *error, size_t error_size)
