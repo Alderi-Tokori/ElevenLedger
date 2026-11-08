@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.9.2 - 2026-11-08
+
+### Fixed
+
+- Closing a match, player, team or match-details dialog no longer exposes another window through the uncovered parent window. Dialogs now hide first, raise and repaint their owner while it is fully exposed, and only then destroy themselves. This also covers nested dialogs such as Add player opened from the match form.
+
 ## 1.9.1 - 2026-11-08
 
 ### Fixed

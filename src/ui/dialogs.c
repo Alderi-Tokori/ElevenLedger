@@ -167,6 +167,29 @@ HWND dialog_create_shell(App *app, HWND owner, const wchar_t *class_name,
     return hwnd;
 }
 
+void dialog_close(HWND dialog)
+{
+    if (dialog == NULL || !IsWindow(dialog)) {
+        return;
+    }
+    HWND owner = GetWindow(dialog, GW_OWNER);
+    /*
+     * Hide the dialog before refreshing its owner. Painting a covered window
+     * is clipped to its visible region, so the owner must be exposed first.
+     * Keep the refresh synchronous so no stale or fully transparent frame can
+     * be presented between hiding the dialog and painting the owner.
+     */
+    ShowWindow(dialog, SW_HIDE);
+    if (owner != NULL && IsWindow(owner)) {
+        SetWindowPos(owner, HWND_TOP, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        RedrawWindow(owner, NULL, NULL,
+                     RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN |
+                         RDW_UPDATENOW);
+    }
+    DestroyWindow(dialog);
+}
+
 void dialog_draw_chrome(App *app, HDC dc, int width,
                         const wchar_t *title, const wchar_t *subtitle)
 {
@@ -344,7 +367,7 @@ static void team_dialog_save(TeamDialogState *state)
         return;
     }
     state->saved_id = saved;
-    DestroyWindow(state->hwnd);
+    dialog_close(state->hwnd);
 }
 
 LRESULT CALLBACK team_dialog_proc(HWND hwnd, UINT message,
@@ -384,14 +407,14 @@ LRESULT CALLBACK team_dialog_proc(HWND hwnd, UINT message,
             team_dialog_save(state);
             return 0;
         case TEAM_DIALOG_CANCEL_ID:
-            DestroyWindow(hwnd);
+            dialog_close(hwnd);
             return 0;
         default:
             break;
         }
         break;
     case WM_CLOSE:
-        DestroyWindow(hwnd);
+        dialog_close(hwnd);
         return 0;
     default:
         break;
@@ -440,7 +463,7 @@ uint64_t dialog_edit_team(App *app, uint64_t team_id)
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     if (state.name == NULL || state.short_name == NULL || state.city == NULL ||
         state.save == NULL || state.cancel == NULL) {
-        DestroyWindow(hwnd);
+        dialog_close(hwnd);
         return 0;
     }
     const Team *team = db_find_team(&app->db, team_id);
@@ -793,7 +816,7 @@ static void player_dialog_save(PlayerDialogState *state)
                     return;
                 }
                 state->saved_id = duplicate_id;
-                DestroyWindow(state->hwnd);
+                dialog_close(state->hwnd);
                 return;
             }
         }
@@ -826,7 +849,7 @@ static void player_dialog_save(PlayerDialogState *state)
         return;
     }
     state->saved_id = saved;
-    DestroyWindow(state->hwnd);
+    dialog_close(state->hwnd);
 }
 
 LRESULT CALLBACK player_dialog_proc(HWND hwnd, UINT message,
@@ -866,14 +889,14 @@ LRESULT CALLBACK player_dialog_proc(HWND hwnd, UINT message,
             player_dialog_save(state);
             return 0;
         case PLAYER_DIALOG_CANCEL_ID:
-            DestroyWindow(hwnd);
+            dialog_close(hwnd);
             return 0;
         default:
             break;
         }
         break;
     case WM_CLOSE:
-        DestroyWindow(hwnd);
+        dialog_close(hwnd);
         return 0;
     default:
         break;
@@ -929,7 +952,7 @@ static uint64_t player_dialog_run(App *app, HWND owner, uint64_t player_id,
         state.team == NULL ||
         state.rating == NULL || state.active == NULL ||
         state.save == NULL || state.cancel == NULL) {
-        DestroyWindow(hwnd);
+        dialog_close(hwnd);
         return 0;
     }
 

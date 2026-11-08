@@ -1056,7 +1056,7 @@ static void record_save(RecordMatchState *state)
         return;
     }
     state->saved_match_id = state->editing ? state->match_id : new_id;
-    DestroyWindow(state->hwnd);
+    dialog_close(state->hwnd);
 }
 
 LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
@@ -1131,7 +1131,7 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
             record_save(state);
             return 0;
         case RECORD_CANCEL_ID:
-            DestroyWindow(hwnd);
+            dialog_close(hwnd);
             return 0;
         default:
             break;
@@ -1176,7 +1176,7 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
         break;
     }
     case WM_CLOSE:
-        DestroyWindow(hwnd);
+        dialog_close(hwnd);
         return 0;
     default:
         break;
@@ -1317,7 +1317,7 @@ static uint64_t match_dialog_run(App *app, HWND owner, uint64_t match_id)
     }
     state.hwnd = hwnd;
     if (!record_build(app, &state)) {
-        DestroyWindow(hwnd);
+        dialog_close(hwnd);
         record_free_rows(&state);
         return 0;
     }
@@ -1614,7 +1614,7 @@ LRESULT CALLBACK match_details_dialog_proc(HWND hwnd, UINT message,
             break;
         }
         if (LOWORD(wparam) == DETAILS_CLOSE_ID) {
-            DestroyWindow(hwnd);
+            dialog_close(hwnd);
             return 0;
         }
         if (LOWORD(wparam) == DETAILS_EDIT_ID) {
@@ -1652,7 +1652,7 @@ LRESULT CALLBACK match_details_dialog_proc(HWND hwnd, UINT message,
             if (!app_tx_commit(state->app, &backup)) {
                 return 0;
             }
-            DestroyWindow(hwnd);
+            dialog_close(hwnd);
             return 0;
         }
         break;
@@ -1669,7 +1669,7 @@ LRESULT CALLBACK match_details_dialog_proc(HWND hwnd, UINT message,
         break;
     }
     case WM_CLOSE:
-        DestroyWindow(hwnd);
+        dialog_close(hwnd);
         return 0;
     default:
         break;
@@ -1708,7 +1708,7 @@ void dialog_match_details(App *app, uint64_t match_id)
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     if (state.list == NULL || state.edit_button == NULL ||
         state.delete_button == NULL || state.close_button == NULL) {
-        DestroyWindow(hwnd);
+        dialog_close(hwnd);
         return;
     }
     ui_list_add_column(state.list, 0, L"Team", 110);

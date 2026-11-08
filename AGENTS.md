@@ -129,7 +129,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Pages with a primary create action must set `Page.create_command` to the create button's command ID so Ctrl+N runs the same flow.
 - New toolbars use `ui_button_create` styles rather than native push buttons.
 - New confirmations must use `MB_ICONWARNING` and default to the safe choice.
-- All modal dialogs must disable their owner, support Tab and Escape, re-enable and repaint the owner before returning, and use `ui_run_modal`.
+- All modal dialogs must disable their owner, support Tab and Escape, re-enable and repaint the owner before returning, and use `ui_run_modal`. Close dialog windows through `dialog_close` so the owner is exposed and repainted before the dialog is destroyed.
 - Custom-class windows should set their window text explicitly after creation. Do not rely on the class's `WM_NCCREATE` path to retain text.
 - When adding a player, default the team to the most recently created player's team; use `db_last_added_player` rather than array order guesses.
 - Match dialogs show each team's squad in its own list. Add player actions from those lists must use `dialog_add_player_for_team` so the fixed team, validation and duplicate-name flow stay identical to the Players page.

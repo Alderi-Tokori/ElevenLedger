@@ -20,6 +20,7 @@ bool dialog_register_class(HINSTANCE instance, const wchar_t *name,
 HWND dialog_create_shell(App *app, HWND owner, const wchar_t *class_name,
                          const wchar_t *title, int client_width,
                          int client_height, void *state);
+void dialog_close(HWND dialog);
 void dialog_draw_chrome(App *app, HDC dc, int width,
                         const wchar_t *title, const wchar_t *subtitle);
 void dialog_draw_label(App *app, HDC dc, int x, int y,

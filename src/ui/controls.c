@@ -907,12 +907,14 @@ void ui_run_modal(HWND dialog, HWND owner, int default_command_id)
     }
     if (owner != NULL) {
         EnableWindow(owner, TRUE);
+        BringWindowToTop(owner);
+        SetForegroundWindow(owner);
         SetActiveWindow(owner);
         /*
          * A disabled owner can have its compositor surface discarded while a
          * large modal dialog covers it. Repaint the complete owner tree before
          * returning to the message loop so the uncovered window never presents
-         * a stale black frame.
+         * a stale or transparent frame.
          */
         RedrawWindow(owner, NULL, NULL,
                      RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN |
