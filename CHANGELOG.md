@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.9.4 - 2026-11-08
+
+### Fixed
+
+- The inline Minutes and Performance editor stays visible while the mouse moves over another line-up row. The editor is now raised above the list in the child z-order, and lists clip their painting around overlapping sibling windows.
+
 ## 1.9.3 - 2026-11-08
 
 ### Fixed

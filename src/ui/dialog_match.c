@@ -543,12 +543,15 @@ static void record_begin_cell_edit(RecordMatchState *state, HWND list,
     InflateRect(&cell, -1, -1);
     HWND edit = CreateWindowExW(
         0, L"EDIT", L"",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_CENTER,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS |
+            ES_AUTOHSCROLL | ES_CENTER,
         cell.left, cell.top, cell.right - cell.left, cell.bottom - cell.top,
         state->hwnd, NULL, state->app->instance, NULL);
     if (edit == NULL) {
         return;
     }
+    SetWindowPos(edit, HWND_TOP, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     SendMessageW(edit, WM_SETFONT,
                  (WPARAM)state->app->ui.font_body, TRUE);
     SetPropW(edit, CELL_EDITOR_PROPERTY, (HANDLE)1);

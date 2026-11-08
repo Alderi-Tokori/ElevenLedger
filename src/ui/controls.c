@@ -652,8 +652,8 @@ HWND ui_list_create(HWND parent, int id, int x, int y, int width, int height,
 {
     HWND list = CreateWindowExW(
         0, WC_LISTVIEWW, L"",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL |
-            LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS | LVS_REPORT |
+            LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
         x, y, width, height, parent, (HMENU)(INT_PTR)id,
         g_control_instance, NULL);
     if (list == NULL) {

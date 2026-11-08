@@ -30,6 +30,7 @@ public class PitchRateSmoke {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint command);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
@@ -205,6 +206,12 @@ function Assert-CellEditor {
         return ([PitchRateSmoke]::FindChildEditByText($Dialog, $ExpectedText) -ne [IntPtr]::Zero)
     }
     $editor = [PitchRateSmoke]::FindChildEditByText($Dialog, $ExpectedText)
+    [PitchRateSmoke]::SetCursorPos($point.X, $point.Y + 70) | Out-Null
+    Start-Sleep -Milliseconds 100
+    $above = [PitchRateSmoke]::GetWindow($editor, 3)
+    if ($above -ne [IntPtr]::Zero) {
+        throw "The $Label cell editor is not above the line-up list."
+    }
     [PitchRateSmoke]::PostMessage($editor, 0x0100, [IntPtr]0x1B, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "$Label cell editor to close" -Condition {
         return ([PitchRateSmoke]::FindChildEditByText($Dialog, $ExpectedText) -eq [IntPtr]::Zero)
