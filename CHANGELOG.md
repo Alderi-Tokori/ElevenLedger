@@ -2,6 +2,14 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.2.0 - 2026-11-08
+
+### Changed
+
+- Removed player position from the data model, player editor and player table. Positions were not used by the rating engine and players commonly cover multiple roles.
+- Match line-ups are now ordered by player name instead of position.
+- Data format v3 removes the stored position field. V1 and V2 files remain loadable, with legacy position values validated and discarded.
+
 ## 1.1.0 - 2026-11-08
 
 ### Added

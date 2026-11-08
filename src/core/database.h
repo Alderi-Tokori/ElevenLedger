@@ -19,13 +19,6 @@
 #define PERSON_NAME_MAX 47
 #define MATCH_DATE_MAX 10
 
-typedef enum {
-    POSITION_GOALKEEPER = 0,
-    POSITION_DEFENDER = 1,
-    POSITION_MIDFIELDER = 2,
-    POSITION_FORWARD = 3
-} Position;
-
 typedef struct {
     uint64_t id;
     char name[TEAM_NAME_MAX + 1];
@@ -38,7 +31,6 @@ typedef struct {
     uint64_t team_id;
     char first_name[PERSON_NAME_MAX + 1];
     char last_name[PERSON_NAME_MAX + 1];
-    Position position;
     double base_rating;
     bool active;
     /* Derived by db_recompute_ratings. */
@@ -128,9 +120,6 @@ const Team *db_find_team(const Database *db, uint64_t id);
 const Player *db_find_player(const Database *db, uint64_t id);
 const Match *db_find_match(const Database *db, uint64_t id);
 
-const char *db_position_label(Position position);
-bool db_position_valid(Position position);
-
 bool db_add_team(Database *db, const char *name, const char *short_name,
                  const char *city, uint64_t *out_id,
                  char *error, size_t error_size);
@@ -142,11 +131,11 @@ bool db_delete_team(Database *db, uint64_t id,
 
 bool db_add_player(Database *db, uint64_t team_id,
                    const char *first_name, const char *last_name,
-                   Position position, double base_rating, bool active,
+                   double base_rating, bool active,
                    uint64_t *out_id, char *error, size_t error_size);
 bool db_update_player(Database *db, uint64_t id, uint64_t team_id,
                       const char *first_name, const char *last_name,
-                      Position position, double base_rating, bool active,
+                      double base_rating, bool active,
                       char *error, size_t error_size);
 bool db_set_player_active(Database *db, uint64_t id, bool active,
                           char *error, size_t error_size);

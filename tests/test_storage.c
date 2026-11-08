@@ -86,13 +86,13 @@ static bool populate_sample(Database *db)
     uint64_t b = 0;
     uint64_t c = 0;
     uint64_t d = 0;
-    CHECK(db_add_player(db, alpha, "Ada", "Stone", POSITION_GOALKEEPER,
+    CHECK(db_add_player(db, alpha, "Ada", "Stone",
                         80.0, true, &a, error, sizeof(error)));
-    CHECK(db_add_player(db, alpha, "Noah", "Bennett", POSITION_MIDFIELDER,
+    CHECK(db_add_player(db, alpha, "Noah", "Bennett",
                         74.0, true, &b, error, sizeof(error)));
-    CHECK(db_add_player(db, beta, "Mia", "Clarke", POSITION_DEFENDER,
+    CHECK(db_add_player(db, beta, "Mia", "Clarke",
                         76.0, true, &c, error, sizeof(error)));
-    CHECK(db_add_player(db, beta, "Leo", "Foster", POSITION_FORWARD,
+    CHECK(db_add_player(db, beta, "Leo", "Foster",
                         68.0, true, &d, error, sizeof(error)));
     MatchPlayerInput lineup[] = {
         { a, 90, 7.5 },
@@ -136,7 +136,6 @@ static bool same_database(const Database *left, const Database *right)
             strcmp(left->players[i].last_name,
                    right->players[i].last_name) != 0 ||
             left->players[i].team_id != right->players[i].team_id ||
-            left->players[i].position != right->players[i].position ||
             left->players[i].active != right->players[i].active ||
             fabs(left->players[i].base_rating -
                  right->players[i].base_rating) > 1e-9 ||
@@ -229,9 +228,9 @@ static bool test_neutral_venue_roundtrip(void)
     char error[768];
     uint64_t home_player = 0;
     uint64_t away_player = 0;
-    CHECK(db_add_player(&db, alpha, "Home", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&db, alpha, "Home", "Player",
                         70.0, true, &home_player, error, sizeof(error)));
-    CHECK(db_add_player(&db, beta, "Away", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, beta, "Away", "Player",
                         70.0, true, &away_player, error, sizeof(error)));
     MatchPlayerInput lineup[] = {
         { home_player, 90, 6.0 },
@@ -256,7 +255,7 @@ static bool test_neutral_venue_roundtrip(void)
     char header[16] = { 0 };
     CHECK(fread(header, 1, 11, file) == 11);
     CHECK(fclose(file) == 0);
-    CHECK(memcmp(header, "PITCHRATE|2", 11) == 0);
+    CHECK(memcmp(header, "PITCHRATE|3", 11) == 0);
 
     Database loaded;
     StorageStatus status = storage_load(paths.data_path, &loaded,
@@ -286,9 +285,9 @@ static bool test_unicode_and_escaping(void)
     CHECK(db_add_team(&db, "李 娜 FC", "", "上海", NULL,
                       error, sizeof(error)));
     CHECK(db_add_player(&db, team_id, "Müller", "O'Connor",
-                        POSITION_MIDFIELDER, 77.5, true, &player_id,
+                        77.5, true, &player_id,
                         error, sizeof(error)));
-    CHECK(db_add_player(&db, team_id, "李", "娜", POSITION_FORWARD,
+    CHECK(db_add_player(&db, team_id, "李", "娜",
                         81.0, true, NULL, error, sizeof(error)));
     CHECK(storage_save(paths.data_path, &db, error, sizeof(error)));
     db_free(&db);
@@ -622,6 +621,37 @@ static bool test_bom_and_crlf_are_accepted(void)
     return true;
 }
 
+static bool test_v2_position_fields_are_ignored(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    const char *content =
+        "PITCHRATE|2\n"
+        "TEAM|1|Alpha||\n"
+        "TEAM|2|Beta||\n"
+        "PLAYER|1|1|A|One|0|70.00|1\n"
+        "PLAYER|2|2|B|Two|2|72.00|1\n"
+        "MATCH|1|2026-07-01|1|2|0|0|1\n"
+        "APP|1|1|1|90|6.00\n"
+        "APP|1|2|2|90|6.00\n"
+        "END\n";
+    CHECK(write_raw_data_file(paths.data_path, content));
+    Database loaded;
+    char error[768];
+    StorageStatus status = storage_load(paths.data_path, &loaded,
+                                        error, sizeof(error));
+    CHECK(status == STORAGE_OK);
+    CHECK(loaded.team_count == 2);
+    CHECK(loaded.player_count == 2);
+    CHECK(loaded.match_count == 1);
+    CHECK(loaded.matches[0].neutral_venue);
+    CHECK_NEAR(loaded.players[0].base_rating, 70.0, 1e-12);
+    CHECK_NEAR(loaded.players[1].base_rating, 72.0, 1e-12);
+    db_free(&loaded);
+    cleanup_test_paths(&paths);
+    return true;
+}
+
 static bool test_legacy_v1_minutes_and_precision_are_loadable(void)
 {
     TestPaths paths;
@@ -831,6 +861,7 @@ const TestCase g_storage_tests[] = {
     TEST_CASE(test_locked_primary_is_not_replaced_from_backup),
     TEST_CASE(test_save_preserves_good_backup_when_primary_is_corrupt),
     TEST_CASE(test_bom_and_crlf_are_accepted),
+    TEST_CASE(test_v2_position_fields_are_ignored),
     TEST_CASE(test_legacy_v1_minutes_and_precision_are_loadable),
     TEST_CASE(test_embedded_nul_is_rejected),
     TEST_CASE(test_semantically_invalid_file_rejected),

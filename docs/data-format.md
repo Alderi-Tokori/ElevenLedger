@@ -26,23 +26,28 @@ A different file can be selected with `--data <path>`. The parent folder is crea
 - Before promoting the current primary to backup, the save path revalidates the primary and the backup copy. A corrupt primary cannot overwrite a good backup.
 - The newly written temporary file is parsed and validated before it can replace the primary.
 
-## Format v2
+## Format v3
 
 ```text
-PITCHRATE|2
+PITCHRATE|3
 TEAM|<id>|<name>|<short_name>|<city>
-PLAYER|<id>|<team_id>|<first_name>|<last_name>|<position>|<starting_rating>|<active>
+PLAYER|<id>|<team_id>|<first_name>|<last_name>|<starting_rating>|<active>
 MATCH|<id>|<yyyy-mm-dd>|<home_team_id>|<away_team_id>|<home_goals>|<away_goals>|<neutral_venue>
 APP|<match_id>|<player_id>|<team_id>|<minutes>|<performance>
 END
 CRC32|<8 uppercase hex digits>
 ```
 
-`neutral_venue` is `0` or `1`. Positions: `0` goalkeeper, `1` defender, `2` midfielder, `3` forward. `active` is `0` or `1`. Performance is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored.
+`neutral_venue` is `0` or `1`. `active` is `0` or `1`. Performance is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored.
 
-### Format v1 compatibility
+### Format v1 and v2 compatibility
 
-Format v1 used the same records but the `MATCH` record ended after `away_goals`, with no neutral-venue field. PitchRate reads v1 files and treats those matches as non-neutral. Saving a loaded v1 database upgrades the file to v2.
+- **v1** used an eight-field `PLAYER` record with a position between last name and starting rating, and a seven-field `MATCH` record without a neutral-venue flag.
+- **v2** used the same eight-field `PLAYER` record and added the neutral-venue flag to `MATCH`.
+- **v3** removes player position. The reader still validates and discards the legacy position field from v1/v2 records.
+- V1 matches load as non-neutral. Saving any loaded v1 or v2 database upgrades it to v3.
+
+The legacy position values were `0` goalkeeper, `1` defender, `2` midfielder and `3` forward. They are not retained after loading.
 
 Fields escape backslash, pipe, carriage return and newline as `\\`, `\|`, `\r` and `\n`. Player, team and city values must be valid UTF-8 and cannot contain C0 control characters.
 
@@ -58,7 +63,7 @@ The checksum line has no trailing newline. A UTF-8 byte-order mark is accepted w
 
 ## Compatibility
 
-The `PITCHRATE|2` header identifies schema version 2. Version 1 is still accepted for loading; any other version is rejected with a clear message rather than partially parsed, and neither the primary nor its backup is replaced. Any future format change must:
+The `PITCHRATE|3` header identifies schema version 3. Versions 1 and 2 are still accepted for loading; any other version is rejected with a clear message rather than partially parsed, and neither the primary nor its backup is replaced. Any future format change must:
 
 - increment the version,
 - keep old files readable or provide an explicit tested migration,

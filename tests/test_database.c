@@ -19,13 +19,13 @@ static bool add_four_players(Database *db, uint64_t alpha, uint64_t beta,
                              uint64_t ids[4])
 {
     char error[256];
-    CHECK(db_add_player(db, alpha, "Ava", "Stone", POSITION_GOALKEEPER,
+    CHECK(db_add_player(db, alpha, "Ava", "Stone",
                         80.0, true, &ids[0], error, sizeof(error)));
-    CHECK(db_add_player(db, alpha, "Noah", "Bennett", POSITION_MIDFIELDER,
+    CHECK(db_add_player(db, alpha, "Noah", "Bennett",
                         70.0, true, &ids[1], error, sizeof(error)));
-    CHECK(db_add_player(db, beta, "Mia", "Clarke", POSITION_DEFENDER,
+    CHECK(db_add_player(db, beta, "Mia", "Clarke",
                         75.0, true, &ids[2], error, sizeof(error)));
-    CHECK(db_add_player(db, beta, "Leo", "Foster", POSITION_FORWARD,
+    CHECK(db_add_player(db, beta, "Leo", "Foster",
                         65.0, true, &ids[3], error, sizeof(error)));
     return true;
 }
@@ -72,7 +72,7 @@ static bool test_team_crud_and_validation(void)
                           error, sizeof(error)));
 
     uint64_t player_id = 0;
-    CHECK(db_add_player(&db, team_id, "Jamie", "Reed", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, team_id, "Jamie", "Reed",
                         72.0, true, &player_id, error, sizeof(error)));
     CHECK(!db_delete_team(&db, team_id, error, sizeof(error)));
     CHECK(strstr(error, "still has players") != NULL);
@@ -91,16 +91,14 @@ static bool test_player_crud_and_archive(void)
     CHECK(setup_two_teams(&db, &alpha, &beta));
     char error[256];
     uint64_t player_id = 0;
-    CHECK(!db_add_player(&db, 999, "No", "Team", POSITION_FORWARD,
+    CHECK(!db_add_player(&db, 999, "No", "Team",
                          70.0, true, NULL, error, sizeof(error)));
-    CHECK(!db_add_player(&db, alpha, "", "", POSITION_FORWARD,
+    CHECK(!db_add_player(&db, alpha, "", "",
                          70.0, true, NULL, error, sizeof(error)));
-    CHECK(!db_add_player(&db, alpha, "Test", NULL, (Position)99,
-                         70.0, true, NULL, error, sizeof(error)));
-    CHECK(!db_add_player(&db, alpha, "Test", NULL, POSITION_FORWARD,
+    CHECK(!db_add_player(&db, alpha, "Test", NULL,
                          100.0, true, NULL, error, sizeof(error)));
     CHECK(db_add_player(&db, alpha, "  Ada ", " Lovelace ",
-                        POSITION_FORWARD, 82.46, true, &player_id,
+                        82.46, true, &player_id,
                         error, sizeof(error)));
     const Player *player = db_find_player(&db, player_id);
     CHECK(player != NULL);
@@ -111,11 +109,9 @@ static bool test_player_crud_and_archive(void)
     CHECK(player->matches_played == 0);
 
     CHECK(db_update_player(&db, player_id, beta, "Ada", "Lovelace",
-                           POSITION_MIDFIELDER, 84.0, true,
-                           error, sizeof(error)));
+                           84.0, true, error, sizeof(error)));
     player = db_find_player(&db, player_id);
     CHECK(player->team_id == beta);
-    CHECK(player->position == POSITION_MIDFIELDER);
     CHECK_NEAR(player->current_rating, 84.0, 1e-12);
 
     CHECK(db_set_player_active(&db, player_id, false, error, sizeof(error)));
@@ -289,7 +285,7 @@ static bool test_match_validation(void)
     uint64_t outsider = 0;
     CHECK(db_add_team(&db, "Gamma Town", "GAM", "East", &third,
                       error, sizeof(error)));
-    CHECK(db_add_player(&db, third, "Eve", "Cross", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, third, "Eve", "Cross",
                         70.0, true, &outsider, error, sizeof(error)));
     MatchPlayerInput wrong_team[] = {
         { players[0], 90, 6.0 },
@@ -314,9 +310,9 @@ static bool test_backdated_matches_replay_chronologically(void)
     CHECK(setup_two_teams(&db, &alpha, &beta));
     uint64_t players[2];
     char error[256];
-    CHECK(db_add_player(&db, alpha, "Home", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&db, alpha, "Home", "Player",
                         70.0, true, &players[0], error, sizeof(error)));
-    CHECK(db_add_player(&db, beta, "Away", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, beta, "Away", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
 
     MatchPlayerInput lineup[] = {
@@ -360,9 +356,9 @@ static bool test_backdated_matches_replay_chronologically(void)
     Database clean;
     CHECK(setup_two_teams(&clean, &alpha, &beta));
     uint64_t clean_players[2];
-    CHECK(db_add_player(&clean, alpha, "Home", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&clean, alpha, "Home", "Player",
                         70.0, true, &clean_players[0], error, sizeof(error)));
-    CHECK(db_add_player(&clean, beta, "Away", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&clean, beta, "Away", "Player",
                         70.0, true, &clean_players[1], error, sizeof(error)));
     MatchPlayerInput clean_lineup[] = {
         { clean_players[0], 90, 6.0 },
@@ -383,7 +379,7 @@ static bool test_backdated_matches_replay_chronologically(void)
     db_free(&clean);
 
     CHECK(db_update_player(&db, players[0], alpha, "Home", "Player",
-                           POSITION_FORWARD, 75.0, true,
+                           75.0, true,
                            error, sizeof(error)));
     CHECK_NEAR(find_appearance(&db, january_id, players[0])->rating_before,
                75.0, 1e-12);
@@ -407,9 +403,9 @@ static bool test_delete_player_with_history_blocked(void)
     CHECK(setup_two_teams(&db, &alpha, &beta));
     uint64_t players[2];
     char error[256];
-    CHECK(db_add_player(&db, alpha, "One", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&db, alpha, "One", "Player",
                         70.0, true, &players[0], error, sizeof(error)));
-    CHECK(db_add_player(&db, beta, "Two", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, beta, "Two", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
     MatchPlayerInput lineup[] = {
         { players[0], 90, 6.0 },
@@ -442,9 +438,9 @@ static bool test_clone_and_id_continuity(void)
     CHECK(setup_two_teams(&db, &alpha, &beta));
     uint64_t players[2];
     char error[256];
-    CHECK(db_add_player(&db, alpha, "One", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&db, alpha, "One", "Player",
                         70.0, true, &players[0], error, sizeof(error)));
-    CHECK(db_add_player(&db, beta, "Two", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, beta, "Two", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
     MatchPlayerInput lineup[] = {
         { players[0], 90, 7.0 },
@@ -495,12 +491,12 @@ static bool test_match_total_minutes_guard(void)
         char last[16];
         snprintf(first, sizeof(first), "Home%d", i);
         snprintf(last, sizeof(last), "Player");
-        CHECK(db_add_player(&db, alpha, first, last, POSITION_MIDFIELDER,
+        CHECK(db_add_player(&db, alpha, first, last,
                             70.0, true, &home_players[i],
                             error, sizeof(error)));
     }
     uint64_t away_player = 0;
-    CHECK(db_add_player(&db, beta, "Away", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, beta, "Away", "Player",
                         70.0, true, &away_player, error, sizeof(error)));
 
     MatchPlayerInput lineup[13];
@@ -537,9 +533,9 @@ static bool test_neutral_venue_match(void)
     CHECK(setup_two_teams(&db, &alpha, &beta));
     uint64_t players[2];
     char error[256];
-    CHECK(db_add_player(&db, alpha, "Home", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&db, alpha, "Home", "Player",
                         70.0, true, &players[0], error, sizeof(error)));
-    CHECK(db_add_player(&db, beta, "Away", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, beta, "Away", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
     MatchPlayerInput lineup[] = {
         { players[0], 90, 6.0 },
@@ -585,9 +581,9 @@ static bool test_recompute_sorts_matches_by_date(void)
     CHECK(setup_two_teams(&db, &alpha, &beta));
     uint64_t players[2];
     char error[256];
-    CHECK(db_add_player(&db, alpha, "Home", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&db, alpha, "Home", "Player",
                         70.0, true, &players[0], error, sizeof(error)));
-    CHECK(db_add_player(&db, beta, "Away", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, beta, "Away", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
     MatchPlayerInput lineup[] = {
         { players[0], 90, 6.0 },
@@ -634,9 +630,9 @@ static bool test_player_transfer_preserves_historical_team(void)
                       error, sizeof(error)));
     uint64_t home_player = 0;
     uint64_t away_player = 0;
-    CHECK(db_add_player(&db, alpha, "Home", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&db, alpha, "Home", "Player",
                         72.0, true, &home_player, error, sizeof(error)));
-    CHECK(db_add_player(&db, beta, "Away", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, beta, "Away", "Player",
                         68.0, true, &away_player, error, sizeof(error)));
     MatchPlayerInput lineup[] = {
         { home_player, 90, 6.5 },
@@ -657,7 +653,7 @@ static bool test_player_transfer_preserves_historical_team(void)
         db_find_player(&db, home_player)->current_rating;
 
     CHECK(db_update_player(&db, home_player, gamma, "Home", "Player",
-                           POSITION_FORWARD, 72.0, true,
+                           72.0, true,
                            error, sizeof(error)));
     CHECK(db_find_player(&db, home_player)->team_id == gamma);
     CHECK_NEAR(db_find_player(&db, home_player)->current_rating,
@@ -668,7 +664,7 @@ static bool test_player_transfer_preserves_historical_team(void)
     CHECK(appearance->team_id == alpha);
 
     uint64_t gamma_opponent = 0;
-    CHECK(db_add_player(&db, gamma, "New", "Teammate", POSITION_MIDFIELDER,
+    CHECK(db_add_player(&db, gamma, "New", "Teammate",
                         69.0, true, &gamma_opponent, error, sizeof(error)));
     MatchPlayerInput next_lineup[] = {
         { home_player, 90, 6.0 },
@@ -701,11 +697,11 @@ static bool test_team_stats_are_minutes_and_results_aware(void)
     CHECK(setup_two_teams(&db, &alpha, &beta));
     uint64_t players[2];
     char error[256];
-    CHECK(db_add_player(&db, alpha, "A", "Player", POSITION_FORWARD,
+    CHECK(db_add_player(&db, alpha, "A", "Player",
                         60.0, true, &players[0], error, sizeof(error)));
-    CHECK(db_add_player(&db, alpha, "B", "Player", POSITION_DEFENDER,
+    CHECK(db_add_player(&db, alpha, "B", "Player",
                         80.0, true, &players[1], error, sizeof(error)));
-    CHECK(db_add_player(&db, beta, "C", "Player", POSITION_MIDFIELDER,
+    CHECK(db_add_player(&db, beta, "C", "Player",
                         70.0, true, NULL, error, sizeof(error)));
     TeamStats stats;
     db_team_stats(&db, alpha, &stats);

@@ -6,7 +6,7 @@ The application is a dependency-free C17 Win32 program. It does not use a browse
 
 ## Highlights
 
-- Multiple clubs and squads with positions, availability and starting ratings.
+- Multiple clubs and squads with availability and starting ratings.
 - Match recording with per-player minutes and a 1-10 individual performance input.
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.

@@ -28,7 +28,6 @@ enum {
 enum {
     PLAYER_DIALOG_FIRST_ID = 2100,
     PLAYER_DIALOG_LAST_ID,
-    PLAYER_DIALOG_POSITION_ID,
     PLAYER_DIALOG_TEAM_ID,
     PLAYER_DIALOG_RATING_ID,
     PLAYER_DIALOG_ACTIVE_ID,
@@ -61,7 +60,6 @@ typedef struct {
     uint64_t saved_id;
     HWND first_name;
     HWND last_name;
-    HWND position;
     HWND team;
     HWND rating;
     HWND active;
@@ -69,7 +67,6 @@ typedef struct {
     HWND cancel;
     RECT label_first;
     RECT label_last;
-    RECT label_position;
     RECT label_team;
     RECT label_rating;
     RECT rating_hint;
@@ -469,8 +466,6 @@ static LRESULT player_dialog_paint(PlayerDialogState *state, HWND hwnd)
                           state->label_first.top, L"First name");
         dialog_draw_label(state->app, canvas.dc, state->label_last.left,
                           state->label_last.top, L"Last name");
-        dialog_draw_label(state->app, canvas.dc, state->label_position.left,
-                          state->label_position.top, L"Position");
         dialog_draw_label(state->app, canvas.dc, state->label_team.left,
                           state->label_team.top, L"Team");
         dialog_draw_label(state->app, canvas.dc, state->label_rating.left,
@@ -523,15 +518,11 @@ static void player_dialog_layout(PlayerDialogState *state, int width,
                column_width, field_height, TRUE);
 
     y = field_y + field_height + ui_scale(theme, 16);
-    state->label_position = (RECT){ margin, y, margin + column_width,
-                                    y + label_height };
-    state->label_team = (RECT){ margin + column_width + gap, y,
-                                width - margin, y + label_height };
+    state->label_team = (RECT){ margin, y, width - margin,
+                                y + label_height };
     field_y = y + label_height + ui_scale(theme, 4);
-    MoveWindow(state->position, margin, field_y,
-               column_width, field_height, TRUE);
-    MoveWindow(state->team, margin + column_width + gap, field_y,
-               column_width, field_height, TRUE);
+    MoveWindow(state->team, margin, field_y,
+               content_width, field_height, TRUE);
 
     y = field_y + field_height + ui_scale(theme, 16);
     state->label_rating = (RECT){ margin, y, margin + column_width,
@@ -595,8 +586,6 @@ static void player_dialog_save(PlayerDialogState *state)
         InvalidateRect(state->hwnd, NULL, FALSE);
         return;
     }
-    uint64_t position_data = ui_combo_selected_data(state->position);
-    Position position = (Position)position_data;
     bool active = ui_checkbox_get_checked(state->active);
 
     Database backup;
@@ -607,11 +596,11 @@ static void player_dialog_save(PlayerDialogState *state)
     uint64_t saved = 0;
     bool ok;
     if (state->player_id == 0) {
-        ok = db_add_player(&state->app->db, team_id, first, last, position,
+        ok = db_add_player(&state->app->db, team_id, first, last,
                            rating, active, &saved, error, sizeof(error));
     } else {
         ok = db_update_player(&state->app->db, state->player_id, team_id,
-                              first, last, position, rating, active,
+                              first, last, rating, active,
                               error, sizeof(error));
         saved = state->player_id;
     }
@@ -703,8 +692,6 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
                                       0, 0, 10, 10, theme->font_body, 48);
     state.last_name = ui_edit_create(hwnd, PLAYER_DIALOG_LAST_ID, L"",
                                      0, 0, 10, 10, theme->font_body, 48);
-    state.position = ui_combo_create(hwnd, PLAYER_DIALOG_POSITION_ID,
-                                     0, 0, 10, 10, theme->font_body);
     state.team = ui_combo_create(hwnd, PLAYER_DIALOG_TEAM_ID,
                                  0, 0, 10, 10, theme->font_body);
     state.rating = ui_edit_create(hwnd, PLAYER_DIALOG_RATING_ID, L"70.0",
@@ -720,17 +707,13 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
         hwnd, PLAYER_DIALOG_CANCEL_ID, L"Cancel",
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     if (state.first_name == NULL || state.last_name == NULL ||
-        state.position == NULL || state.team == NULL ||
+        state.team == NULL ||
         state.rating == NULL || state.active == NULL ||
         state.save == NULL || state.cancel == NULL) {
         DestroyWindow(hwnd);
         return 0;
     }
 
-    for (int i = 0; i <= 3; ++i) {
-        ui_combo_add_utf8(state.position, db_position_label((Position)i),
-                          (uint64_t)i);
-    }
     for (size_t i = 0; i < app->db.team_count; ++i) {
         ui_combo_add_utf8(state.team, app->db.teams[i].name,
                           app->db.teams[i].id);
@@ -741,7 +724,6 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
     if (player != NULL) {
         ui_edit_set_utf8(state.first_name, player->first_name);
         ui_edit_set_utf8(state.last_name, player->last_name);
-        ui_combo_select_data(state.position, (uint64_t)player->position);
         ui_combo_select_data(state.team, player->team_id);
         wchar_t rating_text[32];
         ui_format_wide(rating_text,
@@ -750,7 +732,6 @@ uint64_t dialog_edit_player(App *app, uint64_t player_id)
         SetWindowTextW(state.rating, rating_text);
         ui_checkbox_set_checked(state.active, player->active);
     } else {
-        SendMessageW(state.position, CB_SETCURSEL, 0, 0);
         if (app->db.team_count > 0) {
             SendMessageW(state.team, CB_SETCURSEL, 0, 0);
         }

@@ -78,13 +78,14 @@ Layering rules:
 1. `src/core` must not depend on Win32 UI or the `App` type.
 2. UI code must not write the data file directly. Use `app_tx_begin`, `app_tx_commit` and `app_tx_abort`.
 3. Derived values (current ratings, appearance before/delta/after, match summaries, player totals) are recomputed. Only source data belongs in the file.
-4. The data format is versioned. Format v2 adds per-match neutral venue; v1 files must keep loading with neutral set to false. Add migration tests before changing it again.
+4. The data format is versioned. Format v3 removes player position; v1/v2 files must keep loading with their legacy position discarded and missing neutral values defaulting to false. Add migration tests before changing it again.
 
 ## Rating model rules
 
 Source of truth: `src/core/rating.h` and `src/core/rating.c`. Full documentation: `docs/rating-model.md`.
 
 - Ratings: 1.0-99.0; default starting rating 70.0.
+- Players have no stored or input position; do not reintroduce position as an implicit rating factor.
 - Performance: 1.0-10.0; neutral 6.0. New entries are quantized to two decimals.
 - Minutes: 1-120; player-impact weight caps at 90 minutes.
 - Home advantage: 4.0 rating points for normal matches, 0.0 for neutral-venue matches.

@@ -178,36 +178,30 @@ static void players_refresh(Page *page)
             ui_utf8_to_wide(team->name, team_name,
                             sizeof(team_name) / sizeof(team_name[0]));
         }
-        wchar_t position[32];
-        ui_utf8_to_wide(db_position_label(player->position), position,
-                        sizeof(position) / sizeof(position[0]));
         wchar_t haystack[512];
         ui_format_wide(haystack, sizeof(haystack) / sizeof(haystack[0]),
-                       L"%ls %ls %ls", name, team_name, position);
+                       L"%ls %ls", name, team_name);
         if (!contains_case_insensitive(haystack, search_text)) {
             continue;
         }
 
         char name_utf8[192];
         char team_utf8[128];
-        char position_utf8[32];
         char rating[32];
         char matches[32];
         char minutes[32];
         char status[32];
         ui_wide_to_utf8(name, name_utf8, sizeof(name_utf8));
         ui_wide_to_utf8(team_name, team_utf8, sizeof(team_utf8));
-        ui_wide_to_utf8(position, position_utf8, sizeof(position_utf8));
         snprintf(rating, sizeof(rating), "%.1f", player->current_rating);
         snprintf(matches, sizeof(matches), "%u", player->matches_played);
         snprintf(minutes, sizeof(minutes), "%u", player->minutes_played);
         snprintf(status, sizeof(status), "%s",
                  player->active ? "Active" : "Archived");
-        const char *columns[7] = {
-            name_utf8, team_utf8, position_utf8, rating,
-            matches, minutes, status,
+        const char *columns[6] = {
+            name_utf8, team_utf8, rating, matches, minutes, status,
         };
-        if (ui_list_add_row(players->list, columns, 7,
+        if (ui_list_add_row(players->list, columns, 6,
                             (LPARAM)player->id) >= 0) {
             players->visible_rows++;
         }
@@ -265,8 +259,8 @@ static void players_layout(Page *page, int width, int height)
     x -= gap + add_width;
     MoveWindow(players->add_button, x, top, add_width, button_height, TRUE);
 
-    static const int widths[7] = { 23, 22, 12, 9, 9, 10, 15 };
-    ui_list_set_percent_widths(players->list, widths, 7);
+    static const int widths[6] = { 28, 27, 10, 11, 11, 13 };
+    ui_list_set_percent_widths(players->list, widths, 6);
 }
 
 static void players_paint(Page *page, HDC dc)
@@ -509,13 +503,12 @@ Page *players_page_create(App *app)
         return NULL;
     }
     ui_edit_set_cue(players->search, L"Search players...");
-    ui_list_add_column(players->list, 0, L"Player", 220);
-    ui_list_add_column(players->list, 1, L"Team", 180);
-    ui_list_add_column(players->list, 2, L"Position", 110);
-    ui_list_add_column(players->list, 3, L"Rating", 70);
-    ui_list_add_column(players->list, 4, L"Matches", 70);
-    ui_list_add_column(players->list, 5, L"Minutes", 70);
-    ui_list_add_column(players->list, 6, L"Status", 80);
+    ui_list_add_column(players->list, 0, L"Player", 240);
+    ui_list_add_column(players->list, 1, L"Team", 210);
+    ui_list_add_column(players->list, 2, L"Rating", 80);
+    ui_list_add_column(players->list, 3, L"Matches", 80);
+    ui_list_add_column(players->list, 4, L"Minutes", 80);
+    ui_list_add_column(players->list, 5, L"Status", 90);
     EnableWindow(players->edit_button, FALSE);
     EnableWindow(players->archive_button, FALSE);
     EnableWindow(players->delete_button, FALSE);

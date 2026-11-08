@@ -182,6 +182,27 @@ static void record_free_rows(RecordMatchState *state)
 static void record_cancel_cell_edit(RecordMatchState *state);
 static bool record_commit_cell_edit(RecordMatchState *state, bool accept);
 
+static int compare_players_by_name(const void *left, const void *right)
+{
+    const Player *a = *(const Player *const *)left;
+    const Player *b = *(const Player *const *)right;
+    int result = strcmp(a->last_name, b->last_name);
+    if (result != 0) {
+        return result;
+    }
+    result = strcmp(a->first_name, b->first_name);
+    if (result != 0) {
+        return result;
+    }
+    if (a->id < b->id) {
+        return -1;
+    }
+    if (a->id > b->id) {
+        return 1;
+    }
+    return 0;
+}
+
 static void record_rebuild_rows(RecordMatchState *state)
 {
     record_cancel_cell_edit(state);
@@ -211,53 +232,70 @@ static void record_rebuild_rows(RecordMatchState *state)
     const uint64_t teams[2] = { home_id, away_id };
     for (int side = 0; side < 2 && !insert_failed; ++side) {
         const Team *team = db_find_team(db, teams[side]);
-        for (int position = 0; position <= 3 && !insert_failed; ++position) {
+        size_t team_player_count = db_team_player_count(db, teams[side], true);
+        const Player **team_players = NULL;
+        if (team_player_count > 0) {
+            team_players = malloc(team_player_count * sizeof(*team_players));
+            if (team_players == NULL) {
+                record_show_error_wide(
+                    state, L"Not enough memory to load the line-ups.");
+                insert_failed = true;
+                break;
+            }
+            size_t used = 0;
             for (size_t i = 0; i < db->player_count; ++i) {
                 const Player *player = &db->players[i];
-                if (!player->active || player->team_id != teams[side] ||
-                    player->position != (Position)position) {
-                    continue;
+                if (player->active && player->team_id == teams[side]) {
+                    team_players[used++] = player;
                 }
-                LineupRow *row = &state->rows[state->row_count];
-                memset(row, 0, sizeof(*row));
-                row->player_id = player->id;
-                row->team_id = player->team_id;
-                row->selected = false;
-                row->minutes = 90;
-                row->performance = 6.0;
-                row->current_rating = player->current_rating;
-                format_player_name(player, row->player_name,
-                                   sizeof(row->player_name));
-                if (team != NULL) {
-                    snprintf(row->team_name, sizeof(row->team_name), "%s",
-                             team->name);
-                } else {
-                    snprintf(row->team_name, sizeof(row->team_name), "-");
-                }
-                char minutes[16];
-                char performance[16];
-                char rating[16];
-                snprintf(minutes, sizeof(minutes), "%d", row->minutes);
-                snprintf(performance, sizeof(performance), "%.2f",
-                         row->performance);
-                snprintf(rating, sizeof(rating), "%.1f",
-                         row->current_rating);
-                const char *columns[5] = {
-                    row->player_name, row->team_name, minutes, performance,
-                    rating,
-                };
-                int list_index = ui_list_add_row(
-                    state->list, columns, 5, (LPARAM)state->row_count);
-                if (list_index < 0) {
-                    record_show_error_wide(
-                        state, L"Could not add a player to the line-up list.");
-                    insert_failed = true;
-                    break;
-                }
-                ListView_SetCheckState(state->list, list_index, FALSE);
-                state->row_count++;
             }
+            qsort(team_players, team_player_count, sizeof(*team_players),
+                  compare_players_by_name);
         }
+        for (size_t player_index = 0;
+             player_index < team_player_count && !insert_failed;
+             ++player_index) {
+            const Player *player = team_players[player_index];
+            LineupRow *row = &state->rows[state->row_count];
+            memset(row, 0, sizeof(*row));
+            row->player_id = player->id;
+            row->team_id = player->team_id;
+            row->selected = false;
+            row->minutes = 90;
+            row->performance = 6.0;
+            row->current_rating = player->current_rating;
+            format_player_name(player, row->player_name,
+                               sizeof(row->player_name));
+            if (team != NULL) {
+                snprintf(row->team_name, sizeof(row->team_name), "%s",
+                         team->name);
+            } else {
+                snprintf(row->team_name, sizeof(row->team_name), "-");
+            }
+            char minutes[16];
+            char performance[16];
+            char rating[16];
+            snprintf(minutes, sizeof(minutes), "%d", row->minutes);
+            snprintf(performance, sizeof(performance), "%.2f",
+                     row->performance);
+            snprintf(rating, sizeof(rating), "%.1f",
+                     row->current_rating);
+            const char *columns[5] = {
+                row->player_name, row->team_name, minutes, performance,
+                rating,
+            };
+            int list_index = ui_list_add_row(
+                state->list, columns, 5, (LPARAM)state->row_count);
+            if (list_index < 0) {
+                record_show_error_wide(
+                    state, L"Could not add a player to the line-up list.");
+                insert_failed = true;
+                break;
+            }
+            ListView_SetCheckState(state->list, list_index, FALSE);
+            state->row_count++;
+        }
+        free(team_players);
     }
     state->building = false;
     InvalidateRect(state->hwnd, NULL, FALSE);

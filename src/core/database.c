@@ -192,27 +192,6 @@ const Match *db_find_match(const Database *db, uint64_t id)
     return NULL;
 }
 
-const char *db_position_label(Position position)
-{
-    switch (position) {
-    case POSITION_GOALKEEPER:
-        return "Goalkeeper";
-    case POSITION_DEFENDER:
-        return "Defender";
-    case POSITION_MIDFIELDER:
-        return "Midfielder";
-    case POSITION_FORWARD:
-        return "Forward";
-    default:
-        return "Unknown";
-    }
-}
-
-bool db_position_valid(Position position)
-{
-    return position >= POSITION_GOALKEEPER && position <= POSITION_FORWARD;
-}
-
 static bool prepare_text(const char *source, size_t max_bytes,
                          bool allow_empty, char *output, size_t output_size,
                          const char *label, char *error, size_t error_size)
@@ -366,7 +345,7 @@ bool db_delete_team(Database *db, uint64_t id,
 
 bool db_add_player(Database *db, uint64_t team_id,
                    const char *first_name, const char *last_name,
-                   Position position, double base_rating, bool active,
+                   double base_rating, bool active,
                    uint64_t *out_id, char *error, size_t error_size)
 {
     if (db == NULL) {
@@ -374,10 +353,6 @@ bool db_add_player(Database *db, uint64_t team_id,
     }
     if (db_find_team(db, team_id) == NULL) {
         set_error(error, error_size, "Select a valid team.");
-        return false;
-    }
-    if (!db_position_valid(position)) {
-        set_error(error, error_size, "Select a valid position.");
         return false;
     }
     if (!isfinite(base_rating) ||
@@ -415,7 +390,6 @@ bool db_add_player(Database *db, uint64_t team_id,
     player->team_id = team_id;
     util_str_copy(player->first_name, sizeof(player->first_name), clean_first);
     util_str_copy(player->last_name, sizeof(player->last_name), clean_last);
-    player->position = position;
     player->base_rating = round_rating(base_rating);
     player->current_rating = player->base_rating;
     player->active = active;
@@ -437,7 +411,7 @@ static bool validate_player_names(const char *first, const char *last,
 
 bool db_update_player(Database *db, uint64_t id, uint64_t team_id,
                       const char *first_name, const char *last_name,
-                      Position position, double base_rating, bool active,
+                      double base_rating, bool active,
                       char *error, size_t error_size)
 {
     if (db == NULL) {
@@ -450,10 +424,6 @@ bool db_update_player(Database *db, uint64_t id, uint64_t team_id,
     }
     if (db_find_team(db, team_id) == NULL) {
         set_error(error, error_size, "Select a valid team.");
-        return false;
-    }
-    if (!db_position_valid(position)) {
-        set_error(error, error_size, "Select a valid position.");
         return false;
     }
     if (!isfinite(base_rating) ||
@@ -476,7 +446,6 @@ bool db_update_player(Database *db, uint64_t id, uint64_t team_id,
     player->team_id = team_id;
     util_str_copy(player->first_name, sizeof(player->first_name), clean_first);
     util_str_copy(player->last_name, sizeof(player->last_name), clean_last);
-    player->position = position;
     player->base_rating = round_rating(base_rating);
     player->active = active;
 
@@ -632,7 +601,6 @@ bool db_validate(const Database *db, char *error, size_t error_size)
     for (size_t i = 0; i < db->player_count; ++i) {
         const Player *player = &db->players[i];
         if (player->id == 0 || db_find_team(db, player->team_id) == NULL ||
-            !db_position_valid(player->position) ||
             !isfinite(player->base_rating) ||
             player->base_rating < RATING_MIN ||
             player->base_rating > RATING_MAX ||

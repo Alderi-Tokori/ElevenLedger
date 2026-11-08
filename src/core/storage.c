@@ -13,7 +13,7 @@
 #include <string.h>
 #include <windows.h>
 
-#define STORAGE_FORMAT_VERSION 2
+#define STORAGE_FORMAT_VERSION 3
 #define STORAGE_MIN_FORMAT_VERSION 1
 #define STORAGE_MAX_FILE_BYTES (64u * 1024u * 1024u)
 #define STORAGE_MAX_FIELDS 12
@@ -213,9 +213,8 @@ static bool write_player(FILE *file, const Player *player)
                 player->id, player->team_id) < 0 ||
         !write_field(file, player->first_name) ||
         !write_field(file, player->last_name) ||
-        fprintf(file, "|%d|%.2f|%d",
-                (int)player->position, player->base_rating,
-                player->active ? 1 : 0) < 0) {
+        fprintf(file, "|%.2f|%d",
+                player->base_rating, player->active ? 1 : 0) < 0) {
         return false;
     }
     return fputc('\n', file) != EOF;
@@ -683,9 +682,11 @@ static bool parse_team_record(Database *db, char **fields, size_t count,
 }
 
 static bool parse_player_record(Database *db, char **fields, size_t count,
+                                int file_version,
                                 char *error, size_t error_size)
 {
-    if (count != 8) {
+    size_t expected_count = file_version <= 2 ? 8 : 7;
+    if (count != expected_count) {
         set_error(error, error_size, "Invalid PLAYER record.");
         return false;
     }
@@ -694,10 +695,20 @@ static bool parse_player_record(Database *db, char **fields, size_t count,
     int position = 0;
     int active = 0;
     double base_rating = 0.0;
-    if (!parse_u64(fields[1], &id) || !parse_u64(fields[2], &team_id) ||
-        !util_parse_int(fields[5], 0, 3, &position) ||
-        !util_parse_double(fields[6], RATING_MIN, RATING_MAX, &base_rating) ||
-        !util_parse_int(fields[7], 0, 1, &active)) {
+    bool values_ok = parse_u64(fields[1], &id) &&
+                     parse_u64(fields[2], &team_id);
+    if (values_ok && file_version <= 2) {
+        /* Legacy position is validated but intentionally discarded. */
+        values_ok = util_parse_int(fields[5], 0, 3, &position) &&
+                    util_parse_double(fields[6], RATING_MIN, RATING_MAX,
+                                      &base_rating) &&
+                    util_parse_int(fields[7], 0, 1, &active);
+    } else if (values_ok) {
+        values_ok = util_parse_double(fields[5], RATING_MIN, RATING_MAX,
+                                      &base_rating) &&
+                    util_parse_int(fields[6], 0, 1, &active);
+    }
+    if (!values_ok) {
         set_error(error, error_size, "Invalid player record values.");
         return false;
     }
@@ -716,7 +727,6 @@ static bool parse_player_record(Database *db, char **fields, size_t count,
                         sizeof(player->last_name), error, error_size)) {
         return false;
     }
-    player->position = (Position)position;
     player->base_rating = round(base_rating * 100.0) / 100.0;
     player->current_rating = player->base_rating;
     player->active = active != 0;
@@ -897,6 +907,7 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
                                        error, error_size);
         } else if (strcmp(fields[0], "PLAYER") == 0) {
             parsed = parse_player_record(db, fields, field_count,
+                                         parsed_file_version,
                                          error, error_size);
         } else if (strcmp(fields[0], "MATCH") == 0) {
             parsed = parse_match_record(db, fields, field_count,

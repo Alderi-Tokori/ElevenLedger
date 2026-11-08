@@ -11,7 +11,6 @@ typedef struct {
     const char *city;
     const char *players[11][2];
     double ratings[11];
-    Position positions[11];
 } DemoTeam;
 
 static bool add_team_players(Database *db, const DemoTeam *team,
@@ -24,9 +23,8 @@ static bool add_team_players(Database *db, const DemoTeam *team,
     }
     for (size_t i = 0; i < 11; ++i) {
         if (!db_add_player(db, *team_id, team->players[i][0],
-                           team->players[i][1], team->positions[i],
-                           team->ratings[i], true, &player_ids[i],
-                           error, error_size)) {
+                           team->players[i][1], team->ratings[i], true,
+                           &player_ids[i], error, error_size)) {
             return false;
         }
     }
@@ -104,12 +102,6 @@ int main(int argc, char **argv)
         },
         .ratings = { 79.0, 74.0, 76.0, 73.0, 77.0, 72.0,
                      81.0, 75.0, 78.0, 82.0, 80.0 },
-        .positions = {
-            POSITION_GOALKEEPER, POSITION_DEFENDER, POSITION_DEFENDER,
-            POSITION_DEFENDER, POSITION_DEFENDER, POSITION_MIDFIELDER,
-            POSITION_MIDFIELDER, POSITION_MIDFIELDER, POSITION_FORWARD,
-            POSITION_FORWARD, POSITION_FORWARD,
-        },
     };
     const DemoTeam riverside = {
         .team_name = "Riverside Athletic",
@@ -123,12 +115,6 @@ int main(int argc, char **argv)
         },
         .ratings = { 76.0, 72.0, 75.0, 71.0, 70.0, 74.0,
                      73.0, 77.0, 75.0, 78.0, 76.0 },
-        .positions = {
-            POSITION_GOALKEEPER, POSITION_DEFENDER, POSITION_DEFENDER,
-            POSITION_DEFENDER, POSITION_DEFENDER, POSITION_MIDFIELDER,
-            POSITION_MIDFIELDER, POSITION_MIDFIELDER, POSITION_FORWARD,
-            POSITION_FORWARD, POSITION_FORWARD,
-        },
     };
 
     Database db;
