@@ -401,15 +401,18 @@ try {
     if ([PitchRateSmoke]::IsWindowEnabled($main)) {
         throw "The owner window stayed enabled while a modal dialog was open."
     }
-    if ([PitchRateSmoke]::FindChildById($teamDialog, 2003) -eq [IntPtr]::Zero) {
-        throw "The team dialog is missing its save button."
+    $teamName = [PitchRateSmoke]::FindChildById($teamDialog, 2000)
+    $teamSave = [PitchRateSmoke]::FindChildById($teamDialog, 2003)
+    if ($teamName -eq [IntPtr]::Zero -or $teamSave -eq [IntPtr]::Zero) {
+        throw "The team dialog is missing its name field or save button."
     }
-    [PitchRateSmoke]::PostMessage($teamDialog, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-    Wait-Until -Description "the team dialog to close and owner to re-enable" -Condition {
+    [PitchRateSmoke]::SendMessageText($teamName, 0x000C, [IntPtr]::Zero, "Empty FC") | Out-Null
+    [PitchRateSmoke]::PostMessage($teamDialog, 0x0111, [IntPtr]2003, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the empty team to be saved" -Condition {
         return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateTeamDialog") -eq [IntPtr]::Zero -and
             [PitchRateSmoke]::IsWindowEnabled($main))
     }
-    Write-Host "Modal team dialog OK"
+    Write-Host "Empty team creation OK"
 
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40004, [IntPtr]::Zero) | Out-Null
     Start-Sleep -Milliseconds 250
@@ -461,6 +464,65 @@ try {
         $homeTeamCombo, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
     $homeTeamData = [PitchRateSmoke]::SendMessage(
         $homeTeamCombo, 0x0150, [IntPtr]$homeTeamIndex, [IntPtr]::Zero).ToInt64()
+
+    $emptyTeamIndex = [PitchRateSmoke]::SendMessageText(
+        $homeTeamCombo, 0x0158, [IntPtr](-1), "Empty FC").ToInt64()
+    if ($emptyTeamIndex -lt 0) {
+        throw "The club with no players is missing from the match team list."
+    }
+    $emptyTeamData = [PitchRateSmoke]::SendMessage(
+        $homeTeamCombo, 0x0150, [IntPtr]$emptyTeamIndex, [IntPtr]::Zero).ToInt64()
+    [PitchRateSmoke]::SendMessage(
+        $homeTeamCombo, 0x014E, [IntPtr]$emptyTeamIndex, [IntPtr]::Zero) | Out-Null
+    $selectionCommand = [IntPtr]((1 -shl 16) -bor 2201)
+    [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, $selectionCommand, $homeTeamCombo) | Out-Null
+    Wait-Until -Description "the empty club line-up" -Condition {
+        return ([PitchRateSmoke]::SendMessage(
+            $homeLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -eq 0)
+    }
+
+    [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, [IntPtr]2212, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the add-player dialog for the empty club" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($recordDialog))
+    }
+    $emptyPlayerDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")
+    $emptyPlayerTeam = [PitchRateSmoke]::FindChildById($emptyPlayerDialog, 2102)
+    if ($emptyPlayerTeam -eq [IntPtr]::Zero -or
+        [PitchRateSmoke]::IsWindowEnabled($emptyPlayerTeam)) {
+        throw "The empty-club add-player dialog did not lock its team."
+    }
+    $emptyPlayerTeamIndex = [PitchRateSmoke]::SendMessage(
+        $emptyPlayerTeam, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    $emptyPlayerTeamData = [PitchRateSmoke]::SendMessage(
+        $emptyPlayerTeam, 0x0150, [IntPtr]$emptyPlayerTeamIndex, [IntPtr]::Zero).ToInt64()
+    if ($emptyPlayerTeamData -ne $emptyTeamData) {
+        throw "The empty-club add-player dialog opened for the wrong team."
+    }
+    $emptyPlayerFirst = [PitchRateSmoke]::FindChildById($emptyPlayerDialog, 2100)
+    $emptyPlayerLast = [PitchRateSmoke]::FindChildById($emptyPlayerDialog, 2101)
+    [PitchRateSmoke]::SendMessageText($emptyPlayerFirst, 0x000C, [IntPtr]::Zero, "Empty") | Out-Null
+    [PitchRateSmoke]::SendMessageText($emptyPlayerLast, 0x000C, [IntPtr]::Zero, "Rookie") | Out-Null
+    [PitchRateSmoke]::PostMessage($emptyPlayerDialog, 0x0111, [IntPtr]2105, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the empty-club player to be saved" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($recordDialog))
+    }
+    Wait-Until -Description "the empty club line-up to refresh" -Condition {
+        return ([PitchRateSmoke]::SendMessage(
+            $homeLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -eq 1)
+    }
+    Write-Host "Empty club inline player OK"
+
+    [PitchRateSmoke]::SendMessage(
+        $homeTeamCombo, 0x014E, [IntPtr]$homeTeamIndex, [IntPtr]::Zero) | Out-Null
+    [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, $selectionCommand, $homeTeamCombo) | Out-Null
+    Wait-Until -Description "the original home team line-up" -Condition {
+        return ([PitchRateSmoke]::SendMessage(
+            $homeLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -eq $homeLineupCount)
+    }
     [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, [IntPtr]2212, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the add-player dialog from the match dialog" -Condition {
         $candidate = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRatePlayerDialog")

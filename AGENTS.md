@@ -133,7 +133,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Inline cell editors must stay above their list in the child z-order after creation so list repaints cannot cover them.
 - Custom-class windows should set their window text explicitly after creation. Do not rely on the class's `WM_NCCREATE` path to retain text.
 - When adding a player, default the team to the most recently created player's team; use `db_last_added_player` rather than array order guesses.
-- Match dialogs show each team's squad in its own list. Add player actions from those lists must use `dialog_add_player_for_team` so the fixed team, validation and duplicate-name flow stay identical to the Players page.
+- Match dialogs show each team's squad in its own list. Add player actions from those lists must use `dialog_add_player_for_team` so the fixed team, validation and duplicate-name flow stay identical to the Players page. Team selectors include every club, even those without players; saving still requires at least one selected player per side.
 - Adding a player whose full name matches an existing player must show the existing player's details and offer to add a duplicate, move the existing player to the selected club, or cancel. Use `db_find_player_by_name`; never add the duplicate silently.
 - Pages and dialogs must tolerate DPI settings and available work-area clamping down to the documented minimum display. Do not assume the screen size; clamp all dimensions to non-negative values.
 - Text must be valid UTF-8 internally. Convert only at the Win32 boundary.

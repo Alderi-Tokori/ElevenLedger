@@ -201,24 +201,18 @@ static void matches_paint(Page *page, HDC dc)
     }
 }
 
-static bool has_playable_team_pair(const Database *db)
+static bool has_match_teams(const Database *db)
 {
-    int teams_with_players = 0;
-    for (size_t i = 0; i < db->team_count; ++i) {
-        if (db_team_player_count(db, db->teams[i].id, true) > 0) {
-            teams_with_players++;
-        }
-    }
-    return teams_with_players >= 2;
+    return db->team_count >= 2;
 }
 
 static void matches_record(MatchesPage *page)
 {
     App *app = page->base.app;
-    if (!has_playable_team_pair(&app->db)) {
+    if (!has_match_teams(&app->db)) {
         MessageBoxW(app->main_hwnd,
-                    L"Recording a match needs at least two teams, each with active players.\n\nAdd teams and players first.",
-                    L"Not enough players", MB_OK | MB_ICONINFORMATION);
+                    L"Recording a match needs at least two clubs.\n\nAdd another club first; players can be created from the match form.",
+                    L"Not enough clubs", MB_OK | MB_ICONINFORMATION);
         return;
     }
     uint64_t match_id = dialog_record_match(app);

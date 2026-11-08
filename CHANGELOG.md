@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.9.5 - 2026-11-08
+
+### Changed
+
+- The Record match form now lists every club, including clubs without players, so a squad can be created inline before selecting the line-up. Match saving still requires at least one selected player for each side.
+
 ## 1.9.4 - 2026-11-08
 
 ### Fixed

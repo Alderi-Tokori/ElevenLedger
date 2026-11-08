@@ -7,7 +7,7 @@ The application is a dependency-free C17 Win32 program. It does not use a browse
 ## Highlights
 
 - Multiple clubs and squads with availability and starting ratings.
-- Match recording with side-by-side home and away squads, inline player creation, per-player minutes and a 1-10 individual performance input.
+- Match recording with side-by-side home and away squads, inline player creation for any club (including clubs without players), per-player minutes and a 1-10 individual performance input.
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.
 - Recorded matches can be edited; existing line-up players keep the club they represented even after a transfer or archive.

@@ -141,15 +141,9 @@ static void format_player_name(const Player *player, char *buffer,
     }
 }
 
-static bool playable_team_count(const Database *db)
+static bool has_match_teams(const Database *db)
 {
-    size_t count = 0;
-    for (size_t i = 0; i < db->team_count; ++i) {
-        if (db_team_player_count(db, db->teams[i].id, true) > 0) {
-            count++;
-        }
-    }
-    return count >= 2;
+    return db->team_count >= 2;
 }
 
 static void record_show_error(RecordMatchState *state, const char *utf8)
@@ -1274,16 +1268,6 @@ static bool record_build(App *app, RecordMatchState *state)
 
     for (size_t i = 0; i < app->db.team_count; ++i) {
         const Team *team = &app->db.teams[i];
-        bool include =
-            db_team_player_count(&app->db, team->id, true) > 0;
-        if (state->editing &&
-            (team->id == match->home_team_id ||
-             team->id == match->away_team_id)) {
-            include = true;
-        }
-        if (!include) {
-            continue;
-        }
         ui_combo_add_utf8(state->home_team, team->name, team->id);
         ui_combo_add_utf8(state->away_team, team->name, team->id);
     }
@@ -1347,9 +1331,9 @@ static uint64_t match_dialog_run(App *app, HWND owner, uint64_t match_id)
 
 uint64_t dialog_record_match(App *app)
 {
-    if (!playable_team_count(&app->db)) {
+    if (!has_match_teams(&app->db)) {
         MessageBoxW(app->main_hwnd,
-                    L"At least two teams with active players are needed to record a match.",
+                    L"At least two clubs are needed to record a match.",
                     L"PitchRate", MB_OK | MB_ICONINFORMATION);
         return 0;
     }
