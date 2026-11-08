@@ -92,7 +92,9 @@ home_team_delta = 16 * (actual_home - expected_home) * margin
 away_team_delta = -home_team_delta
 ```
 
-`home_team_delta` is the **entire** result movement for the home team, not a per-player amount. The winning team's players share exactly this pool, and the losing team's players share its opposite. A draw creates a zero pool, so the two teams exchange no rating points.
+`home_team_delta` is the **entire** result movement for the home team, not a per-player amount. The winning team's players share exactly this pool, and the losing team's players share its opposite.
+
+A draw sets the margin factor to `1.00`, but it does not by itself create a zero pool: the result component is still `16 * (0.5 - expected_home)`, which is non-zero whenever the pre-match expectation is not exactly `0.50`. For example, a draw between two equal line-ups at a normal home venue moves about `0.92` rating points from the home team to the away team. Only a match with `expected_home == 0.50` — such as a 0-0 draw at a neutral venue between equal line-ups — produces exactly zero team movement.
 
 ## 6. Team context
 
