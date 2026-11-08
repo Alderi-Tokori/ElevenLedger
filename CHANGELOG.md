@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.9.1 - 2026-11-08
+
+### Fixed
+
+- Closing a match creation or edit dialog no longer leaves the parent window presenting a stale black frame. The modal loop repaints the owner and its child windows immediately after re-enabling them.
+
 ## 1.9.0 - 2026-11-08
 
 ### Changed
