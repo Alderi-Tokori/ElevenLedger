@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.5.0 - 2026-11-08
+
+### Changed
+
+- Rating badges now use five bands: green from 80.0, blue from 65.0, neutral grey from 50.0 (average, and the default starting rating), amber from 40.0 and red below 40.0. A rating of exactly 50.0 is no longer shown in red.
+
 ## 1.4.0 - 2026-11-08
 
 ### Changed

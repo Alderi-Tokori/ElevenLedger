@@ -182,5 +182,6 @@ A change is complete only when:
 - the build is warning-free,
 - GUI smoke passes for UI changes,
 - documentation is current,
+- user-visible changes bump `PROJECT_VERSION` and the fallback version strings and add a `CHANGELOG.md` entry,
 - the diff has been reviewed,
 - there is a local commit.
