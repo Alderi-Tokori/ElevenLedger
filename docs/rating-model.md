@@ -24,6 +24,7 @@ For the match:
 - Home and away teams and their line-ups.
 - Home and away goals, 0-99.
 - Match date.
+- Neutral-venue flag. A neutral match removes the home-advantage adjustment; one side is still labelled home for score and line-up entry order.
 
 A player not in the line-up is unaffected by the match.
 
@@ -62,11 +63,14 @@ This is a minutes-weighted average. A player who features for only a few minutes
 ## 3. Expected result
 
 ```text
-expected_home = 1 / (1 + 10 ^ ((away_strength - home_strength - 4.0) / 40.0))
+home_advantage = 0.0   for a neutral venue
+               = 4.0   otherwise
+
+expected_home = 1 / (1 + 10 ^ ((away_strength - home_strength - home_advantage) / 40.0))
 expected_away = 1 - expected_home
 ```
 
-The 40-point scale and home advantage are expressed in rating points, not win percentages. With two equal line-ups the home side is expected to score about 55.7% of the available result.
+The 40-point scale and home advantage are expressed in rating points, not win percentages. With two equal line-ups the home side is expected to score about 55.7% of the available result in a normal match, or exactly 50.0% at a neutral venue.
 
 ## 4. Actual result and goal margin
 
@@ -104,7 +108,7 @@ rating_after            = clamp(rating_before + proposed_delta, 1.0, 99.0)
 
 ## Worked example
 
-Two equal 70.0 line-ups. The home team wins 2-0. One player plays 90 minutes at performance 7.0.
+Two equal 70.0 line-ups in a normal home match. The home team wins 2-0. One player plays 90 minutes at performance 7.0.
 
 ```text
 expected_home       = 0.5573
@@ -118,6 +122,8 @@ rating_after        = 79.96
 ```
 
 The full-time 70.0 opponent with a neutral 6.0 performance moves by `-9.21` to `60.79`.
+
+At a neutral venue with the same equal line-ups and a 1-0 home win, the home expectation is `0.50` instead of `0.5573`. The shared team movement becomes `+9.20 / -9.20` rather than `+8.15 / -8.15`; a 0-0 draw produces exactly zero team movement.
 
 ## Chronological replay
 

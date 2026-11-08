@@ -54,6 +54,7 @@ typedef struct {
     uint64_t away_team_id;
     int home_goals;
     int away_goals;
+    bool neutral_venue;
     /* Derived team-level details, retained for history and previews. */
     RatingMatchSummary rating;
 } Match;
@@ -104,6 +105,7 @@ typedef struct {
     uint64_t away_team_id;
     int home_goals;
     int away_goals;
+    bool neutral_venue;
     const MatchPlayerInput *players;
     size_t player_count;
 } MatchInput;

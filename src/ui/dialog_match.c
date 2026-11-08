@@ -30,6 +30,7 @@ enum {
     RECORD_CLEAR_ALL_ID,
     RECORD_SAVE_ID,
     RECORD_CANCEL_ID,
+    RECORD_NEUTRAL_VENUE_ID,
 };
 
 enum {
@@ -60,6 +61,7 @@ typedef struct {
     HWND list;
     HWND select_all;
     HWND clear_all;
+    HWND neutral_venue;
     HWND save;
     HWND cancel;
     LineupRow *rows;
@@ -76,6 +78,7 @@ typedef struct {
     RECT label_home_score;
     RECT label_away_score;
     RECT label_away_team;
+    RECT neutral_rect;
     RECT info_rect;
     RECT section_rect;
     RECT list_frame;
@@ -502,12 +505,19 @@ static void record_layout(RecordMatchState *state, int width, int height)
                away_width, field_height, TRUE);
     (void)dash_x;
 
+    int neutral_top = field_y + field_height + ui_scale(theme, 5);
+    state->neutral_rect = (RECT){
+        margin, neutral_top,
+        margin + ui_scale(theme, 290),
+        neutral_top + ui_scale(theme, 26),
+    };
     state->info_rect = (RECT){ margin,
-                               field_y + field_height + ui_scale(theme, 5),
+                               state->neutral_rect.bottom + ui_scale(theme, 1),
                                width - margin,
-                               field_y + field_height + ui_scale(theme, 25) };
+                               state->neutral_rect.bottom +
+                                   ui_scale(theme, 21) };
 
-    int section_y = state->info_rect.bottom + ui_scale(theme, 16);
+    int section_y = state->info_rect.bottom + ui_scale(theme, 12);
     state->section_rect = (RECT){ margin, section_y,
                                   width - margin,
                                   section_y + ui_scale(theme, 22) };
@@ -553,6 +563,10 @@ static void record_layout(RecordMatchState *state, int width, int height)
     MoveWindow(state->cancel,
                right - save_width - ui_scale(theme, 10) - cancel_width,
                button_y, cancel_width, button_height, TRUE);
+    MoveWindow(state->neutral_venue, state->neutral_rect.left,
+               state->neutral_rect.top,
+               state->neutral_rect.right - state->neutral_rect.left,
+               state->neutral_rect.bottom - state->neutral_rect.top, TRUE);
     state->footer_line = (RECT){ margin, button_y - ui_scale(theme, 15),
                                  right, button_y - ui_scale(theme, 14) };
     state->error_rect = (RECT){ margin, button_y - ui_scale(theme, 2),
@@ -692,6 +706,7 @@ static void record_save(RecordMatchState *state)
         .away_team_id = away_id,
         .home_goals = home_goals,
         .away_goals = away_goals,
+        .neutral_venue = ui_checkbox_get_checked(state->neutral_venue),
         .players = lineup,
         .player_count = selected_count,
     };
@@ -857,6 +872,10 @@ static bool record_build(App *app, RecordMatchState *state)
     state->clear_all = ui_button_create(
         state->hwnd, RECORD_CLEAR_ALL_ID, L"Clear all",
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_small_bold);
+    state->neutral_venue = ui_checkbox_create(
+        state->hwnd, RECORD_NEUTRAL_VENUE_ID,
+        L"Neutral venue (no home advantage)",
+        0, 0, 10, 10, theme->font_body);
     state->save = ui_button_create(
         state->hwnd, RECORD_SAVE_ID, L"Record match",
         0, 0, 10, 10, UI_BUTTON_PRIMARY, theme->font_button);
@@ -867,6 +886,7 @@ static bool record_build(App *app, RecordMatchState *state)
         state->away_team == NULL || state->home_score == NULL ||
         state->away_score == NULL || state->list == NULL ||
         state->select_all == NULL || state->clear_all == NULL ||
+        state->neutral_venue == NULL ||
         state->save == NULL || state->cancel == NULL) {
         return false;
     }
@@ -1000,16 +1020,27 @@ static void details_paint(MatchDetailsState *state, HWND hwnd)
                          score_rect, score,
                          DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
-            wchar_t date[32];
-            ui_utf8_to_wide(match->date, date,
-                            sizeof(date) / sizeof(date[0]));
-            RECT date_rect = { center - ui_scale(theme, 100),
+            wchar_t date_value[16];
+            wchar_t date_display[64];
+            ui_utf8_to_wide(match->date, date_value,
+                            sizeof(date_value) / sizeof(date_value[0]));
+            if (match->neutral_venue) {
+                ui_format_wide(date_display,
+                               sizeof(date_display) / sizeof(date_display[0]),
+                               L"%ls  |  Neutral venue", date_value);
+            } else {
+                ui_format_wide(date_display,
+                               sizeof(date_display) / sizeof(date_display[0]),
+                               L"%ls", date_value);
+            }
+            RECT date_rect = { center - ui_scale(theme, 140),
                                scoreboard.top + ui_scale(theme, 62),
-                               center + ui_scale(theme, 100),
+                               center + ui_scale(theme, 140),
                                scoreboard.top + ui_scale(theme, 82) };
             ui_draw_text(canvas.dc, theme->font_small, UI_COLOR_MUTED,
-                         date_rect, date,
-                         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                         date_rect, date_display,
+                         DT_CENTER | DT_VCENTER | DT_SINGLELINE |
+                             DT_END_ELLIPSIS);
 
             wchar_t strength[128];
             ui_format_wide(strength,

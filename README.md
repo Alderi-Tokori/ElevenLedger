@@ -10,6 +10,7 @@ The application is a dependency-free C17 Win32 program. It does not use a browse
 - Match recording with per-player minutes and a 1-10 individual performance input.
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.
+- Optional neutral venues that remove home advantage for cup finals and neutral-site fixtures.
 - Match history with full before/change/after player breakdowns.
 - Tested data layer with checksummed files, backups and atomic writes.
 - Native, DPI-aware interface with dashboard, player, team, match and rating-guide pages.
@@ -52,7 +53,7 @@ By default, data is stored at:
 %LOCALAPPDATA%\PitchRate\data.frc
 ```
 
-Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file from a different PitchRate format version is never overwritten or silently downgraded.
+Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported PitchRate format version is never overwritten or silently downgraded. Legacy v1 files are loaded safely and upgraded to v2 on the next save.
 
 To explore the application with a populated example:
 
@@ -90,7 +91,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1
 Ratings are long-term player ratings from 1.0 to 99.0. A separate 1-10 match performance input describes the player's individual display.
 
 1. The line-up strength of each team is the minutes-weighted average of its players' ratings before kick-off.
-2. An Elo-style expectation is calculated with a 4.0-point home advantage.
+2. An Elo-style expectation is calculated with a 4.0-point home advantage, or no advantage when the match is marked as a neutral venue.
 3. A shared team movement is calculated from the result, expectation and goal margin.
 4. Each player's movement is:
 

@@ -78,7 +78,7 @@ Layering rules:
 1. `src/core` must not depend on Win32 UI or the `App` type.
 2. UI code must not write the data file directly. Use `app_tx_begin`, `app_tx_commit` and `app_tx_abort`.
 3. Derived values (current ratings, appearance before/delta/after, match summaries, player totals) are recomputed. Only source data belongs in the file.
-4. The data format is versioned. Existing v1 files must keep loading. Add migration tests before changing it.
+4. The data format is versioned. Format v2 adds per-match neutral venue; v1 files must keep loading with neutral set to false. Add migration tests before changing it again.
 
 ## Rating model rules
 
@@ -87,7 +87,7 @@ Source of truth: `src/core/rating.h` and `src/core/rating.c`. Full documentation
 - Ratings: 1.0-99.0; default starting rating 70.0.
 - Performance: 1.0-10.0; neutral 6.0. New entries are quantized to two decimals.
 - Minutes: 1-120; player-impact weight caps at 90 minutes.
-- Home advantage: 4.0 rating points.
+- Home advantage: 4.0 rating points for normal matches, 0.0 for neutral-venue matches.
 - K factor: 16.0.
 - Performance weight: 0.75.
 - Shared team movement is split from the result, then each player's movement scales with participation.
@@ -112,7 +112,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - A failed disk save must restore the in-memory database.
 - Never truncate or replace a valid file before the replacement has been fully written, flushed and checksummed.
 - Before promoting the primary to backup, validate the primary and the backup copy. A corrupt primary must not overwrite a good backup.
-- A primary that cannot be read or uses a different format version must never be silently replaced.
+- A primary that cannot be read or uses an unsupported format version must never be silently replaced.
 - Recovery must preserve a damaged primary as `.corrupt` before restoring the backup.
 - No silent reset. If both primary and backup fail validation, stop and report the error.
 - All new file validation must reject duplicates, dangling IDs, invalid ranges, invalid UTF-8 and malformed records.

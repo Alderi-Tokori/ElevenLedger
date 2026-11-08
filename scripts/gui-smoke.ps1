@@ -191,6 +191,12 @@ try {
     if ($lineupCount -lt 2) {
         throw "The record-match dialog did not load any players."
     }
+    $neutralCheckbox = [PitchRateSmoke]::FindChildById($recordDialog, 2210)
+    if ($neutralCheckbox -eq [IntPtr]::Zero) {
+        throw "The record-match dialog is missing its neutral-venue control."
+    }
+    [PitchRateSmoke]::PostMessage($neutralCheckbox, 0x0201, [IntPtr]1, [IntPtr]10) | Out-Null
+    [PitchRateSmoke]::PostMessage($neutralCheckbox, 0x0202, [IntPtr]0, [IntPtr]10) | Out-Null
     [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, [IntPtr]2206, [IntPtr]::Zero) | Out-Null
     Start-Sleep -Milliseconds 100
     [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, [IntPtr]2208, [IntPtr]::Zero) | Out-Null

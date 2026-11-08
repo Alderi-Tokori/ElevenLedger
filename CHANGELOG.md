@@ -2,6 +2,14 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.1.0 - 2026-11-08
+
+### Added
+
+- Per-match neutral-venue support. Neutral matches remove the home-advantage adjustment from the expected result, and the venue is shown in match history and details.
+- Data format v2 with backward-compatible loading of v1 files. V1 matches load with `neutral_venue = false`.
+- Unit and storage round-trip coverage for neutral and legacy-format matches.
+
 ## 1.0.0 - 2026-11-08
 
 Initial production release.

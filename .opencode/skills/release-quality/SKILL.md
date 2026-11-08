@@ -58,7 +58,7 @@ The smoke test must report:
 - If storage changed, verify v1 files still load.
 - Verify the checksum, backup and atomic replacement tests still pass.
 - Verify recovery preserves `.corrupt` and does not overwrite a good backup with a corrupt file.
-- Verify unreadable and differently versioned primary files are not replaced.
+- Verify unreadable and unsupported-version primary files are not replaced, and that v1 files still load.
 - Verify the user data path and `--data` override still work.
 
 ## 6. Git

@@ -21,7 +21,7 @@ PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/databas
 - Match performance is 1.0-10.0 with 6.0 neutral.
 - Participation is `min(minutes, 90)/90`.
 - Line-up strength is minutes-weighted.
-- Expected result uses a 40-point Elo scale and +4.0 home advantage.
+- Expected result uses a 40-point Elo scale. Normal matches add +4.0 home advantage; neutral-venue matches add 0.0.
 - Shared team movement uses K=16, actual minus expected, times a goal-margin factor.
 - Player movement = `team_delta * participation + (performance - 6) * 0.75 * participation`.
 - Player movement is capped at ±12 per match.

@@ -13,7 +13,8 @@
 #include <string.h>
 #include <windows.h>
 
-#define STORAGE_FORMAT_VERSION 1
+#define STORAGE_FORMAT_VERSION 2
+#define STORAGE_MIN_FORMAT_VERSION 1
 #define STORAGE_MAX_FILE_BYTES (64u * 1024u * 1024u)
 #define STORAGE_MAX_FIELDS 12
 #define STORAGE_READ_BUFFER 8192
@@ -224,9 +225,10 @@ static bool write_match(FILE *file, const Match *match)
 {
     if (fprintf(file, "MATCH|%" PRIu64, match->id) < 0 ||
         !write_field(file, match->date) ||
-        fprintf(file, "|%" PRIu64 "|%" PRIu64 "|%d|%d",
+        fprintf(file, "|%" PRIu64 "|%" PRIu64 "|%d|%d|%d",
                 match->home_team_id, match->away_team_id,
-                match->home_goals, match->away_goals) < 0) {
+                match->home_goals, match->away_goals,
+                match->neutral_venue ? 1 : 0) < 0) {
         return false;
     }
     return fputc('\n', file) != EOF;
@@ -723,9 +725,12 @@ static bool parse_player_record(Database *db, char **fields, size_t count,
 }
 
 static bool parse_match_record(Database *db, char **fields, size_t count,
+                               int file_version,
                                char *error, size_t error_size)
 {
-    if (count != 7) {
+    bool neutral_venue = false;
+    size_t expected_count = file_version == 1 ? 7 : 8;
+    if (count != expected_count) {
         set_error(error, error_size, "Invalid MATCH record.");
         return false;
     }
@@ -734,12 +739,20 @@ static bool parse_match_record(Database *db, char **fields, size_t count,
     uint64_t away_id = 0;
     int home_goals = 0;
     int away_goals = 0;
+    int neutral = 0;
     if (!parse_u64(fields[1], &id) || !util_date_valid(fields[2]) ||
         !parse_u64(fields[3], &home_id) || !parse_u64(fields[4], &away_id) ||
         !util_parse_int(fields[5], 0, 99, &home_goals) ||
         !util_parse_int(fields[6], 0, 99, &away_goals)) {
         set_error(error, error_size, "Invalid match record values.");
         return false;
+    }
+    if (file_version >= 2) {
+        if (!util_parse_int(fields[7], 0, 1, &neutral)) {
+            set_error(error, error_size, "Invalid neutral-venue value.");
+            return false;
+        }
+        neutral_venue = neutral != 0;
     }
     if (!reserve_array((void **)&db->matches, sizeof(Match),
                        &db->match_capacity, db->match_count + 1,
@@ -754,6 +767,7 @@ static bool parse_match_record(Database *db, char **fields, size_t count,
     match->away_team_id = away_id;
     match->home_goals = home_goals;
     match->away_goals = away_goals;
+    match->neutral_venue = neutral_venue;
     db->match_count++;
     return true;
 }
@@ -820,16 +834,17 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
         set_error(error, error_size, "This is not a PitchRate data file.");
         return false;
     }
-    int file_version = 0;
-    if (!util_parse_int(cursor + 10, 0, 9999, &file_version)) {
+    int parsed_file_version = 0;
+    if (!util_parse_int(cursor + 10, 0, 9999, &parsed_file_version)) {
         set_error(error, error_size, "Data file has an invalid format version.");
         return false;
     }
-    if (file_version != STORAGE_FORMAT_VERSION) {
+    if (parsed_file_version < STORAGE_MIN_FORMAT_VERSION ||
+        parsed_file_version > STORAGE_FORMAT_VERSION) {
         if (incompatible_version != NULL) {
             *incompatible_version = true;
         }
-        if (file_version > STORAGE_FORMAT_VERSION) {
+        if (parsed_file_version > STORAGE_FORMAT_VERSION) {
             set_error(error, error_size,
                       "This data file was created by a newer PitchRate version.");
         } else {
@@ -885,6 +900,7 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
                                          error, error_size);
         } else if (strcmp(fields[0], "MATCH") == 0) {
             parsed = parse_match_record(db, fields, field_count,
+                                        parsed_file_version,
                                         error, error_size);
         } else if (strcmp(fields[0], "APP") == 0) {
             parsed = parse_appearance_record(db, fields, field_count,

@@ -99,7 +99,7 @@ static void draw_example(Page *page, HDC dc, RECT panel)
     double delta = 0.0;
     double after = 0.0;
     bool valid = rating_compute_match(&summary, home, 1, away, 1, 2, 0,
-                                      error, sizeof(error)) &&
+                                      false, error, sizeof(error)) &&
                  rating_player_change(&summary, true, 70.0, 90, 7.0,
                                       &delta, &after);
     if (!valid) {
@@ -115,7 +115,7 @@ static void draw_example(Page *page, HDC dc, RECT panel)
     wchar_t body[512];
     ui_format_wide(
         body, sizeof(body) / sizeof(body[0]),
-        L"Two 70.0 teams. Home wins 2-0. One player completes 90 minutes at 7.0.\n\n"
+        L"Two 70.0 teams in a normal home match. Home wins 2-0. One player completes 90 minutes at 7.0.\n\n"
         L"Expected home result: %.1f%%\n"
         L"Team result movement: %+.2f\n"
         L"Performance adjustment: %+.2f\n"
@@ -207,7 +207,7 @@ static void guide_paint(Page *page, HDC dc)
     };
     const wchar_t *step_bodies[] = {
         L"The line-up rating is a minutes-weighted average of the players on the pitch. More time means more influence.",
-        L"An Elo-style expectation is calculated with a 4.0-point home advantage. It compares the two line-ups before kick-off.",
+        L"An Elo-style expectation compares the two line-ups before kick-off. Normal matches add a 4.0-point home advantage; neutral-venue matches apply none.",
         L"Team movement = 16 x (actual result - expected result) x goal-margin factor. A draw has margin 1.00; a 3+ goal win reaches 1.45.",
         L"Player movement = team movement x (capped minutes/90) + (performance - 6.0) x 0.75 x (capped minutes/90). The participation cap is 90 minutes; a match is capped at 12.0 points and ratings stay within 1-99.",
     };
@@ -230,7 +230,7 @@ static void guide_paint(Page *page, HDC dc)
     note_body.top += ui_scale(theme, 20);
     ui_draw_text(
         dc, theme->font_small, UI_COLOR_MUTED, note_body,
-        L"Every match is replayed in date order whenever history changes. Deleting a match or changing a starting rating therefore recalculates every later appearance. Archived players remain in the record. New line-ups are limited to 1,320 player-minutes per team.",
+        L"Every match is replayed in date order whenever history changes. Deleting a match or changing a starting rating therefore recalculates every later appearance. Archived players remain in the record. New line-ups are limited to 1,320 player-minutes per team, and neutral venues receive no home advantage.",
         DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
 
     int data_height = ui_scale(theme, 156);

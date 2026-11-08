@@ -19,7 +19,7 @@ typedef enum {
 /*
  * Loads a checksummed, versioned data file. If the primary file is missing or
  * invalid, the previous atomic save is tried. A primary that cannot be read or
- * uses a different format version stops immediately and is never replaced. On
+ * uses an unsupported format version stops immediately and is never replaced. On
  * STORAGE_RECOVERED the database was loaded from the backup and can be repaired
  * explicitly via storage_repair_from_backup, which preserves the damaged
  * primary as ".corrupt".

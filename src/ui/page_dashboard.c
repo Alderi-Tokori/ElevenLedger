@@ -334,7 +334,7 @@ static void draw_recent_matches(Page *page, HDC dc, RECT panel)
         RECT detail = fixture;
         detail.top = row.top + ui_scale(theme, 25);
         detail.bottom = row.bottom;
-        wchar_t detail_text[128];
+        wchar_t detail_text[160];
         const wchar_t *result = match->home_goals > match->away_goals
                                     ? L"Home win"
                                     : (match->home_goals < match->away_goals
@@ -343,11 +343,18 @@ static void draw_recent_matches(Page *page, HDC dc, RECT panel)
         wchar_t date[16];
         ui_utf8_to_wide(match->date, date,
                         sizeof(date) / sizeof(date[0]));
-        ui_format_wide(detail_text,
-                       sizeof(detail_text) / sizeof(detail_text[0]),
-                       L"%ls  |  %ls", date, result);
+        if (match->neutral_venue) {
+            ui_format_wide(detail_text,
+                           sizeof(detail_text) / sizeof(detail_text[0]),
+                           L"%ls  |  %ls  |  Neutral venue", date, result);
+        } else {
+            ui_format_wide(detail_text,
+                           sizeof(detail_text) / sizeof(detail_text[0]),
+                           L"%ls  |  %ls", date, result);
+        }
         ui_draw_text(dc, theme->font_small, UI_COLOR_MUTED, detail,
-                     detail_text, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                     detail_text, DT_LEFT | DT_VCENTER | DT_SINGLELINE |
+                                      DT_END_ELLIPSIS);
     }
 }
 

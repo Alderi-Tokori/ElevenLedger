@@ -777,6 +777,7 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
         RatingMatchSummary summary;
         if (!rating_match_summary(&summary, home_strength, away_strength,
                                   match->home_goals, match->away_goals,
+                                  match->neutral_venue,
                                   error, error_size)) {
             return false;
         }
@@ -924,6 +925,7 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
     match->away_team_id = input->away_team_id;
     match->home_goals = input->home_goals;
     match->away_goals = input->away_goals;
+    match->neutral_venue = input->neutral_venue;
 
     for (size_t i = 0; i < input->player_count; ++i) {
         const MatchPlayerInput *entry = &input->players[i];

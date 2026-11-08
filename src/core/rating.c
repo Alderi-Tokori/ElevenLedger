@@ -75,6 +75,7 @@ double rating_team_strength(const RatingPlayerInput *players, size_t count,
 bool rating_match_summary(RatingMatchSummary *out,
                           double home_strength, double away_strength,
                           int home_goals, int away_goals,
+                          bool neutral_venue,
                           char *error, size_t error_size)
 {
     if (out == NULL) {
@@ -95,9 +96,11 @@ bool rating_match_summary(RatingMatchSummary *out,
         return false;
     }
 
+    double home_advantage =
+        neutral_venue ? 0.0 : RATING_HOME_ADVANTAGE;
     double expected_home = 1.0 /
         (1.0 + pow(10.0,
-                   (away_strength - home_strength - RATING_HOME_ADVANTAGE) /
+                   (away_strength - home_strength - home_advantage) /
                        40.0));
     double actual_home;
     int goal_difference = home_goals - away_goals;
@@ -136,6 +139,7 @@ bool rating_compute_match(RatingMatchSummary *out,
                           const RatingPlayerInput *home, size_t home_count,
                           const RatingPlayerInput *away, size_t away_count,
                           int home_goals, int away_goals,
+                          bool neutral_venue,
                           char *error, size_t error_size)
 {
     bool home_valid = false;
@@ -149,7 +153,8 @@ bool rating_compute_match(RatingMatchSummary *out,
         return false;
     }
     return rating_match_summary(out, home_strength, away_strength,
-                                home_goals, away_goals, error, error_size);
+                                home_goals, away_goals, neutral_venue,
+                                error, error_size);
 }
 
 bool rating_player_change(const RatingMatchSummary *summary, bool home_team,

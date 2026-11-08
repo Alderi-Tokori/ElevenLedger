@@ -105,15 +105,16 @@ static void matches_refresh(Page *page)
                            sizeof(home_change));
         match_team_summary(db, match, match->away_team_id, away_change,
                            sizeof(away_change));
-        const char *columns[6] = {
+        const char *columns[7] = {
             match->date,
             home != NULL ? home->name : "Unknown",
             score,
             away != NULL ? away->name : "Unknown",
+            match->neutral_venue ? "Neutral" : "Home",
             home_change,
             away_change,
         };
-        if (ui_list_add_row(matches->list, columns, 6,
+        if (ui_list_add_row(matches->list, columns, 7,
                             (LPARAM)match->id) >= 0) {
             matches->visible_rows++;
         }
@@ -155,8 +156,8 @@ static void matches_layout(Page *page, int width, int height)
                right - view_width - gap - record_width, top,
                record_width, button_height, TRUE);
 
-    static const int widths[6] = { 13, 25, 10, 25, 13, 14 };
-    ui_list_set_percent_widths(matches->list, widths, 6);
+    static const int widths[7] = { 12, 22, 9, 22, 11, 12, 12 };
+    ui_list_set_percent_widths(matches->list, widths, 7);
 }
 
 static void matches_paint(Page *page, HDC dc)
@@ -313,11 +314,12 @@ Page *matches_page_create(App *app)
         return NULL;
     }
     ui_list_add_column(matches->list, 0, L"Date", 100);
-    ui_list_add_column(matches->list, 1, L"Home", 200);
+    ui_list_add_column(matches->list, 1, L"Home", 190);
     ui_list_add_column(matches->list, 2, L"Score", 80);
-    ui_list_add_column(matches->list, 3, L"Away", 200);
-    ui_list_add_column(matches->list, 4, L"Home change", 100);
-    ui_list_add_column(matches->list, 5, L"Away change", 100);
+    ui_list_add_column(matches->list, 3, L"Away", 190);
+    ui_list_add_column(matches->list, 4, L"Venue", 90);
+    ui_list_add_column(matches->list, 5, L"Home change", 100);
+    ui_list_add_column(matches->list, 6, L"Away change", 100);
     EnableWindow(matches->view_button, FALSE);
     return &matches->base;
 }

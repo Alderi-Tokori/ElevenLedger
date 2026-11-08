@@ -20,7 +20,7 @@ static bool test_expected_score_curve(void)
     RatingPlayerInput away[] = { player(70.0, 90, 6.0) };
     RatingMatchSummary summary;
     char error[256];
-    CHECK(rating_compute_match(&summary, home, 1, away, 1, 0, 0,
+    CHECK(rating_compute_match(&summary, home, 1, away, 1, 0, 0, false,
                                error, sizeof(error)));
     CHECK(summary.home_expected > 0.5);
     CHECK_NEAR(summary.home_expected + summary.away_expected, 1.0, 1e-12);
@@ -31,7 +31,7 @@ static bool test_expected_score_curve(void)
     CHECK(summary.away_team_delta > 0.0);
     CHECK_NEAR(summary.home_team_delta, -summary.away_team_delta, 1e-12);
 
-    CHECK(rating_match_summary(&summary, 90.0, 50.0, 1, 1,
+    CHECK(rating_match_summary(&summary, 90.0, 50.0, 1, 1, false,
                                error, sizeof(error)));
     CHECK(summary.home_expected > 0.9);
     CHECK(summary.home_team_delta < 0.0);
@@ -45,7 +45,7 @@ static bool test_equal_home_win_values(void)
     RatingPlayerInput away[] = { player(70.0, 90, 6.0) };
     RatingMatchSummary summary;
     char error[256];
-    CHECK(rating_compute_match(&summary, home, 1, away, 1, 1, 0,
+    CHECK(rating_compute_match(&summary, home, 1, away, 1, 1, 0, false,
                                error, sizeof(error)));
     CHECK_NEAR(summary.home_expected, 0.557305, 0.00001);
     CHECK_NEAR(summary.margin_multiplier, 1.15, 1e-12);
@@ -67,9 +67,9 @@ static bool test_goal_margin_amplifies_change(void)
     RatingMatchSummary clear;
     char error[256];
     CHECK(rating_match_summary(&close, strengths[0], strengths[1], 1, 0,
-                               error, sizeof(error)));
+                               false, error, sizeof(error)));
     CHECK(rating_match_summary(&clear, strengths[0], strengths[1], 4, 0,
-                               error, sizeof(error)));
+                               false, error, sizeof(error)));
     CHECK(close.margin_multiplier < clear.margin_multiplier);
     CHECK(close.home_team_delta < clear.home_team_delta);
     CHECK_NEAR(clear.margin_multiplier - close.margin_multiplier, 0.30, 1e-12);
@@ -80,7 +80,7 @@ static bool test_performance_adjustment(void)
 {
     RatingMatchSummary summary;
     char error[256];
-    CHECK(rating_match_summary(&summary, 70.0, 70.0, 1, 0,
+    CHECK(rating_match_summary(&summary, 70.0, 70.0, 1, 0, false,
                                error, sizeof(error)));
     double neutral_delta = 0.0;
     double neutral_after = 0.0;
@@ -108,7 +108,7 @@ static bool test_minutes_weighting(void)
     RatingPlayerInput away[] = { player(70.0, 90, 6.0) };
     RatingMatchSummary summary;
     char error[256];
-    CHECK(rating_compute_match(&summary, home, 1, away, 1, 1, 0,
+    CHECK(rating_compute_match(&summary, home, 1, away, 1, 1, 0, false,
                                error, sizeof(error)));
     /* The line-up strength is unchanged when only one player is present. */
     CHECK_NEAR(summary.home_strength, 70.0, 1e-12);
@@ -151,7 +151,7 @@ static bool test_rating_bounds(void)
 {
     RatingMatchSummary summary;
     char error[256];
-    CHECK(rating_match_summary(&summary, 70.0, 70.0, 3, 0,
+    CHECK(rating_match_summary(&summary, 70.0, 70.0, 3, 0, false,
                                error, sizeof(error)));
     double delta = 0.0;
     double after = 0.0;
@@ -160,7 +160,7 @@ static bool test_rating_bounds(void)
     CHECK_NEAR(after, 99.0, 1e-12);
     CHECK_NEAR(delta, 0.5, 1e-12);
 
-    CHECK(rating_match_summary(&summary, 70.0, 70.0, 0, 3,
+    CHECK(rating_match_summary(&summary, 70.0, 70.0, 0, 3, false,
                                error, sizeof(error)));
     CHECK(rating_player_change(&summary, true, 1.2, 90, 1.0,
                                &delta, &after));
@@ -179,19 +179,19 @@ static bool test_invalid_inputs(void)
     char error[256];
 
     CHECK(!rating_compute_match(&summary, bad_ratings, 1, good, 1, 1, 0,
-                                error, sizeof(error)));
+                                false, error, sizeof(error)));
     CHECK(!rating_compute_match(&summary, good, 1, bad_minutes, 1, 1, 0,
-                                error, sizeof(error)));
+                                false, error, sizeof(error)));
     CHECK(!rating_compute_match(&summary, good, 1, bad_performance, 1, 1, 0,
-                                error, sizeof(error)));
+                                false, error, sizeof(error)));
     CHECK(!rating_compute_match(&summary, NULL, 0, good, 1, 1, 0,
+                                false, error, sizeof(error)));
+    CHECK(!rating_match_summary(&summary, 70.0, 70.0, -1, 0, false,
                                 error, sizeof(error)));
-    CHECK(!rating_match_summary(&summary, 70.0, 70.0, -1, 0,
-                                error, sizeof(error)));
-    CHECK(!rating_match_summary(&summary, 70.0, 70.0, 0, 100,
+    CHECK(!rating_match_summary(&summary, 70.0, 70.0, 0, 100, false,
                                 error, sizeof(error)));
 
-    CHECK(rating_match_summary(&summary, 70.0, 70.0, 1, 0,
+    CHECK(rating_match_summary(&summary, 70.0, 70.0, 1, 0, false,
                                error, sizeof(error)));
     double delta = 0.0;
     double after = 0.0;
@@ -207,11 +207,43 @@ static bool test_underdog_win(void)
     RatingPlayerInput away[] = { player(95.0, 90, 6.0) };
     RatingMatchSummary summary;
     char error[256];
-    CHECK(rating_compute_match(&summary, home, 1, away, 1, 2, 1,
+    CHECK(rating_compute_match(&summary, home, 1, away, 1, 2, 1, false,
                                error, sizeof(error)));
     CHECK(summary.home_expected < 0.1);
     CHECK(summary.home_team_delta > 10.0);
     CHECK(summary.away_team_delta < -10.0);
+    return true;
+}
+
+static bool test_neutral_venue_removes_home_advantage(void)
+{
+    RatingPlayerInput home[] = { player(70.0, 90, 6.0) };
+    RatingPlayerInput away[] = { player(70.0, 90, 6.0) };
+    RatingMatchSummary neutral;
+    RatingMatchSummary normal;
+    char error[256];
+    CHECK(rating_compute_match(&neutral, home, 1, away, 1, 0, 0, true,
+                               error, sizeof(error)));
+    CHECK_NEAR(neutral.home_expected, 0.5, 1e-12);
+    CHECK_NEAR(neutral.away_expected, 0.5, 1e-12);
+    CHECK_NEAR(neutral.home_team_delta, 0.0, 1e-12);
+    CHECK_NEAR(neutral.away_team_delta, 0.0, 1e-12);
+
+    CHECK(rating_compute_match(&neutral, home, 1, away, 1, 1, 0, true,
+                               error, sizeof(error)));
+    CHECK(rating_compute_match(&normal, home, 1, away, 1, 1, 0, false,
+                               error, sizeof(error)));
+    CHECK_NEAR(neutral.home_expected, 0.5, 1e-12);
+    CHECK_NEAR(normal.home_expected, 0.557305, 0.00001);
+    CHECK(neutral.home_team_delta > normal.home_team_delta);
+    CHECK_NEAR(neutral.home_team_delta, 9.2, 1e-12);
+    CHECK_NEAR(neutral.away_team_delta, -9.2, 1e-12);
+
+    CHECK(rating_match_summary(&neutral, 80.0, 60.0, 1, 1, true,
+                               error, sizeof(error)));
+    CHECK_NEAR(neutral.home_expected, 1.0 /
+                                      (1.0 + pow(10.0, (60.0 - 80.0) / 40.0)),
+               1e-12);
     return true;
 }
 
@@ -242,7 +274,7 @@ static bool test_randomized_invariants(void)
         int away_goals = (int)(seed % 6u);
         RatingMatchSummary summary;
         CHECK(rating_compute_match(&summary, home, 11, away, 11,
-                                   home_goals, away_goals,
+                                   home_goals, away_goals, false,
                                    error, sizeof(error)));
         CHECK(summary.home_expected >= 0.0 && summary.home_expected <= 1.0);
         CHECK_NEAR(summary.home_expected + summary.away_expected, 1.0, 1e-12);
@@ -282,6 +314,7 @@ const TestCase g_rating_tests[] = {
     TEST_CASE(test_rating_bounds),
     TEST_CASE(test_invalid_inputs),
     TEST_CASE(test_underdog_win),
+    TEST_CASE(test_neutral_venue_removes_home_advantage),
     TEST_CASE(test_randomized_invariants),
 };
 

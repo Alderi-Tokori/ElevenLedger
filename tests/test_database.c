@@ -529,6 +529,54 @@ static bool test_match_total_minutes_guard(void)
     return true;
 }
 
+static bool test_neutral_venue_match(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    uint64_t players[2];
+    char error[256];
+    CHECK(db_add_player(&db, alpha, "Home", "Player", POSITION_FORWARD,
+                        70.0, true, &players[0], error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", POSITION_DEFENDER,
+                        70.0, true, &players[1], error, sizeof(error)));
+    MatchPlayerInput lineup[] = {
+        { players[0], 90, 6.0 },
+        { players[1], 90, 6.0 },
+    };
+    MatchInput input = {
+        .date = "2026-06-10",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 0,
+        .away_goals = 0,
+        .neutral_venue = true,
+        .players = lineup,
+        .player_count = 2,
+    };
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+    const Match *match = db_find_match(&db, match_id);
+    CHECK(match != NULL);
+    CHECK(match->neutral_venue);
+    CHECK_NEAR(match->rating.home_expected, 0.5, 1e-12);
+    CHECK_NEAR(match->rating.home_team_delta, 0.0, 1e-12);
+    CHECK_NEAR(db_find_player(&db, players[0])->current_rating, 70.0, 1e-12);
+
+    input.date = "2026-06-17";
+    input.neutral_venue = false;
+    input.home_goals = 1;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+    match = db_find_match(&db, match_id);
+    CHECK(match != NULL);
+    CHECK(!match->neutral_venue);
+    CHECK(match->rating.home_expected > 0.5);
+    CHECK(match->rating.home_team_delta > 0.0);
+    db_free(&db);
+    return true;
+}
+
 static bool test_recompute_sorts_matches_by_date(void)
 {
     Database db;
@@ -678,6 +726,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_delete_player_with_history_blocked),
     TEST_CASE(test_clone_and_id_continuity),
     TEST_CASE(test_match_total_minutes_guard),
+    TEST_CASE(test_neutral_venue_match),
     TEST_CASE(test_recompute_sorts_matches_by_date),
     TEST_CASE(test_player_transfer_preserves_historical_team),
     TEST_CASE(test_team_stats_are_minutes_and_results_aware),

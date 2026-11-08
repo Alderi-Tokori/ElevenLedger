@@ -157,7 +157,9 @@ static bool same_database(const Database *left, const Database *right)
             left->matches[i].away_team_id !=
                 right->matches[i].away_team_id ||
             left->matches[i].home_goals != right->matches[i].home_goals ||
-            left->matches[i].away_goals != right->matches[i].away_goals) {
+            left->matches[i].away_goals != right->matches[i].away_goals ||
+            left->matches[i].neutral_venue !=
+                right->matches[i].neutral_venue) {
             return false;
         }
     }
@@ -211,6 +213,60 @@ static bool test_roundtrip_and_recompute(void)
     CHECK(loaded.next_match_id == 2);
 
     db_free(&original);
+    db_free(&loaded);
+    cleanup_test_paths(&paths);
+    return true;
+}
+
+static bool test_neutral_venue_roundtrip(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(add_two_teams(&db, &alpha, &beta));
+    char error[768];
+    uint64_t home_player = 0;
+    uint64_t away_player = 0;
+    CHECK(db_add_player(&db, alpha, "Home", "Player", POSITION_FORWARD,
+                        70.0, true, &home_player, error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", POSITION_DEFENDER,
+                        70.0, true, &away_player, error, sizeof(error)));
+    MatchPlayerInput lineup[] = {
+        { home_player, 90, 6.0 },
+        { away_player, 90, 6.0 },
+    };
+    MatchInput input = {
+        .date = "2026-06-10",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 0,
+        .away_goals = 0,
+        .neutral_venue = true,
+        .players = lineup,
+        .player_count = 2,
+    };
+    CHECK(db_add_match(&db, &input, NULL, error, sizeof(error)));
+    CHECK(storage_save(paths.data_path, &db, error, sizeof(error)));
+    db_free(&db);
+
+    FILE *file = _wfopen(paths.data_path, L"rb");
+    CHECK(file != NULL);
+    char header[16] = { 0 };
+    CHECK(fread(header, 1, 11, file) == 11);
+    CHECK(fclose(file) == 0);
+    CHECK(memcmp(header, "PITCHRATE|2", 11) == 0);
+
+    Database loaded;
+    StorageStatus status = storage_load(paths.data_path, &loaded,
+                                        error, sizeof(error));
+    CHECK(status == STORAGE_OK);
+    CHECK(loaded.match_count == 1);
+    CHECK(loaded.matches[0].neutral_venue);
+    CHECK_NEAR(loaded.matches[0].rating.home_expected, 0.5, 1e-12);
+    CHECK_NEAR(loaded.matches[0].rating.home_team_delta, 0.0, 1e-12);
+    CHECK_NEAR(loaded.players[0].current_rating, 70.0, 1e-12);
     db_free(&loaded);
     cleanup_test_paths(&paths);
     return true;
@@ -612,6 +668,7 @@ static bool test_legacy_v1_minutes_and_precision_are_loadable(void)
     CHECK(loaded.appearance_count == 13);
     CHECK_NEAR(loaded.appearances[0].performance, 7.55, 1e-12);
     CHECK(loaded.players[0].minutes_played == 120);
+    CHECK(!loaded.matches[0].neutral_venue);
     CHECK(db_validate(&loaded, error, sizeof(error)));
     CHECK(storage_save(paths.data_path, &loaded, error, sizeof(error)));
     db_free(&loaded);
@@ -762,6 +819,7 @@ static bool test_nested_directory_created(void)
 
 const TestCase g_storage_tests[] = {
     TEST_CASE(test_roundtrip_and_recompute),
+    TEST_CASE(test_neutral_venue_roundtrip),
     TEST_CASE(test_unicode_and_escaping),
     TEST_CASE(test_backup_created_and_recovery),
     TEST_CASE(test_checksum_detects_damage_without_backup),
