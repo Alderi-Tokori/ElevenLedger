@@ -19,8 +19,8 @@ PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/databas
 
 - Long-term ratings have no fixed lower or upper bound; starting ratings must be finite.
 - Match performance is 1.0-10.0 with 6.0 as the default input.
-- Actual participation is `min(minutes, 90)/90`; result participation uses `result_minutes`, normally equal to actual minutes.
-- A player sent off in a lost match uses entry-to-final-whistle result minutes, capped at 90. Wins and draws use actual minutes. Line-up strength, performance and statistics always use actual minutes.
+- Actual participation is `minutes / 90` with no 90-minute cap; result participation uses `result_minutes`, normally equal to actual minutes.
+- A player sent off in a lost match uses entry-to-final-whistle result minutes. Wins and draws use actual minutes. Line-up strength, performance and statistics always use actual minutes.
 - Line-up strength is actual-minutes-weighted.
 - Expected result uses a 40-point Elo scale. Normal matches add +4.0 home advantage; neutral-venue matches add 0.0.
 - Team movement uses K=16, actual minus expected, times a goal-margin factor. It is one pool for the whole team, not a per-player amount.
@@ -54,6 +54,7 @@ PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/databas
 - Increasing performance never decreases a player's delta.
 - For a fixed result weighting, increasing minutes never reduces a player's share of the result pool.
 - A sent-off player on a losing team gets at least the result share implied by entry-to-final-whistle minutes; wins and draws keep the actual result share.
+- A 120-minute appearance has more participation weight than a 90-minute appearance; participation is not capped at 90.
 - Deleting or changing history replays chronological state consistently.
 - Derived fields are not persisted as source data.
 

@@ -91,9 +91,9 @@ Source of truth: `src/core/rating.h` and `src/core/rating.c`. Full documentation
 - Ratings have no fixed lower or upper bound; default starting rating 50.0 (`RATING_DEFAULT`), any finite starting value is accepted.
 - Players have no stored or input position; do not reintroduce position as an implicit rating factor.
 - Performance: 1.0-10.0; default 6.0. New entries are quantized to two decimals.
-- Minutes: 1-120; player-impact weight caps at 90 minutes.
+- Minutes: 1-120; participation is `minutes / 90` with no 90-minute cap.
 - Match length: final-whistle minute 1-120, including stoppage time.
-- Removals without replacement: store the sending-off/removal minute. Such a player on a losing team uses entry-to-final-whistle result participation (capped at 90) for the team result share; wins and draws use actual minutes. Line-up strength, performance and statistics keep actual minutes.
+- Removals without replacement: store the sending-off/removal minute. Such a player on a losing team uses entry-to-final-whistle result participation for the team result share; wins and draws use actual minutes. Line-up strength, performance and statistics keep actual minutes. There is no 90-minute participation cap.
 - Home advantage: 4.0 rating points for normal matches, 0.0 for neutral-venue matches.
 - K factor: 16.0.
 - Performance weight: 0.75.

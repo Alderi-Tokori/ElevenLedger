@@ -17,8 +17,7 @@ double rating_participation(int minutes)
     if (minutes <= 0) {
         return 0.0;
     }
-    int capped = minutes > 90 ? 90 : minutes;
-    return (double)capped / 90.0;
+    return (double)minutes / 90.0;
 }
 
 bool rating_team_profile(const RatingPlayerInput *players, size_t count,

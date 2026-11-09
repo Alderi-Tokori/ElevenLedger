@@ -190,6 +190,10 @@ static bool test_performance_is_zero_sum_within_team(void)
 
 static bool test_minutes_weighting(void)
 {
+    CHECK_NEAR(rating_participation(45), 0.5, 1e-12);
+    CHECK_NEAR(rating_participation(90), 1.0, 1e-12);
+    CHECK_NEAR(rating_participation(120), 120.0 / 90.0, 1e-12);
+
     RatingPlayerInput home[] = {
         player(70.0, 90, 6.0),
         player(70.0, 45, 6.0),
@@ -218,6 +222,8 @@ static bool test_minutes_weighting(void)
     };
     CHECK(rating_compute_match(&summary, extra_home, 2, away, 1, 1, 0, false,
                                error, sizeof(error)));
+    CHECK_NEAR(summary.home_context.total_participation,
+               120.0 / 90.0 + 1.0, 1e-12);
     double first_delta = 0.0;
     double second_delta = 0.0;
     double unused = 0.0;
@@ -225,7 +231,7 @@ static bool test_minutes_weighting(void)
                                &first_delta, &unused));
     CHECK(rating_player_change(&summary, true, 70.0, 90, 6.0,
                                &second_delta, &unused));
-    CHECK_NEAR(first_delta, second_delta, 1e-12);
+    CHECK_NEAR(first_delta, second_delta * (120.0 / 90.0), 1e-12);
     return true;
 }
 

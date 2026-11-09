@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.17.0 - 2026-11-09
+
+### Changed
+
+- Removed the 90-minute cap on participation weighting. Minutes above 90 now increase a player's line-up strength weight, result share and performance share proportionally; a 120-minute appearance counts as `120 / 90 = 1.333`.
+
 ## 1.16.0 - 2026-11-09
 
 ### Added

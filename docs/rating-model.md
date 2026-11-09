@@ -42,14 +42,14 @@ New matches require at least one player from each team and reject a line-up whos
 | `RATING_HOME_ADVANTAGE` | 4.0 | Rating-point home advantage |
 | `RATING_PERFORMANCE_WEIGHT` | 0.75 | Weight of the performance input |
 | `RATING_NEUTRAL_PERFORMANCE` | 6.0 | Default performance input |
-| Participation cap | 90 | Actual and result participation do not increase beyond 90 |
+| Reference minutes | 90 | Participation is `minutes / 90` with no upper cap |
 
 ## 1. Participation factors
 
 Actual participation drives line-up strength and the performance component:
 
 ```text
-participation = min(minutes, 90) / 90
+participation = minutes / 90
 ```
 
 Result participation drives only the share of the team result pool:
@@ -57,12 +57,12 @@ Result participation drives only the share of the team result pool:
 ```text
 result_minutes = minutes                         normally
                = length - (sent_off - minutes)   when sent off and the team loses
-result_participation = min(result_minutes, 90) / 90
+result_participation = result_minutes / 90
 ```
 
-The sent-off calculation uses the player's entry minute (`sent_off - minutes`) and counts him from entry to the final whistle. A starter sent off at 30 in a 99-minute loss therefore has 99 result minutes, capped at 90 for participation, while his line-up strength still uses his 30 actual minutes. A substitute who enters at 57 and is sent off at 70 in the same match has 42 result minutes. Result minutes are never below the actual minutes. Wins and draws keep the actual minutes, so a red card never increases a player's positive share.
+The sent-off calculation uses the player's entry minute (`sent_off - minutes`) and counts him from entry to the final whistle. A starter sent off at 30 in a 99-minute loss therefore has 99 result minutes, while his line-up strength still uses his 30 actual minutes. A substitute who enters at 57 and is sent off at 70 in the same match has 42 result minutes. Result minutes are never below the actual minutes. Wins and draws keep the actual minutes, so a red card never increases a player's positive share.
 
-A player who plays the whole match has a factor of 1.0. A 45-minute player has 0.5. A 90-minute and a 120-minute appearance have the same actual participation; the cap keeps cup extra time from giving an outsized strength or performance share.
+A player who plays the whole match has a factor of 1.0. A 45-minute player has 0.5. A 120-minute appearance has a factor of 1.333, so extra-time minutes carry proportionally more weight than regulation minutes.
 
 ## 2. Line-up strength
 
@@ -187,7 +187,7 @@ At a neutral venue with the same equal line-ups and a 1-0 home win, the home exp
 
 ### Sent-off example
 
-A home starter is sent off at minute 30, the final whistle is minute 99, and the home team loses. The player's actual minutes are 30, so his line-up strength and performance use `30 / 90`. His result participation uses the 99 minutes from entry to the final whistle, capped at 90, so he takes the same result share as a player who completed the match. His team-mates take correspondingly less of the negative pool. If the same player had been sent off in a win, his result share would use only the 30 actual minutes.
+A home starter is sent off at minute 30, the final whistle is minute 99, and the home team loses. The player's actual minutes are 30, so his line-up strength and performance use `30 / 90`. His result participation uses the 99 minutes from entry to the final whistle (`99 / 90 = 1.10`), so he takes a larger result share than a player who completed only 90 minutes. His team-mates take correspondingly less of the negative pool. If the same player had been sent off in a win, his result share would use only the 30 actual minutes.
 
 A substitute who enters at 57 and is sent off at 70 in that 99-minute loss uses `99 - 57 = 42` result minutes, not 90 and not the 13 minutes actually played. The team pool itself is unchanged: the sent-off player's larger share is taken from his team-mates' shares.
 
@@ -219,7 +219,7 @@ The Record match and Edit match dialogs use the same chronological rule. Their R
 - A sent-off player on a losing team receives at least the result share implied by the time from entry to the final whistle; the same appearance on a win or draw keeps its actual result share.
 - Ratings are not clamped to any lower or upper bound.
 - There is no per-match movement cap.
-- Full-time and extra-time player participation factors are equal.
+- A 120-minute appearance has more participation weight than a 90-minute appearance; there is no 90-minute cap.
 - Randomized line-ups satisfy the same invariants over hundreds of cases.
 
 ## Calibration notes
