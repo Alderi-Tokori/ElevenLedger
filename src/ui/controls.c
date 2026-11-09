@@ -756,14 +756,14 @@ void ui_list_set_percent_widths(HWND list, const int *percents, int count)
     }
 }
 
-int ui_list_add_row(HWND list, const char **utf8_columns, int column_count,
-                    LPARAM item_data)
+int ui_list_insert_row(HWND list, int index, const char **utf8_columns,
+                       int column_count, LPARAM item_data)
 {
     wchar_t wide[512];
     LVITEMW item;
     memset(&item, 0, sizeof(item));
     item.mask = LVIF_TEXT | LVIF_PARAM;
-    item.iItem = ListView_GetItemCount(list);
+    item.iItem = index;
     item.lParam = item_data;
     if (!ui_utf8_to_wide(column_count > 0 ? utf8_columns[0] : "",
                          wide, sizeof(wide) / sizeof(wide[0]))) {
@@ -786,6 +786,60 @@ int ui_list_add_row(HWND list, const char **utf8_columns, int column_count,
         SendMessageW(list, LVM_SETITEMTEXTW, (WPARAM)row, (LPARAM)&subitem);
     }
     return row;
+}
+
+int ui_list_add_row(HWND list, const char **utf8_columns, int column_count,
+                    LPARAM item_data)
+{
+    return ui_list_insert_row(list, ListView_GetItemCount(list),
+                              utf8_columns, column_count, item_data);
+}
+
+void ui_list_set_row(HWND list, int index, const char **utf8_columns,
+                     int column_count, LPARAM item_data)
+{
+    wchar_t wide[512];
+    LVITEMW item;
+    memset(&item, 0, sizeof(item));
+    item.mask = LVIF_TEXT | LVIF_PARAM;
+    item.iItem = index;
+    item.lParam = item_data;
+    if (!ui_utf8_to_wide(column_count > 0 ? utf8_columns[0] : "",
+                         wide, sizeof(wide) / sizeof(wide[0]))) {
+        wide[0] = L'\0';
+    }
+    item.pszText = wide;
+    SendMessageW(list, LVM_SETITEMW, 0, (LPARAM)&item);
+    for (int column = 1; column < column_count; ++column) {
+        if (!ui_utf8_to_wide(utf8_columns[column], wide,
+                             sizeof(wide) / sizeof(wide[0]))) {
+            wide[0] = L'\0';
+        }
+        LVITEMW subitem;
+        memset(&subitem, 0, sizeof(subitem));
+        subitem.iSubItem = column;
+        subitem.pszText = wide;
+        SendMessageW(list, LVM_SETITEMTEXTW, (WPARAM)index, (LPARAM)&subitem);
+    }
+}
+
+uint64_t ui_list_hash_columns(const char *const *utf8_columns,
+                              int column_count)
+{
+    uint64_t hash = 1469598103934665603ULL;
+    for (int column = 0; column < column_count; ++column) {
+        const unsigned char *text =
+            (const unsigned char *)(utf8_columns[column] != NULL
+                                        ? utf8_columns[column]
+                                        : "");
+        while (*text != 0) {
+            hash ^= *text++;
+            hash *= 1099511628211ULL;
+        }
+        hash ^= 0xFF;
+        hash *= 1099511628211ULL;
+    }
+    return hash;
 }
 
 bool ui_list_selected_data(HWND list, LPARAM *out_data)

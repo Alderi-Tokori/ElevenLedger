@@ -34,6 +34,18 @@ typedef struct {
 } TeamSortContext;
 
 typedef struct {
+    uint64_t id;
+    uint64_t hash;
+} TeamRowCache;
+
+typedef struct {
+    char squad[64];
+    char rating[32];
+    char record[64];
+    const char *columns[6];
+} TeamRowText;
+
+typedef struct {
     Page base;
     HWND list;
     HWND add_button;
@@ -42,6 +54,9 @@ typedef struct {
     bool populating;
     int sort_column;
     bool sort_ascending;
+    TeamRowCache *cache;
+    size_t cache_count;
+    bool cache_valid;
 } TeamsPage;
 
 static uint64_t selected_team(TeamsPage *page)
@@ -71,6 +86,40 @@ static void teams_optional_text(const char *value, wchar_t *buffer,
         !ui_utf8_to_wide(value, buffer, count)) {
         ui_format_wide(buffer, count, L"-");
     }
+}
+
+static void teams_build_row(const Database *db, const Team *team,
+                            TeamRowText *row)
+{
+    TeamStats stats;
+    db_team_stats(db, team->id, &stats);
+    snprintf(row->squad, sizeof(row->squad), "%zu / %zu",
+             stats.active_players, stats.roster_size);
+    if (stats.active_players > 0) {
+        snprintf(row->rating, sizeof(row->rating), "%.1f",
+                 stats.average_rating);
+    } else {
+        snprintf(row->rating, sizeof(row->rating), "-");
+    }
+    snprintf(row->record, sizeof(row->record), "%d-%d-%d", stats.wins,
+             stats.draws, stats.losses);
+    row->columns[0] = team->name;
+    row->columns[1] = team->short_name[0] != '\0' ? team->short_name : "-";
+    row->columns[2] = team->city[0] != '\0' ? team->city : "-";
+    row->columns[3] = row->squad;
+    row->columns[4] = row->rating;
+    row->columns[5] = row->record;
+}
+
+static const TeamRowCache *teams_cache_find(const TeamsPage *teams,
+                                            uint64_t team_id)
+{
+    for (size_t i = 0; i < teams->cache_count; ++i) {
+        if (teams->cache[i].id == team_id) {
+            return &teams->cache[i];
+        }
+    }
+    return NULL;
 }
 
 static int teams_compare_names(const Team *left, const Team *right)
@@ -224,36 +273,65 @@ static void teams_refresh(Page *page)
     Database *db = &page->app->db;
     uint64_t previous = selected_team(teams);
     teams->populating = true;
-    ListView_DeleteAllItems(teams->list);
+
+    TeamRowCache *new_cache = NULL;
+    if (db->team_count > 0 &&
+        db->team_count <= SIZE_MAX / sizeof(*new_cache)) {
+        new_cache = malloc(db->team_count * sizeof(*new_cache));
+    }
+    size_t new_count = 0;
+    bool rebuild = !teams->cache_valid;
+
+    if (rebuild) {
+        ListView_DeleteAllItems(teams->list);
+    } else {
+        int list_count = ListView_GetItemCount(teams->list);
+        for (int i = list_count - 1; i >= 0; --i) {
+            LVITEMW item;
+            memset(&item, 0, sizeof(item));
+            item.mask = LVIF_PARAM;
+            item.iItem = i;
+            if (!ListView_GetItem(teams->list, &item)) {
+                ListView_DeleteItem(teams->list, i);
+                continue;
+            }
+            uint64_t team_id = (uint64_t)item.lParam;
+            const Team *team = db_find_team(db, team_id);
+            if (team == NULL) {
+                ListView_DeleteItem(teams->list, i);
+                continue;
+            }
+            TeamRowText row;
+            teams_build_row(db, team, &row);
+            uint64_t hash = ui_list_hash_columns(row.columns,
+                                                 TEAM_COLUMN_COUNT);
+            const TeamRowCache *old = teams_cache_find(teams, team_id);
+            if (old == NULL || old->hash != hash) {
+                ui_list_set_row(teams->list, i, row.columns,
+                                TEAM_COLUMN_COUNT, (LPARAM)team_id);
+            }
+        }
+    }
 
     for (size_t i = 0; i < db->team_count; ++i) {
         const Team *team = &db->teams[i];
-        TeamStats stats;
-        db_team_stats(db, team->id, &stats);
-
-        char squad[64];
-        snprintf(squad, sizeof(squad), "%zu / %zu", stats.active_players,
-                 stats.roster_size);
-        char rating[32];
-        if (stats.active_players > 0) {
-            snprintf(rating, sizeof(rating), "%.1f", stats.average_rating);
-        } else {
-            snprintf(rating, sizeof(rating), "-");
+        TeamRowText row;
+        teams_build_row(db, team, &row);
+        uint64_t hash = ui_list_hash_columns(row.columns,
+                                             TEAM_COLUMN_COUNT);
+        const TeamRowCache *old =
+            rebuild ? NULL : teams_cache_find(teams, team->id);
+        if (old == NULL) {
+            ui_list_add_row(teams->list, row.columns, TEAM_COLUMN_COUNT,
+                            (LPARAM)team->id);
         }
-        char record[64];
-        snprintf(record, sizeof(record), "%d-%d-%d", stats.wins,
-                 stats.draws, stats.losses);
-        const char *columns[6] = {
-            team->name,
-            team->short_name[0] != '\0' ? team->short_name : "-",
-            team->city[0] != '\0' ? team->city : "-",
-            squad,
-            rating,
-            record,
-        };
-        ui_list_add_row(teams->list, columns, TEAM_COLUMN_COUNT,
-                        (LPARAM)team->id);
+        if (new_cache != NULL) {
+            new_cache[new_count].id = team->id;
+            new_cache[new_count].hash = hash;
+            new_count++;
+        }
     }
+
     TeamSortContext sort_context = {
         .db = db,
         .column = teams->sort_column,
@@ -263,14 +341,21 @@ static void teams_refresh(Page *page)
                  (LPARAM)teams_compare_items);
     ui_list_set_sort_indicator(teams->list, teams->sort_column,
                                teams->sort_ascending);
+
+    free(teams->cache);
+    teams->cache = new_cache;
+    teams->cache_count = new_count;
+    teams->cache_valid = new_cache != NULL || db->team_count == 0;
     teams->populating = false;
+
+    int list_count = ListView_GetItemCount(teams->list);
     if (previous != 0 && db_find_team(db, previous) != NULL) {
         teams_select_id(teams, previous);
     } else {
         ListView_SetItemState(teams->list, -1, 0, LVIS_SELECTED);
     }
 
-    ShowWindow(teams->list, db->team_count > 0 ? SW_SHOW : SW_HIDE);
+    ShowWindow(teams->list, list_count > 0 ? SW_SHOW : SW_HIDE);
     teams_update_buttons(teams);
     InvalidateRect(page->hwnd, NULL, FALSE);
 }
@@ -441,7 +526,11 @@ static LRESULT teams_message(Page *page, UINT message, WPARAM wparam,
 
 static void teams_destroy(Page *page)
 {
-    (void)page;
+    TeamsPage *teams = (TeamsPage *)page;
+    free(teams->cache);
+    teams->cache = NULL;
+    teams->cache_count = 0;
+    teams->cache_valid = false;
 }
 
 Page *teams_page_create(App *app)

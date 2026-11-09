@@ -27,7 +27,10 @@ static double round_rating(double value)
     return round(value * 100.0) / 100.0;
 }
 
-static bool recompute_ratings(Database *db, char *error, size_t error_size);
+static bool replay_ratings(Database *db, size_t start_match, char *error,
+                           size_t error_size);
+static bool replay_player_base_change(Database *db, uint64_t player_id,
+                                      char *error, size_t error_size);
 
 static bool grow_array(void **array, size_t element_size, size_t *capacity,
                        size_t needed)
@@ -163,6 +166,16 @@ static Match *find_match_mut(Database *db, uint64_t id)
         }
     }
     return NULL;
+}
+
+static size_t find_match_index(const Database *db, uint64_t id)
+{
+    for (size_t i = 0; i < db->match_count; ++i) {
+        if (db->matches[i].id == id) {
+            return i;
+        }
+    }
+    return SIZE_MAX;
 }
 
 static const Appearance *find_match_appearance(const Database *db,
@@ -600,7 +613,7 @@ bool db_update_player(Database *db, uint64_t id, uint64_t team_id,
     player->active = active;
 
     if (player->base_rating != previous_base) {
-        if (!recompute_ratings(db, error, error_size)) {
+        if (!replay_player_base_change(db, id, error, error_size)) {
             player->base_rating = previous_base;
             return false;
         }
@@ -1033,10 +1046,39 @@ static int appearance_result_minutes(const Match *match,
     return result_minutes;
 }
 
-/* Replays ratings after the caller has validated the changed inputs. */
-static bool recompute_ratings(Database *db, char *error, size_t error_size)
+/*
+ * Replays ratings after the caller has validated the changed inputs.
+ * Matches must already be sorted. Only matches from start_match onward are
+ * recalculated; earlier matches are used to restore the player state.
+ */
+static bool replay_ratings(Database *db, size_t start_match, char *error,
+                           size_t error_size)
 {
-    db_sort_matches(db);
+    if (start_match > db->match_count) {
+        start_match = db->match_count;
+    }
+
+    IdLookup *player_lookup = NULL;
+    if (db->player_count > 0) {
+        if (db->player_count > SIZE_MAX / sizeof(*player_lookup)) {
+            set_error(error, error_size,
+                      "Not enough memory to replay ratings.");
+            return false;
+        }
+        player_lookup = malloc(db->player_count * sizeof(*player_lookup));
+        if (player_lookup == NULL) {
+            set_error(error, error_size,
+                      "Not enough memory to replay ratings.");
+            return false;
+        }
+        for (size_t i = 0; i < db->player_count; ++i) {
+            player_lookup[i].id = db->players[i].id;
+            player_lookup[i].index = i;
+        }
+        qsort(player_lookup, db->player_count, sizeof(*player_lookup),
+              compare_id_lookup);
+    }
+    bool ok = false;
 
     for (size_t i = 0; i < db->player_count; ++i) {
         db->players[i].current_rating = db->players[i].base_rating;
@@ -1048,7 +1090,36 @@ static bool recompute_ratings(Database *db, char *error, size_t error_size)
               compare_appearances);
     }
 
-    for (size_t match_index = 0; match_index < db->match_count; ++match_index) {
+    for (size_t match_index = 0; match_index < start_match; ++match_index) {
+        const Match *match = &db->matches[match_index];
+        size_t start = appearance_lower_bound(db, match->id);
+        size_t end = start;
+        while (end < db->appearance_count &&
+               db->appearances[end].match_id == match->id) {
+            end++;
+        }
+        if (start == end) {
+            set_error(error, error_size, "Match has no line-up.");
+            goto cleanup;
+        }
+        for (size_t i = start; i < end; ++i) {
+            const Appearance *appearance = &db->appearances[i];
+            const IdLookup *entry = find_id_lookup(
+                player_lookup, db->player_count, appearance->player_id);
+            if (entry == NULL) {
+                set_error(error, error_size,
+                          "Line-up references a missing player.");
+                goto cleanup;
+            }
+            Player *player = &db->players[entry->index];
+            player->current_rating = appearance->rating_after;
+            player->matches_played += 1;
+            player->minutes_played += (uint32_t)appearance->minutes;
+        }
+    }
+
+    for (size_t match_index = start_match; match_index < db->match_count;
+         ++match_index) {
         Match *match = &db->matches[match_index];
         size_t start = appearance_lower_bound(db, match->id);
         size_t end = start;
@@ -1058,7 +1129,7 @@ static bool recompute_ratings(Database *db, char *error, size_t error_size)
         }
         if (start == end) {
             set_error(error, error_size, "Match has no line-up.");
-            return false;
+            goto cleanup;
         }
 
         double home_weight = 0.0;
@@ -1072,11 +1143,14 @@ static bool recompute_ratings(Database *db, char *error, size_t error_size)
 
         for (size_t i = start; i < end; ++i) {
             Appearance *appearance = &db->appearances[i];
-            Player *player = find_player_mut(db, appearance->player_id);
-            if (player == NULL) {
-                set_error(error, error_size, "Line-up references a missing player.");
-                return false;
+            const IdLookup *entry = find_id_lookup(
+                player_lookup, db->player_count, appearance->player_id);
+            if (entry == NULL) {
+                set_error(error, error_size,
+                          "Line-up references a missing player.");
+                goto cleanup;
             }
+            Player *player = &db->players[entry->index];
             appearance->rating_before = player->current_rating;
             double weight = rating_participation(appearance->minutes);
             double result_weight = rating_participation(
@@ -1097,7 +1171,7 @@ static bool recompute_ratings(Database *db, char *error, size_t error_size)
         }
         if (home_weight <= 0.0 || away_weight <= 0.0) {
             set_error(error, error_size, "Match line-up has no playing time.");
-            return false;
+            goto cleanup;
         }
 
         RatingTeamContext home_context = {
@@ -1118,13 +1192,20 @@ static bool recompute_ratings(Database *db, char *error, size_t error_size)
                                   match->home_goals, match->away_goals,
                                   match->neutral_venue,
                                   error, error_size)) {
-            return false;
+            goto cleanup;
         }
         match->rating = summary;
 
         for (size_t i = start; i < end; ++i) {
             Appearance *appearance = &db->appearances[i];
-            Player *player = find_player_mut(db, appearance->player_id);
+            const IdLookup *entry = find_id_lookup(
+                player_lookup, db->player_count, appearance->player_id);
+            if (entry == NULL) {
+                set_error(error, error_size,
+                          "Line-up references a missing player.");
+                goto cleanup;
+            }
+            Player *player = &db->players[entry->index];
             bool home_team = appearance->team_id == match->home_team_id;
             double delta = 0.0;
             double after = 0.0;
@@ -1135,7 +1216,7 @@ static bool recompute_ratings(Database *db, char *error, size_t error_size)
                     appearance->performance, &delta, &after)) {
                 set_error(error, error_size,
                           "Could not calculate a player rating.");
-                return false;
+                goto cleanup;
             }
             appearance->rating_delta = delta;
             appearance->rating_after = after;
@@ -1144,7 +1225,66 @@ static bool recompute_ratings(Database *db, char *error, size_t error_size)
             player->minutes_played += (uint32_t)appearance->minutes;
         }
     }
-    return true;
+    ok = true;
+
+cleanup:
+    free(player_lookup);
+    return ok;
+}
+
+static bool replay_ratings_from_match(Database *db, uint64_t match_id,
+                                      char *error, size_t error_size)
+{
+    db_sort_matches(db);
+    size_t match_index = find_match_index(db, match_id);
+    if (match_index == SIZE_MAX) {
+        set_error(error, error_size, "Match not found.");
+        return false;
+    }
+    return replay_ratings(db, match_index, error, error_size);
+}
+
+static bool replay_player_base_change(Database *db, uint64_t player_id,
+                                      char *error, size_t error_size)
+{
+    db_sort_matches(db);
+    if (db->appearance_count > 1) {
+        qsort(db->appearances, db->appearance_count, sizeof(Appearance),
+              compare_appearances);
+    }
+
+    size_t first_match = SIZE_MAX;
+    for (size_t match_index = 0; match_index < db->match_count; ++match_index) {
+        const Match *match = &db->matches[match_index];
+        size_t start = appearance_lower_bound(db, match->id);
+        size_t end = start;
+        while (end < db->appearance_count &&
+               db->appearances[end].match_id == match->id) {
+            end++;
+        }
+        for (size_t i = start; i < end; ++i) {
+            if (db->appearances[i].player_id == player_id) {
+                first_match = match_index;
+                break;
+            }
+        }
+        if (first_match != SIZE_MAX) {
+            break;
+        }
+    }
+
+    if (first_match == SIZE_MAX) {
+        Player *player = find_player_mut(db, player_id);
+        if (player == NULL) {
+            set_error(error, error_size, "Player not found.");
+            return false;
+        }
+        player->current_rating = player->base_rating;
+        player->matches_played = 0;
+        player->minutes_played = 0;
+        return true;
+    }
+    return replay_ratings(db, first_match, error, error_size);
 }
 
 bool db_recompute_ratings(Database *db, char *error, size_t error_size)
@@ -1152,7 +1292,8 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
     if (!db_validate(db, error, error_size)) {
         return false;
     }
-    return recompute_ratings(db, error, error_size);
+    db_sort_matches(db);
+    return replay_ratings(db, 0, error, error_size);
 }
 
 bool db_ratings_before_match(const Database *db, const char *date,
@@ -1462,7 +1603,7 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
         appearance->sent_off = entry->sent_off;
     }
 
-    if (!recompute_ratings(db, error, error_size)) {
+    if (!replay_ratings_from_match(db, new_match_id, error, error_size)) {
         return false;
     }
     if (out_id != NULL) {
@@ -1483,6 +1624,7 @@ bool db_update_match(Database *db, uint64_t id, const MatchInput *input,
         set_error(error, error_size, "Match not found.");
         return false;
     }
+    size_t previous_index = (size_t)(match - db->matches);
 
     char clean_date[MATCH_DATE_MAX + 1];
     if (!prepare_match_input(db, input, clean_date, sizeof(clean_date),
@@ -1594,7 +1736,15 @@ bool db_update_match(Database *db, uint64_t id, const MatchInput *input,
     match->length = input->length;
     memset(&match->rating, 0, sizeof(match->rating));
 
-    return recompute_ratings(db, error, error_size);
+    db_sort_matches(db);
+    size_t new_index = find_match_index(db, id);
+    if (new_index == SIZE_MAX) {
+        set_error(error, error_size, "Match not found.");
+        return false;
+    }
+    size_t start_match =
+        previous_index < new_index ? previous_index : new_index;
+    return replay_ratings(db, start_match, error, error_size);
 }
 
 bool db_delete_match(Database *db, uint64_t id,
@@ -1628,7 +1778,7 @@ bool db_delete_match(Database *db, uint64_t id,
     memmove(&db->matches[match_index], &db->matches[match_index + 1],
             (db->match_count - match_index - 1) * sizeof(Match));
     db->match_count--;
-    return recompute_ratings(db, error, error_size);
+    return replay_ratings(db, match_index, error, error_size);
 }
 
 void db_team_stats(const Database *db, uint64_t team_id, TeamStats *out)
@@ -1714,10 +1864,38 @@ size_t db_match_appearance_count(const Database *db, uint64_t match_id)
     if (db == NULL) {
         return 0;
     }
-    for (size_t i = 0; i < db->appearance_count; ++i) {
-        if (db->appearances[i].match_id == match_id) {
+    size_t start = appearance_lower_bound(db, match_id);
+    for (size_t i = start; i < db->appearance_count &&
+                            db->appearances[i].match_id == match_id;
+         ++i) {
+        count++;
+    }
+    return count;
+}
+
+bool db_match_team_average_delta(const Database *db, uint64_t match_id,
+                                 uint64_t team_id, double *out_average)
+{
+    if (out_average != NULL) {
+        *out_average = 0.0;
+    }
+    if (db == NULL || out_average == NULL) {
+        return false;
+    }
+    size_t start = appearance_lower_bound(db, match_id);
+    double sum = 0.0;
+    size_t count = 0;
+    for (size_t i = start; i < db->appearance_count &&
+                            db->appearances[i].match_id == match_id;
+         ++i) {
+        if (db->appearances[i].team_id == team_id) {
+            sum += db->appearances[i].rating_delta;
             count++;
         }
     }
-    return count;
+    if (count == 0) {
+        return false;
+    }
+    *out_average = sum / (double)count;
+    return true;
 }

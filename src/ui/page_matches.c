@@ -27,7 +27,26 @@ typedef struct {
     HWND edit_button;
     bool populating;
     size_t visible_rows;
+    uint64_t *row_ids;
+    uint64_t *row_hashes;
+    size_t row_count;
+    size_t row_capacity;
+    uint64_t *scratch_ids;
+    uint64_t *scratch_hashes;
+    size_t scratch_capacity;
+    bool snapshot_valid;
 } MatchesPage;
+
+typedef struct {
+    char date[MATCH_DATE_MAX + 1];
+    char home[128];
+    char score[32];
+    char away[128];
+    char venue[16];
+    char home_change[32];
+    char away_change[32];
+    const char *columns[7];
+} MatchRowText;
 
 static uint64_t selected_match(MatchesPage *page)
 {
@@ -71,22 +90,167 @@ static void match_team_summary(const Database *db, const Match *match,
                                uint64_t team_id, char *buffer,
                                size_t buffer_size)
 {
-    double sum = 0.0;
-    size_t count = 0;
-    for (size_t i = 0; i < db->appearance_count; ++i) {
-        const Appearance *appearance = &db->appearances[i];
-        if (appearance->match_id == match->id &&
-            appearance->team_id == team_id) {
-            sum += appearance->rating_delta;
-            count++;
+    double average = 0.0;
+    if (db_match_team_average_delta(db, match->id, team_id, &average)) {
+        snprintf(buffer, buffer_size, "%+.2f", average);
+    } else {
+        snprintf(buffer, buffer_size, "-");
+    }
+}
+
+static void matches_row_text(const Database *db, const Match *match,
+                             MatchRowText *row)
+{
+    const Team *home = db_find_team(db, match->home_team_id);
+    const Team *away = db_find_team(db, match->away_team_id);
+    snprintf(row->date, sizeof(row->date), "%s", match->date);
+    snprintf(row->home, sizeof(row->home), "%s",
+             home != NULL ? home->name : "Unknown");
+    snprintf(row->score, sizeof(row->score), "%d - %d",
+             match->home_goals, match->away_goals);
+    snprintf(row->away, sizeof(row->away), "%s",
+             away != NULL ? away->name : "Unknown");
+    snprintf(row->venue, sizeof(row->venue), "%s",
+             match->neutral_venue ? "Neutral" : "Home");
+    match_team_summary(db, match, match->home_team_id, row->home_change,
+                       sizeof(row->home_change));
+    match_team_summary(db, match, match->away_team_id, row->away_change,
+                       sizeof(row->away_change));
+    row->columns[0] = row->date;
+    row->columns[1] = row->home;
+    row->columns[2] = row->score;
+    row->columns[3] = row->away;
+    row->columns[4] = row->venue;
+    row->columns[5] = row->home_change;
+    row->columns[6] = row->away_change;
+}
+
+static const Match *matches_match_at(const Database *db, size_t display_index)
+{
+    return &db->matches[db->match_count - 1 - display_index];
+}
+
+static bool matches_reserve(uint64_t **ids, uint64_t **hashes,
+                            size_t *capacity, size_t needed)
+{
+    if (needed <= *capacity) {
+        return true;
+    }
+    if (needed > SIZE_MAX / sizeof(uint64_t)) {
+        return false;
+    }
+    size_t new_capacity = *capacity == 0 ? 64 : *capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / 2) {
+            new_capacity = needed;
+            break;
+        }
+        new_capacity *= 2;
+    }
+    uint64_t *new_ids = realloc(*ids, new_capacity * sizeof(*new_ids));
+    if (new_ids == NULL) {
+        return false;
+    }
+    *ids = new_ids;
+    uint64_t *new_hashes =
+        realloc(*hashes, new_capacity * sizeof(*new_hashes));
+    if (new_hashes == NULL) {
+        return false;
+    }
+    *hashes = new_hashes;
+    *capacity = new_capacity;
+    return true;
+}
+
+static void matches_rebuild(MatchesPage *matches, const Database *db)
+{
+    ListView_DeleteAllItems(matches->list);
+    for (size_t i = 0; i < db->match_count; ++i) {
+        const Match *match = matches_match_at(db, i);
+        MatchRowText row;
+        matches_row_text(db, match, &row);
+        ui_list_add_row(matches->list, row.columns, 7, (LPARAM)match->id);
+    }
+}
+
+static void matches_update_row(MatchesPage *matches, const Database *db,
+                               size_t display_index)
+{
+    const Match *match = matches_match_at(db, display_index);
+    MatchRowText row;
+    matches_row_text(db, match, &row);
+    ui_list_set_row(matches->list, (int)display_index, row.columns, 7,
+                    (LPARAM)match->id);
+}
+
+static int matches_insert_row(MatchesPage *matches, const Database *db,
+                              size_t display_index)
+{
+    const Match *match = matches_match_at(db, display_index);
+    MatchRowText row;
+    matches_row_text(db, match, &row);
+    return ui_list_insert_row(matches->list, (int)display_index, row.columns,
+                              7, (LPARAM)match->id);
+}
+
+static bool matches_same_ids(const MatchesPage *matches, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        if (matches->row_ids[i] != matches->scratch_ids[i]) {
+            return false;
         }
     }
-    if (count == 0) {
-        snprintf(buffer, buffer_size, "-");
-    } else {
-        double average = sum / (double)count;
-        snprintf(buffer, buffer_size, "%+.2f", average);
+    return true;
+}
+
+static bool matches_single_insertion(const MatchesPage *matches,
+                                     size_t old_count, size_t new_count,
+                                     size_t *out_index)
+{
+    if (new_count != old_count + 1) {
+        return false;
     }
+    size_t index = 0;
+    while (index < old_count &&
+           matches->row_ids[index] == matches->scratch_ids[index]) {
+        index++;
+    }
+    if (index == old_count) {
+        *out_index = index;
+        return true;
+    }
+    for (size_t i = index; i < old_count; ++i) {
+        if (matches->row_ids[i] != matches->scratch_ids[i + 1]) {
+            return false;
+        }
+    }
+    *out_index = index;
+    return true;
+}
+
+static bool matches_single_deletion(const MatchesPage *matches,
+                                    size_t old_count, size_t new_count,
+                                    size_t *out_index)
+{
+    if (new_count + 1 != old_count) {
+        return false;
+    }
+    size_t index = 0;
+    while (index < new_count &&
+           matches->row_ids[index] == matches->scratch_ids[index]) {
+        index++;
+    }
+    if (index == new_count) {
+        *out_index = index;
+        return true;
+    }
+    for (size_t i = index; i < new_count; ++i) {
+        if (matches->row_ids[i + 1] != matches->scratch_ids[i]) {
+            return false;
+        }
+    }
+    *out_index = index;
+    return true;
 }
 
 static void matches_refresh(Page *page)
@@ -94,37 +258,90 @@ static void matches_refresh(Page *page)
     MatchesPage *matches = (MatchesPage *)page;
     Database *db = &page->app->db;
     uint64_t previous = selected_match(matches);
+    size_t new_count = db->match_count;
     matches->populating = true;
-    ListView_DeleteAllItems(matches->list);
-    matches->visible_rows = 0;
 
-    for (size_t i = db->match_count; i > 0; --i) {
-        const Match *match = &db->matches[i - 1];
-        const Team *home = db_find_team(db, match->home_team_id);
-        const Team *away = db_find_team(db, match->away_team_id);
-        char score[32];
-        snprintf(score, sizeof(score), "%d - %d", match->home_goals,
-                 match->away_goals);
-        char home_change[32];
-        char away_change[32];
-        match_team_summary(db, match, match->home_team_id, home_change,
-                           sizeof(home_change));
-        match_team_summary(db, match, match->away_team_id, away_change,
-                           sizeof(away_change));
-        const char *columns[7] = {
-            match->date,
-            home != NULL ? home->name : "Unknown",
-            score,
-            away != NULL ? away->name : "Unknown",
-            match->neutral_venue ? "Neutral" : "Home",
-            home_change,
-            away_change,
-        };
-        if (ui_list_add_row(matches->list, columns, 7,
-                            (LPARAM)match->id) >= 0) {
-            matches->visible_rows++;
+    bool have_snapshot =
+        matches_reserve(&matches->scratch_ids, &matches->scratch_hashes,
+                        &matches->scratch_capacity, new_count);
+    if (have_snapshot) {
+        for (size_t i = 0; i < new_count; ++i) {
+            const Match *match = matches_match_at(db, i);
+            MatchRowText row;
+            matches_row_text(db, match, &row);
+            matches->scratch_ids[i] = match->id;
+            matches->scratch_hashes[i] =
+                ui_list_hash_columns(row.columns, 7);
         }
     }
+
+    bool rebuild = !have_snapshot || !matches->snapshot_valid;
+    if (!rebuild && new_count == matches->row_count) {
+        if (!matches_same_ids(matches, new_count)) {
+            rebuild = true;
+        } else {
+            for (size_t i = 0; i < new_count; ++i) {
+                if (matches->row_hashes[i] !=
+                    matches->scratch_hashes[i]) {
+                    matches_update_row(matches, db, i);
+                }
+            }
+        }
+    } else if (!rebuild) {
+        size_t index = 0;
+        if (matches_single_insertion(matches, matches->row_count, new_count,
+                                     &index)) {
+            if (matches_insert_row(matches, db, index) >= 0) {
+                for (size_t i = 0; i < new_count; ++i) {
+                    if (i == index) {
+                        continue;
+                    }
+                    size_t old_hash_index = i < index ? i : i - 1;
+                    if (matches->row_hashes[old_hash_index] !=
+                        matches->scratch_hashes[i]) {
+                        matches_update_row(matches, db, i);
+                    }
+                }
+            } else {
+                rebuild = true;
+            }
+        } else if (matches_single_deletion(matches, matches->row_count,
+                                           new_count, &index)) {
+            ListView_DeleteItem(matches->list, (int)index);
+            for (size_t i = 0; i < new_count; ++i) {
+                size_t old_hash_index = i < index ? i : i + 1;
+                if (matches->row_hashes[old_hash_index] !=
+                    matches->scratch_hashes[i]) {
+                    matches_update_row(matches, db, i);
+                }
+            }
+        } else {
+            rebuild = true;
+        }
+    }
+
+    if (rebuild) {
+        matches_rebuild(matches, db);
+    }
+
+    if (have_snapshot) {
+        uint64_t *old_ids = matches->row_ids;
+        uint64_t *old_hashes = matches->row_hashes;
+        size_t old_capacity = matches->row_capacity;
+        matches->row_ids = matches->scratch_ids;
+        matches->row_hashes = matches->scratch_hashes;
+        matches->row_count = new_count;
+        matches->row_capacity = matches->scratch_capacity;
+        matches->scratch_ids = old_ids;
+        matches->scratch_hashes = old_hashes;
+        matches->scratch_capacity = old_capacity;
+        matches->snapshot_valid = true;
+    } else {
+        matches->snapshot_valid = false;
+        matches->row_count = 0;
+    }
+
+    matches->visible_rows = (size_t)ListView_GetItemCount(matches->list);
     matches->populating = false;
 
     if (previous != 0 && db_find_match(db, previous) != NULL) {
@@ -309,7 +526,19 @@ static LRESULT matches_message(Page *page, UINT message, WPARAM wparam,
 
 static void matches_destroy(Page *page)
 {
-    (void)page;
+    MatchesPage *matches = (MatchesPage *)page;
+    free(matches->row_ids);
+    free(matches->row_hashes);
+    free(matches->scratch_ids);
+    free(matches->scratch_hashes);
+    matches->row_ids = NULL;
+    matches->row_hashes = NULL;
+    matches->scratch_ids = NULL;
+    matches->scratch_hashes = NULL;
+    matches->row_count = 0;
+    matches->row_capacity = 0;
+    matches->scratch_capacity = 0;
+    matches->snapshot_valid = false;
 }
 
 Page *matches_page_create(App *app)

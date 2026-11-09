@@ -278,6 +278,50 @@ static bool test_record_match_and_delete(void)
     return true;
 }
 
+static bool test_match_team_average_delta(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    uint64_t players[4];
+    CHECK(add_four_players(&db, alpha, beta, players));
+    char error[256];
+
+    MatchPlayerInput lineup[] = {
+        { players[0], 90, 7.0, 0 },
+        { players[1], 90, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
+        { players[3], 90, 5.0, 0 },
+    };
+    MatchInput input = {
+        .date = "2026-10-04",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 2,
+        .away_goals = 0,
+        .length = 90,
+        .players = lineup,
+        .player_count = 4,
+    };
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+    CHECK(db_match_appearance_count(&db, match_id) == 4);
+
+    double home_average = 0.0;
+    double away_average = 0.0;
+    CHECK(db_match_team_average_delta(&db, match_id, alpha, &home_average));
+    CHECK(db_match_team_average_delta(&db, match_id, beta, &away_average));
+    const Match *match = db_find_match(&db, match_id);
+    CHECK(match != NULL);
+    CHECK_NEAR(home_average, match->rating.home_team_delta / 2.0, 1e-12);
+    CHECK_NEAR(away_average, match->rating.away_team_delta / 2.0, 1e-12);
+    CHECK(!db_match_team_average_delta(&db, match_id, 999999,
+                                       &home_average));
+    db_free(&db);
+    return true;
+}
+
 static bool test_match_validation(void)
 {
     Database db;
@@ -1479,6 +1523,171 @@ static bool test_team_stats_are_minutes_and_results_aware(void)
     return true;
 }
 
+static bool same_rating_summary(const RatingMatchSummary *left,
+                                const RatingMatchSummary *right)
+{
+    return fabs(left->home_strength - right->home_strength) <= 1e-12 &&
+           fabs(left->away_strength - right->away_strength) <= 1e-12 &&
+           fabs(left->home_expected - right->home_expected) <= 1e-12 &&
+           fabs(left->away_expected - right->away_expected) <= 1e-12 &&
+           fabs(left->home_team_delta - right->home_team_delta) <= 1e-12 &&
+           fabs(left->away_team_delta - right->away_team_delta) <= 1e-12 &&
+           fabs(left->margin_multiplier - right->margin_multiplier) <= 1e-12 &&
+           fabs(left->home_result - right->home_result) <= 1e-12 &&
+           fabs(left->home_context.total_participation -
+                right->home_context.total_participation) <= 1e-12 &&
+           fabs(left->home_context.total_result_participation -
+                right->home_context.total_result_participation) <= 1e-12 &&
+           fabs(left->home_context.weighted_performance -
+                right->home_context.weighted_performance) <= 1e-12 &&
+           fabs(left->away_context.total_participation -
+                right->away_context.total_participation) <= 1e-12 &&
+           fabs(left->away_context.total_result_participation -
+                right->away_context.total_result_participation) <= 1e-12 &&
+           fabs(left->away_context.weighted_performance -
+                right->away_context.weighted_performance) <= 1e-12;
+}
+
+static bool same_derived_state(const Database *left, const Database *right)
+{
+    if (left->player_count != right->player_count ||
+        left->match_count != right->match_count ||
+        left->appearance_count != right->appearance_count) {
+        return false;
+    }
+    for (size_t i = 0; i < left->player_count; ++i) {
+        const Player *a = &left->players[i];
+        const Player *b = &right->players[i];
+        if (a->id != b->id ||
+            fabs(a->current_rating - b->current_rating) > 1e-12 ||
+            a->matches_played != b->matches_played ||
+            a->minutes_played != b->minutes_played) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < left->match_count; ++i) {
+        const Match *a = &left->matches[i];
+        const Match *b = &right->matches[i];
+        if (a->id != b->id || !same_rating_summary(&a->rating, &b->rating)) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < left->appearance_count; ++i) {
+        const Appearance *a = &left->appearances[i];
+        const Appearance *b = &right->appearances[i];
+        if (a->match_id != b->match_id || a->player_id != b->player_id ||
+            a->team_id != b->team_id || a->minutes != b->minutes ||
+            a->sent_off != b->sent_off ||
+            fabs(a->performance - b->performance) > 1e-12 ||
+            fabs(a->rating_before - b->rating_before) > 1e-12 ||
+            fabs(a->rating_delta - b->rating_delta) > 1e-12 ||
+            fabs(a->rating_after - b->rating_after) > 1e-12) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool check_incremental_matches_full(Database *db, char *error,
+                                           size_t error_size)
+{
+    Database full;
+    if (!db_clone(&full, db)) {
+        return false;
+    }
+    bool ok = db_recompute_ratings(&full, error, error_size) &&
+              same_derived_state(db, &full);
+    db_free(&full);
+    return ok;
+}
+
+static bool test_incremental_replay_matches_full_recompute(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    uint64_t players[4];
+    CHECK(add_four_players(&db, alpha, beta, players));
+    char error[512];
+
+    MatchPlayerInput first_lineup[] = {
+        { players[0], 90, 7.0, 0 },
+        { players[2], 90, 6.0, 0 },
+    };
+    MatchInput input = {
+        .date = "2026-01-10",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 1,
+        .away_goals = 0,
+        .length = 90,
+        .players = first_lineup,
+        .player_count = 2,
+    };
+    CHECK(db_add_match(&db, &input, NULL, error, sizeof(error)));
+
+    MatchPlayerInput second_lineup[] = {
+        { players[1], 90, 6.0, 0 },
+        { players[3], 90, 5.0, 0 },
+    };
+    input.date = "2026-02-10";
+    input.home_goals = 0;
+    input.away_goals = 1;
+    input.players = second_lineup;
+    uint64_t second = 0;
+    CHECK(db_add_match(&db, &input, &second, error, sizeof(error)));
+
+    MatchPlayerInput third_lineup[] = {
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
+        { players[3], 90, 6.0, 0 },
+    };
+    input.date = "2026-03-10";
+    input.home_goals = 2;
+    input.away_goals = 0;
+    input.players = third_lineup;
+    input.player_count = 4;
+    uint64_t third = 0;
+    CHECK(db_add_match(&db, &input, &third, error, sizeof(error)));
+    CHECK(check_incremental_matches_full(&db, error, sizeof(error)));
+
+    MatchPlayerInput fourth_lineup[] = {
+        { players[0], 90, 6.5, 0 },
+        { players[2], 90, 5.5, 0 },
+    };
+    input.date = "2026-04-10";
+    input.home_goals = 1;
+    input.away_goals = 1;
+    input.players = fourth_lineup;
+    input.player_count = 2;
+    CHECK(db_add_match(&db, &input, NULL, error, sizeof(error)));
+    CHECK(check_incremental_matches_full(&db, error, sizeof(error)));
+
+    MatchPlayerInput revised[] = {
+        { players[1], 90, 8.0, 0 },
+        { players[3], 90, 4.0, 0 },
+    };
+    input.date = "2026-03-20";
+    input.home_goals = 2;
+    input.away_goals = 1;
+    input.players = revised;
+    input.player_count = 2;
+    CHECK(db_update_match(&db, second, &input, error, sizeof(error)));
+    CHECK(check_incremental_matches_full(&db, error, sizeof(error)));
+
+    CHECK(db_update_player(&db, players[1], alpha, "Noah", "Bennett",
+                           80.0, true, error, sizeof(error)));
+    CHECK(check_incremental_matches_full(&db, error, sizeof(error)));
+
+    CHECK(db_delete_match(&db, third, error, sizeof(error)));
+    CHECK(check_incremental_matches_full(&db, error, sizeof(error)));
+
+    db_free(&db);
+    return true;
+}
+
 static bool test_validate_scales_to_several_seasons(void)
 {
     /* Five seasons of a 20-club league: 1,900 matches, 57,000 appearances. */
@@ -1568,6 +1777,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_player_starting_rating_is_unbounded),
     TEST_CASE(test_last_added_player),
     TEST_CASE(test_record_match_and_delete),
+    TEST_CASE(test_match_team_average_delta),
     TEST_CASE(test_sent_off_weighting_and_validation),
     TEST_CASE(test_sent_off_win_uses_actual_minutes),
     TEST_CASE(test_match_validation),
@@ -1578,6 +1788,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_neutral_venue_match),
     TEST_CASE(test_recompute_sorts_matches_by_date),
     TEST_CASE(test_recompute_rejects_invalid_database),
+    TEST_CASE(test_incremental_replay_matches_full_recompute),
     TEST_CASE(test_player_transfer_preserves_historical_team),
     TEST_CASE(test_update_match_replays_chronology),
     TEST_CASE(test_update_match_preserves_transferred_and_archived_players),

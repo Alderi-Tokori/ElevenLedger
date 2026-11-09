@@ -38,6 +38,21 @@ typedef struct {
 } PlayerSortContext;
 
 typedef struct {
+    uint64_t id;
+    uint64_t hash;
+} PlayerRowCache;
+
+typedef struct {
+    char name_utf8[192];
+    char team_utf8[128];
+    char rating[32];
+    char matches[32];
+    char minutes[32];
+    char status[32];
+    const char *columns[6];
+} PlayerRowText;
+
+typedef struct {
     Page base;
     HWND list;
     HWND search;
@@ -50,6 +65,9 @@ typedef struct {
     size_t visible_rows;
     int sort_column;
     bool sort_ascending;
+    PlayerRowCache *cache;
+    size_t cache_count;
+    bool cache_valid;
 } PlayersPage;
 
 static uint64_t selected_player(PlayersPage *page)
@@ -114,6 +132,61 @@ static void players_team_name(const Database *db, uint64_t team_id,
         return;
     }
     ui_utf8_to_wide(team->name, buffer, count);
+}
+
+static bool players_row_matches(const Database *db, const Player *player,
+                                const wchar_t *search_text,
+                                uint64_t filter_team)
+{
+    if (filter_team != 0 && player->team_id != filter_team) {
+        return false;
+    }
+    wchar_t name[160];
+    wchar_t team_name[128];
+    players_player_name(player, name, sizeof(name) / sizeof(name[0]));
+    players_team_name(db, player->team_id, team_name,
+                      sizeof(team_name) / sizeof(team_name[0]));
+    wchar_t haystack[512];
+    ui_format_wide(haystack, sizeof(haystack) / sizeof(haystack[0]),
+                   L"%ls %ls", name, team_name);
+    return contains_case_insensitive(haystack, search_text);
+}
+
+static void players_build_row(const Database *db, const Player *player,
+                              PlayerRowText *row)
+{
+    wchar_t name[160];
+    wchar_t team_name[128];
+    players_player_name(player, name, sizeof(name) / sizeof(name[0]));
+    players_team_name(db, player->team_id, team_name,
+                      sizeof(team_name) / sizeof(team_name[0]));
+    ui_wide_to_utf8(name, row->name_utf8, sizeof(row->name_utf8));
+    ui_wide_to_utf8(team_name, row->team_utf8, sizeof(row->team_utf8));
+    snprintf(row->rating, sizeof(row->rating), "%.1f",
+             player->current_rating);
+    snprintf(row->matches, sizeof(row->matches), "%u",
+             player->matches_played);
+    snprintf(row->minutes, sizeof(row->minutes), "%u",
+             player->minutes_played);
+    snprintf(row->status, sizeof(row->status), "%s",
+             player->active ? "Active" : "Archived");
+    row->columns[0] = row->name_utf8;
+    row->columns[1] = row->team_utf8;
+    row->columns[2] = row->rating;
+    row->columns[3] = row->matches;
+    row->columns[4] = row->minutes;
+    row->columns[5] = row->status;
+}
+
+static const PlayerRowCache *players_cache_find(const PlayersPage *players,
+                                                uint64_t player_id)
+{
+    for (size_t i = 0; i < players->cache_count; ++i) {
+        if (players->cache[i].id == player_id) {
+            return &players->cache[i];
+        }
+    }
+    return NULL;
 }
 
 static int compare_values(uint64_t left, uint64_t right)
@@ -277,49 +350,69 @@ static void players_refresh(Page *page)
                      sizeof(search_text) / sizeof(search_text[0]));
     uint64_t filter_team = ui_combo_selected_data(players->team_filter);
 
-    ListView_DeleteAllItems(players->list);
-    players->visible_rows = 0;
-    for (size_t i = 0; i < db->player_count; ++i) {
-        const Player *player = &db->players[i];
-        if (filter_team != 0 && player->team_id != filter_team) {
-            continue;
-        }
-        const Team *team = db_find_team(db, player->team_id);
-        wchar_t name[160];
-        players_player_name(player, name, sizeof(name) / sizeof(name[0]));
-        wchar_t team_name[128] = L"-";
-        if (team != NULL) {
-            ui_utf8_to_wide(team->name, team_name,
-                            sizeof(team_name) / sizeof(team_name[0]));
-        }
-        wchar_t haystack[512];
-        ui_format_wide(haystack, sizeof(haystack) / sizeof(haystack[0]),
-                       L"%ls %ls", name, team_name);
-        if (!contains_case_insensitive(haystack, search_text)) {
-            continue;
-        }
+    PlayerRowCache *new_cache = NULL;
+    if (db->player_count > 0 &&
+        db->player_count <= SIZE_MAX / sizeof(*new_cache)) {
+        new_cache = malloc(db->player_count * sizeof(*new_cache));
+    }
+    size_t new_count = 0;
+    bool rebuild = !players->cache_valid;
 
-        char name_utf8[192];
-        char team_utf8[128];
-        char rating[32];
-        char matches[32];
-        char minutes[32];
-        char status[32];
-        ui_wide_to_utf8(name, name_utf8, sizeof(name_utf8));
-        ui_wide_to_utf8(team_name, team_utf8, sizeof(team_utf8));
-        snprintf(rating, sizeof(rating), "%.1f", player->current_rating);
-        snprintf(matches, sizeof(matches), "%u", player->matches_played);
-        snprintf(minutes, sizeof(minutes), "%u", player->minutes_played);
-        snprintf(status, sizeof(status), "%s",
-                 player->active ? "Active" : "Archived");
-        const char *columns[6] = {
-            name_utf8, team_utf8, rating, matches, minutes, status,
-        };
-        if (ui_list_add_row(players->list, columns, PLAYER_COLUMN_COUNT,
-                            (LPARAM)player->id) >= 0) {
-            players->visible_rows++;
+    if (rebuild) {
+        ListView_DeleteAllItems(players->list);
+    } else {
+        int list_count = ListView_GetItemCount(players->list);
+        for (int i = list_count - 1; i >= 0; --i) {
+            LVITEMW item;
+            memset(&item, 0, sizeof(item));
+            item.mask = LVIF_PARAM;
+            item.iItem = i;
+            if (!ListView_GetItem(players->list, &item)) {
+                ListView_DeleteItem(players->list, i);
+                continue;
+            }
+            uint64_t player_id = (uint64_t)item.lParam;
+            const Player *player = db_find_player(db, player_id);
+            if (player == NULL ||
+                !players_row_matches(db, player, search_text, filter_team)) {
+                ListView_DeleteItem(players->list, i);
+                continue;
+            }
+            PlayerRowText row;
+            players_build_row(db, player, &row);
+            uint64_t hash = ui_list_hash_columns(row.columns,
+                                                 PLAYER_COLUMN_COUNT);
+            const PlayerRowCache *old =
+                players_cache_find(players, player_id);
+            if (old == NULL || old->hash != hash) {
+                ui_list_set_row(players->list, i, row.columns,
+                                PLAYER_COLUMN_COUNT, (LPARAM)player_id);
+            }
         }
     }
+
+    for (size_t i = 0; i < db->player_count; ++i) {
+        const Player *player = &db->players[i];
+        if (!players_row_matches(db, player, search_text, filter_team)) {
+            continue;
+        }
+        PlayerRowText row;
+        players_build_row(db, player, &row);
+        uint64_t hash = ui_list_hash_columns(row.columns,
+                                             PLAYER_COLUMN_COUNT);
+        const PlayerRowCache *old =
+            rebuild ? NULL : players_cache_find(players, player->id);
+        if (old == NULL) {
+            ui_list_add_row(players->list, row.columns, PLAYER_COLUMN_COUNT,
+                            (LPARAM)player->id);
+        }
+        if (new_cache != NULL) {
+            new_cache[new_count].id = player->id;
+            new_cache[new_count].hash = hash;
+            new_count++;
+        }
+    }
+
     PlayerSortContext sort_context = {
         .db = db,
         .column = players->sort_column,
@@ -329,8 +422,14 @@ static void players_refresh(Page *page)
                  (LPARAM)players_compare_items);
     ui_list_set_sort_indicator(players->list, players->sort_column,
                                players->sort_ascending);
+
+    free(players->cache);
+    players->cache = new_cache;
+    players->cache_count = new_count;
+    players->cache_valid = new_cache != NULL || db->player_count == 0;
     players->populating = false;
 
+    players->visible_rows = (size_t)ListView_GetItemCount(players->list);
     if (previous != 0 && db_find_player(db, previous) != NULL) {
         players_select_id(players, previous);
     } else {
@@ -592,7 +691,11 @@ static LRESULT players_message(Page *page, UINT message, WPARAM wparam,
 
 static void players_destroy(Page *page)
 {
-    (void)page;
+    PlayersPage *players = (PlayersPage *)page;
+    free(players->cache);
+    players->cache = NULL;
+    players->cache_count = 0;
+    players->cache_valid = false;
 }
 
 Page *players_page_create(App *app)

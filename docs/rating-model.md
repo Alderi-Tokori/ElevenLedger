@@ -195,13 +195,14 @@ A substitute who enters at 57 and is sent off at 70 in that 99-minute loss uses 
 
 The database stores each match's final-whistle minute and each appearance's actual minutes and sending-off minute, not a mutable running total. On load or after any history mutation:
 
-1. Every player's rating resets to their starting rating.
-2. Matches are sorted by date, then by ID for same-date ordering.
-3. Each match is calculated in order using the ratings available before that match.
-4. Appearance snapshots (`rating_before`, `rating_delta`, `rating_after`) are regenerated.
-5. Appearances are sorted by match and player for deterministic storage.
+1. Matches are sorted by date, then by ID for same-date ordering.
+2. A full load resets every player's rating to their starting rating.
+3. An incremental replay reconstructs each player's rating and statistics at the first affected match from the starting rating and the valid earlier appearance snapshots.
+4. Matches from that point are calculated in order using the ratings available before each match.
+5. Appearance snapshots (`rating_before`, `rating_delta`, `rating_after`) are regenerated.
+6. Appearances are sorted by match and player for deterministic storage.
 
-This makes editing or deleting a match, changing a starting rating or transferring a player safe and consistent. Changing a player's current club does not rewrite their historical appearances; the appearance retains the team that played the match. When an existing match is edited, players already in its line-up keep the club they represented, even if they have since transferred or been archived. Saving the edit replays all subsequent history.
+Incremental replay is an optimization only: its result must be identical to a full replay from the first match. This makes editing or deleting a match, changing a starting rating or transferring a player safe and consistent. Changing a player's current club does not rewrite their historical appearances; the appearance retains the team that played the match. When an existing match is edited, players already in its line-up keep the club they represented, even if they have since transferred or been archived. Saving the edit replays the affected match and all subsequent history.
 
 The Record match, Edit match and WhoScored import previews use the same chronological rule. Their live rating preview shows each existing player's rating immediately before the fixture's position in the replay, including for old-match edits, backdated dates and imported fixtures. The match dialogs also show it in their Rating before column, and new players created by an import start at 50.0. Changing the fixture date recalculates the preview at the new position.
 

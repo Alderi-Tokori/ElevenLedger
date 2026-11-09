@@ -101,7 +101,7 @@ Source of truth: `src/core/rating.h` and `src/core/rating.c`. Full documentation
 - Each team's pool is shared by result participation. Performance is measured against the team's actual-minutes-weighted average and only redistributes points within that team.
 - Every match is zero-sum: all player deltas add up to zero. Do not add a per-match movement cap or a final rating clamp.
 - New match recording rejects a team line-up above 1,320 player-minutes; this validation is intentionally not applied while loading legacy data.
-- Matches always replay in date order, then ID order.
+- Matches always replay in date order, then ID order. Incremental replay may start from the first affected match, but its result must match a full replay.
 
 Any change to the model requires:
 
@@ -142,6 +142,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - New toolbars use `ui_button_create` styles rather than native push buttons.
 - The sidebar save status shows "Saving changes..." while a background save is pending and "Saved automatically" otherwise.
 - Data mutations refresh only the active page. Hidden pages refresh when navigated to, so they must remain correct from the database rather than relying on a previous refresh.
+- Visible lists update changed rows in place, insert or remove the affected rows, and sort without rebuilding the full list. A full rebuild is the fallback when row order changes or list state is missing.
 - New confirmations must use `MB_ICONWARNING` and default to the safe choice.
 - All modal dialogs must disable their owner, support Tab and Escape, re-enable and repaint the owner before returning, and use `ui_run_modal`. Close dialog windows through `dialog_close` so the owner is re-enabled and activated before the dialog is hidden, then exposed and repainted before the dialog is destroyed.
 - Inline cell editors must stay above their list in the child z-order after creation so list repaints cannot cover them.

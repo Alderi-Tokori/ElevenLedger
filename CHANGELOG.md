@@ -2,6 +2,13 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.5 - 2026-11-10
+
+### Changed
+
+- Rating replay is now incremental. Appending a match recalculates only that match; editing or deleting a match recalculates from the first affected fixture onward instead of replaying the whole history.
+- The match, player and team lists now update changed rows in place instead of rebuilding the entire list. The match page also reads each fixture's team movement from the sorted appearance range rather than scanning every appearance.
+
 ## 2.0.4 - 2026-11-10
 
 ### Changed

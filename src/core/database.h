@@ -216,5 +216,7 @@ size_t db_team_player_count(const Database *db, uint64_t team_id,
                             bool active_only);
 bool db_team_has_matches(const Database *db, uint64_t team_id);
 size_t db_match_appearance_count(const Database *db, uint64_t match_id);
+bool db_match_team_average_delta(const Database *db, uint64_t match_id,
+                                 uint64_t team_id, double *out_average);
 
 #endif
