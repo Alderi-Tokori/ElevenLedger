@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.14.1 - 2026-11-09
+
+### Changed
+
+- Clarified WhoScored import failures. A 403 can be an interactive Cloudflare check or a hard network block page. The dialog now explains that a User-Agent change will not solve a blocked network and points to the browser-assisted **Open in browser** and **Paste page source** path when the page is reachable in a browser.
+
 ## 1.14.0 - 2026-11-09
 
 ### Added

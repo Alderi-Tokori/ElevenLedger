@@ -320,9 +320,11 @@ static bool import_http_get(const wchar_t *url, char **out_body,
         if (status == 403) {
             import_format_wide(
                 error, error_count,
-                L"WhoScored refused the request (HTTP 403). Choose Open in "
-                L"browser, complete the check there, press Ctrl+U, copy all, "
-                L"then choose Paste page source.");
+                L"WhoScored's Cloudflare protection blocked the request "
+                L"(HTTP 403). If the match opens in your browser, choose "
+                L"Open in browser, press Ctrl+U, copy all, then choose "
+                L"Paste page source. If the browser is also blocked, use "
+                L"another network.");
         } else if (status == 404) {
             import_format_wide(error, error_count,
                                   L"WhoScored could not find that match "
@@ -449,7 +451,7 @@ static void import_url_layout(ImportUrlState *state, int width, int height)
     int error_top = y + ui_scale(theme, 26);
     int button_height = ui_scale(theme, 36);
     int button_y = height - ui_scale(theme, 58);
-    int error_bottom = error_top + ui_scale(theme, 50);
+    int error_bottom = error_top + ui_scale(theme, 66);
     if (error_bottom > button_y - ui_scale(theme, 6)) {
         error_bottom = button_y - ui_scale(theme, 6);
     }
@@ -547,7 +549,8 @@ static void import_url_finish_fetch(ImportUrlState *state)
         EnableWindow(state->open_browser, TRUE);
         EnableWindow(state->paste, TRUE);
         EnableWindow(state->cancel, TRUE);
-        import_url_set_status(state, L"Check the URL and try again.");
+        import_url_set_status(state,
+                              L"Direct download failed. See the details below.");
         SetFocus(state->fetch);
         return;
     }

@@ -22,9 +22,14 @@ Cancelling the preview leaves the database unchanged.
 
 ### If WhoScored blocks the download
 
-WhoScored may protect its pages with an interactive browser check. PitchRate does
-not run JavaScript, so it cannot pass that check by itself. It does not attempt
-to bypass it either. Use the browser-assisted path instead:
+WhoScored may return HTTP 403 through Cloudflare. This can be an interactive
+browser check or a hard network block page ("Sorry, you have been blocked").
+PitchRate does not run JavaScript and cannot pass either one. It also does not
+try to evade the block by spoofing a browser or another network identity.
+Changing the User-Agent or adding browser headers does not reliably fix a
+Cloudflare block; PitchRate already sends a normal Chrome User-Agent.
+
+If the match page opens in your browser, use the browser-assisted path:
 
 1. Paste the match URL and choose **Open in browser**.
 2. Complete any check in the browser and wait for the match page to load.
@@ -36,6 +41,11 @@ The source is parsed locally and the normal preview opens. Copying the rendered
 page with Ctrl+A/C on the normal page is not enough because it produces visible
 text rather than HTML source. If Ctrl+U is unavailable, save the page with
 **Ctrl+S**, open the saved `.html` file in a text editor, and copy all of it.
+
+If your browser also shows the Cloudflare block page, the block is coming from
+your network or IP address. Use a different network, or contact WhoScored with
+the Cloudflare Ray ID shown on their block page. No local User-Agent change can
+solve that.
 
 ## What is imported
 
@@ -111,8 +121,9 @@ does not run JavaScript and cannot complete a browser challenge. A blocked
 request keeps the URL dialog open and explains the HTTP status, for example:
 
 ```text
-WhoScored refused the request (HTTP 403). Choose Open in browser, complete the
-check there, press Ctrl+U, copy all, then choose Paste page source.
+WhoScored's Cloudflare protection blocked the request (HTTP 403). If the match
+opens in your browser, choose Open in browser, press Ctrl+U, copy all, then
+choose Paste page source. If the browser is also blocked, use another network.
 ```
 
 The browser-assisted path does not bypass the check: the user completes it in
