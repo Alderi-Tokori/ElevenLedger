@@ -217,7 +217,7 @@ static void guide_paint(Page *page, HDC dc)
     const wchar_t *step_bodies[] = {
         L"The line-up rating is a minutes-weighted average of the players on the pitch. More time means more influence.",
         L"An Elo-style expectation compares the two line-ups before kick-off. Normal matches add a 4.0-point home advantage; neutral-venue matches apply none.",
-        L"Team movement = 16 x (actual result - expected result) x goal-margin factor. A draw has margin 1.00; a 3+ goal win reaches 1.45. The winners' total gain equals the losers' total loss.",
+        L"Team movement = 16 x (actual result - expected result) x goal-margin factor. Draws and one-goal wins use 1.00; a two-goal win uses 1.20 and a 3+ goal win reaches 1.40. The winners' total gain equals the losers' total loss.",
         L"Each team shares its result movement across the line-up by minutes. Individual performance is measured against the team average and shifts points between team-mates. Every match conserves rating points, with no fixed upper or lower rating limit.",
     };
     for (int i = 0; i < circles; ++i) {

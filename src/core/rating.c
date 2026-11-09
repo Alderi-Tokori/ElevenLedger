@@ -123,7 +123,7 @@ bool rating_match_summary(RatingMatchSummary *out,
         if (magnitude > 3) {
             magnitude = 3;
         }
-        margin = 1.0 + (double)magnitude * 0.15;
+        margin = 1.0 + (double)(magnitude - 1) * 0.2;
     }
 
     double home_delta = RATING_K_FACTOR *

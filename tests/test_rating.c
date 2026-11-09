@@ -66,15 +66,15 @@ static bool test_equal_home_win_values(void)
     CHECK(rating_compute_match(&summary, home, 1, away, 1, 1, 0, false,
                                error, sizeof(error)));
     CHECK_NEAR(summary.home_expected, 0.557312, 0.00001);
-    CHECK_NEAR(summary.margin_multiplier, 1.15, 1e-12);
-    CHECK_NEAR(summary.home_team_delta, 8.145466, 0.0002);
-    CHECK_NEAR(summary.away_team_delta, -8.145466, 0.0002);
+    CHECK_NEAR(summary.margin_multiplier, 1.0, 1e-12);
+    CHECK_NEAR(summary.home_team_delta, 7.083008, 0.0002);
+    CHECK_NEAR(summary.away_team_delta, -7.083008, 0.0002);
 
     double delta = 0.0;
     double after = 0.0;
     CHECK(rating_player_change(&summary, true, 70.0, 90, 6.0, &delta, &after));
-    CHECK_NEAR(delta, 8.145466, 0.0002);
-    CHECK_NEAR(after, 78.145466, 0.0002);
+    CHECK_NEAR(delta, 7.083008, 0.0002);
+    CHECK_NEAR(after, 77.083008, 0.0002);
     return true;
 }
 
@@ -82,18 +82,36 @@ static bool test_goal_margin_amplifies_change(void)
 {
     RatingTeamContext neutral = team_context(1.0, 6.0);
     double strengths[] = { 70.0, 71.0 };
-    RatingMatchSummary close;
-    RatingMatchSummary clear;
+    RatingMatchSummary one_goal;
+    RatingMatchSummary two_goals;
+    RatingMatchSummary three_goals;
+    RatingMatchSummary four_goals;
+    RatingMatchSummary away_two_goals;
     char error[256];
-    CHECK(rating_match_summary(&close, strengths[0], strengths[1],
+    CHECK(rating_match_summary(&one_goal, strengths[0], strengths[1],
                                &neutral, &neutral, 1, 0,
                                false, error, sizeof(error)));
-    CHECK(rating_match_summary(&clear, strengths[0], strengths[1],
+    CHECK(rating_match_summary(&two_goals, strengths[0], strengths[1],
+                               &neutral, &neutral, 2, 0,
+                               false, error, sizeof(error)));
+    CHECK(rating_match_summary(&three_goals, strengths[0], strengths[1],
+                               &neutral, &neutral, 3, 0,
+                               false, error, sizeof(error)));
+    CHECK(rating_match_summary(&four_goals, strengths[0], strengths[1],
                                &neutral, &neutral, 4, 0,
                                false, error, sizeof(error)));
-    CHECK(close.margin_multiplier < clear.margin_multiplier);
-    CHECK(close.home_team_delta < clear.home_team_delta);
-    CHECK_NEAR(clear.margin_multiplier - close.margin_multiplier, 0.30, 1e-12);
+    CHECK(rating_match_summary(&away_two_goals, strengths[0], strengths[1],
+                               &neutral, &neutral, 0, 2,
+                               false, error, sizeof(error)));
+    CHECK_NEAR(one_goal.margin_multiplier, 1.0, 1e-12);
+    CHECK_NEAR(two_goals.margin_multiplier, 1.2, 1e-12);
+    CHECK_NEAR(three_goals.margin_multiplier, 1.4, 1e-12);
+    CHECK_NEAR(four_goals.margin_multiplier, 1.4, 1e-12);
+    CHECK_NEAR(away_two_goals.margin_multiplier, 1.2, 1e-12);
+    CHECK(one_goal.home_team_delta < two_goals.home_team_delta);
+    CHECK(two_goals.home_team_delta < three_goals.home_team_delta);
+    CHECK_NEAR(three_goals.home_team_delta, four_goals.home_team_delta,
+               1e-12);
     return true;
 }
 
@@ -242,8 +260,8 @@ static bool test_ratings_are_not_capped(void)
     double delta = 0.0;
     double after = 0.0;
     CHECK(rating_player_change(&summary, true, 98.5, 90, 6.0, &delta, &after));
-    CHECK(delta > 10.0);
-    CHECK(after > 99.0);
+    CHECK(delta > 9.9);
+    CHECK(after > 100.0);
     CHECK_NEAR(after, 98.5 + delta, 1e-12);
 
     CHECK(rating_match_summary(&summary, 70.0, 70.0, &neutral, &neutral,
@@ -353,8 +371,8 @@ static bool test_neutral_venue_removes_home_advantage(void)
     CHECK_NEAR(neutral.home_expected, 0.5, 1e-12);
     CHECK_NEAR(normal.home_expected, 0.557312, 0.00001);
     CHECK(neutral.home_team_delta > normal.home_team_delta);
-    CHECK_NEAR(neutral.home_team_delta, 9.2, 1e-12);
-    CHECK_NEAR(neutral.away_team_delta, -9.2, 1e-12);
+    CHECK_NEAR(neutral.home_team_delta, 8.0, 1e-12);
+    CHECK_NEAR(neutral.away_team_delta, -8.0, 1e-12);
 
     RatingTeamContext neutral_context = team_context(1.0, 6.0);
     CHECK(rating_match_summary(&neutral, 80.0, 60.0,
@@ -442,7 +460,7 @@ static bool test_randomized_invariants(void)
         CHECK_NEAR(summary.home_expected + summary.away_expected, 1.0, 1e-12);
         CHECK_NEAR(summary.home_team_delta, -summary.away_team_delta, 1e-12);
         CHECK(summary.margin_multiplier >= 1.0 &&
-              summary.margin_multiplier <= 1.45);
+              summary.margin_multiplier <= 1.4);
         CHECK(isfinite(summary.home_strength));
         CHECK(isfinite(summary.away_strength));
 

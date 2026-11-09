@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.12.0 - 2026-11-09
+
+### Changed
+
+- Goal-margin weighting now uses a 1.00 multiplier for a draw or one-goal win, 1.20 for a two-goal win and 1.40 for a three-or-more-goal win. The previous multipliers were 1.00, 1.15, 1.30 and 1.45. Stored ratings and match summaries are recalculated with the new model when history is replayed.
+
 ## 1.11.1 - 2026-11-09
 
 ### Fixed

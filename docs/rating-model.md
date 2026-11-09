@@ -80,10 +80,12 @@ actual_home = 1.0  (home win)
             = 0.0  (home loss)
 
 margin = 1.00                                  for a draw
-       = 1.00 + 0.15 * min(goal_difference, 3) otherwise
+       = 1.00                                  for a one-goal win or loss
+       = 1.20                                  for a two-goal win or loss
+       = 1.40                                  for a three-or-more-goal win or loss
 ```
 
-The margin factor runs from 1.15 for a one-goal win to 1.45 for a three-or-more-goal win.
+The margin factor treats a one-goal win as the baseline result. It rises to `1.20` for a two-goal margin and caps at `1.40` from three goals onward. The multiplier depends on the absolute goal difference, so it applies equally to home and away wins.
 
 ## 5. Shared team movement (the pool)
 
@@ -145,9 +147,9 @@ Two equal 70.0 line-ups in a normal home match. The home team wins 2-0. Two home
 ```text
 expected_home          = 0.5573
 actual_home            = 1.0
-margin                 = 1.30
-home_team_delta        = 16 * (1 - 0.5573) * 1.30 = 9.21
-away_team_delta        = -9.21
+margin                 = 1.20
+home_team_delta        = 16 * (1 - 0.5573) * 1.20 = 8.50
+away_team_delta        = -8.50
 team_participation     = 2.0 on each side
 home team_performance  = (7.0 + 6.0) / 2 = 6.50
 away team_performance  = 6.00
@@ -156,15 +158,15 @@ away team_performance  = 6.00
 The 7.0 home player:
 
 ```text
-result_component       = 9.21 * 1.0 / 2.0 = 4.60
+result_component       = 8.50 * 1.0 / 2.0 = 4.25
 performance_component  = (7.0 - 6.5) * 0.75 * 1.0 = 0.375
-player delta           = 4.98
-rating_after           = 74.98
+player delta           = 4.63
+rating_after           = 74.63
 ```
 
-The 6.0 home player receives `4.60 - 0.375 = 4.23`. Each away player receives `-4.60`. In full precision the four changes sum to exactly zero; the displayed two-decimal figures can differ by a rounding cent.
+The 6.0 home player receives `4.25 - 0.375 = 3.88`. Each away player receives `-4.25`. In full precision the four changes sum to exactly zero; the displayed two-decimal figures can differ by a rounding cent.
 
-At a neutral venue with the same equal line-ups and a 1-0 home win, the home expectation is `0.50` instead of `0.5573`. The shared team pool becomes `+9.20 / -9.20` rather than `+8.15 / -8.15`; a 0-0 draw produces exactly zero team movement.
+At a neutral venue with the same equal line-ups and a 1-0 home win, the home expectation is `0.50` instead of `0.5573`. The shared team pool becomes `+8.00 / -8.00` rather than `+7.08 / -7.08`; a 0-0 draw produces exactly zero team movement.
 
 ## Chronological replay
 
