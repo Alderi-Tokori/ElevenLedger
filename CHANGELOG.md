@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.17.2 - 2026-11-09
+
+### Fixed
+
+- The WhoScored import preview now gives the Sent off column enough width for its header while trimming the wider Status column.
+
 ## 1.17.1 - 2026-11-09
 
 ### Fixed

@@ -1465,7 +1465,7 @@ static void import_layout(ImportMatchState *state, int width, int height)
     }
 
     static const int widths[IMPORT_COLUMN_COUNT] = {
-        18, 18, 7, 8, 7, 24, 18,
+        18, 18, 7, 11, 7, 21, 18,
     };
     ui_list_set_percent_widths(state->home_list, widths,
                                IMPORT_COLUMN_COUNT);
