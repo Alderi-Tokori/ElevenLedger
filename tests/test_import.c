@@ -167,6 +167,49 @@ static bool test_parse_match_length_falls_back_to_period_end(void)
     return true;
 }
 
+static bool test_parse_sending_off_minutes(void)
+{
+    const char *html =
+        "<script>matchCentreData: {"
+        "\"startDate\":\"2026-08-23\","
+        "\"score\":\"1 : 2\","
+        "\"maxMinute\":94,"
+        "\"expandedMaxMinute\":97,"
+        "\"periodEndMinutes\":{\"1\":47,\"2\":94},"
+        "\"events\":["
+        "{\"minute\":34,\"second\":27,\"playerId\":111,\"expandedMinute\":34,"
+        "\"type\":{\"value\":17,\"displayName\":\"Card\"},"
+        "\"qualifiers\":[{\"type\":{\"value\":33,\"displayName\":\"Red\"}},"
+        "{\"type\":{\"value\":55,\"displayName\":\"RelatedEventId\"},\"value\":\"342\"}]},"
+        "{\"minute\":20,\"second\":0,\"playerId\":444,\"expandedMinute\":20,"
+        "\"type\":{\"value\":17,\"displayName\":\"Card\"},"
+        "\"qualifiers\":[{\"type\":{\"value\":31,\"displayName\":\"Yellow\"}}]},"
+        "{\"minute\":70,\"second\":0,\"playerId\":222,\"expandedMinute\":73,"
+        "\"type\":{\"value\":17,\"displayName\":\"Card\"},"
+        "\"qualifiers\":[{\"type\":{\"value\":32,\"displayName\":\"SecondYellow\"}}]}"
+        "],"
+        "\"home\":{\"name\":\"Rennes\",\"players\":["
+        "{\"playerId\":111,\"name\":\"Sent Off\",\"isFirstEleven\":true},"
+        "{\"playerId\":444,\"name\":\"Booked Starter\",\"isFirstEleven\":true},"
+        "{\"playerId\":555,\"name\":\"Full Match\",\"isFirstEleven\":true}]},"
+        "\"away\":{\"name\":\"PSG\",\"players\":["
+        "{\"playerId\":222,\"name\":\"Sub Sent Off\",\"isFirstEleven\":false,"
+        "\"subbedInExpandedMinute\":60},"
+        "{\"playerId\":333,\"name\":\"Away Full\",\"isFirstEleven\":true}]}"
+        "}</script>";
+    ImportedMatch match;
+    char error[512];
+    CHECK(imported_match_parse_html(html, strlen(html), &match,
+                                    error, sizeof(error)));
+    CHECK(match.home_players[0].minutes == 34);
+    CHECK(match.home_players[1].minutes == 94);
+    CHECK(match.home_players[2].minutes == 94);
+    CHECK(match.away_players[0].minutes == 13);
+    CHECK(match.away_players[1].minutes == 94);
+    imported_match_free(&match);
+    return true;
+}
+
 static bool test_parse_escaped_names(void)
 {
     const char *html =
@@ -757,6 +800,7 @@ const TestCase g_import_tests[] = {
     TEST_CASE(test_parse_score_fallback_and_extra_time),
     TEST_CASE(test_parse_match_length_with_stoppage_time),
     TEST_CASE(test_parse_match_length_falls_back_to_period_end),
+    TEST_CASE(test_parse_sending_off_minutes),
     TEST_CASE(test_parse_escaped_names),
     TEST_CASE(test_parse_rejects_bad_pages),
     TEST_CASE(test_find_team_by_name),

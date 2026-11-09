@@ -122,7 +122,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Recovery must preserve a damaged primary as `.corrupt` before restoring the backup.
 - No silent reset. If both primary and backup fail validation, stop and report the error.
 - All new file validation must reject duplicates, dangling IDs, invalid ranges, invalid UTF-8 and malformed records.
-- WhoScored imports must validate the complete plan before mutation, then create clubs, move/create players and add the match inside one app transaction. Cancelling or failing the preview must leave the database unchanged.
+- WhoScored imports must validate the complete plan before mutation, then create clubs, move/create players and add the match inside one app transaction. Imported minutes must reflect starting, substitution and sending-off times. Cancelling or failing the preview must leave the database unchanged.
 - Update `docs/data-format.md` and storage tests for format changes. Import behaviour belongs in `docs/whoscored-import.md`.
 
 ## UI rules

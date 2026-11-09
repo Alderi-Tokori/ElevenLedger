@@ -42,8 +42,8 @@ The page must contain WhoScored's embedded `matchCentreData`. PitchRate reads:
 - the full home and away club names from the match header when it provides a
   fuller name than `matchCentreData`, otherwise the names in `matchCentreData`;
 - the final or current score from the full-time score, or from the score text;
-- every player who appeared, with minutes derived from the starting line-up and
-  substitution minutes. Unused substitutes are omitted.
+- every player who appeared, with minutes derived from the starting line-up,
+  substitution minutes and sending-offs. Unused substitutes are omitted.
 
 PitchRate uses the real elapsed match length. It reads `maxMinute` (for example
 94 for a match that ended at 90+4), falls back to the last recorded
@@ -57,8 +57,10 @@ from the expanded clock back to the real match clock before minutes are
 calculated. A substitute receives the time between their entry and the end of
 the match, or their own substitution-out time when they are replaced again.
 A substitute who enters during stoppage time is recorded with at least one
-minute. Minutes are clamped to the 1-120 range accepted by PitchRate. The
-imported performance defaults to 6.00 and can be edited before import.
+minute. Straight red cards and second yellows are read from the match events and
+stop that player's minutes at the sending-off minute. Minutes are clamped to the
+1-120 range accepted by PitchRate. The imported performance defaults to 6.00 and
+can be edited before import.
 
 Player names are split at the first space: the first token becomes the first
 name and the remainder becomes the last name. A single-word name is stored as a

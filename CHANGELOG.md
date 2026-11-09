@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.15.3 - 2026-11-09
+
+### Fixed
+
+- WhoScored import now stops a player's minutes at a sending-off. Straight red cards and second yellows are read from the match events, so a sent-off starter no longer receives the full match length.
+
 ## 1.15.2 - 2026-11-09
 
 ### Fixed

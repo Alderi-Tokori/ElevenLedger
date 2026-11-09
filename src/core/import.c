@@ -1104,6 +1104,143 @@ static int match_minute_from_expanded(int expanded,
     return minute;
 }
 
+typedef struct {
+    int player_id;
+    int minute;
+} SendingOff;
+
+#define IMPORT_MAX_SENDING_OFFS IMPORT_MAX_PLAYERS
+
+static bool json_string_equals(JsonSpan span, const char *value)
+{
+    if (span.start >= span.end || *span.start != '"') {
+        return false;
+    }
+    char text[64];
+    if (!json_decode_string(span, text, sizeof(text))) {
+        return false;
+    }
+    return util_ascii_iequal(text, value);
+}
+
+static bool qualifier_is_sending_off(JsonSpan qualifier)
+{
+    if (qualifier.start >= qualifier.end || *qualifier.start != '{') {
+        return false;
+    }
+    JsonSpan type;
+    if (!json_object_get(qualifier, "type", &type) ||
+        type.start >= type.end || *type.start != '{') {
+        return false;
+    }
+    JsonSpan value_span;
+    int value = 0;
+    if (json_object_get(type, "value", &value_span) &&
+        json_parse_int(value_span, &value) &&
+        (value == 32 || value == 33)) {
+        return true;
+    }
+    JsonSpan name;
+    if (!json_object_get(type, "displayName", &name)) {
+        return false;
+    }
+    return json_string_equals(name, "Red") ||
+           json_string_equals(name, "SecondYellow") ||
+           json_string_equals(name, "YellowRed");
+}
+
+static void add_sending_off(SendingOff *sending_offs, size_t *count,
+                            size_t capacity, int player_id, int minute)
+{
+    if (player_id <= 0 || minute <= 0) {
+        return;
+    }
+    for (size_t i = 0; i < *count; ++i) {
+        if (sending_offs[i].player_id == player_id) {
+            if (minute < sending_offs[i].minute) {
+                sending_offs[i].minute = minute;
+            }
+            return;
+        }
+    }
+    if (*count >= capacity) {
+        return;
+    }
+    sending_offs[*count].player_id = player_id;
+    sending_offs[*count].minute = minute;
+    ++*count;
+}
+
+static void collect_sending_offs(JsonSpan root, SendingOff *sending_offs,
+                                 size_t *out_count, size_t capacity)
+{
+    *out_count = 0;
+    JsonSpan events;
+    if (!json_object_get(root, "events", &events)) {
+        return;
+    }
+    JsonArrayIter iter;
+    if (!json_array_begin(events, &iter)) {
+        return;
+    }
+    JsonSpan event;
+    while (json_array_next(&iter, &event)) {
+        if (event.start >= event.end || *event.start != '{') {
+            continue;
+        }
+        JsonSpan type;
+        if (!json_object_get(event, "type", &type) ||
+            type.start >= type.end || *type.start != '{') {
+            continue;
+        }
+        JsonSpan name;
+        if (!json_object_get(type, "displayName", &name) ||
+            !json_string_equals(name, "Card")) {
+            continue;
+        }
+        JsonSpan number;
+        int player_id = 0;
+        int minute = 0;
+        if (!json_object_get(event, "playerId", &number) ||
+            !json_parse_int(number, &player_id) ||
+            !json_object_get(event, "minute", &number) ||
+            !json_parse_int(number, &minute)) {
+            continue;
+        }
+        JsonSpan qualifiers;
+        if (!json_object_get(event, "qualifiers", &qualifiers)) {
+            continue;
+        }
+        JsonArrayIter qualifier_iter;
+        if (!json_array_begin(qualifiers, &qualifier_iter)) {
+            continue;
+        }
+        JsonSpan qualifier;
+        bool sending_off = false;
+        while (json_array_next(&qualifier_iter, &qualifier)) {
+            if (qualifier_is_sending_off(qualifier)) {
+                sending_off = true;
+                break;
+            }
+        }
+        if (sending_off) {
+            add_sending_off(sending_offs, out_count, capacity, player_id,
+                            minute);
+        }
+    }
+}
+
+static int sending_off_minute(const SendingOff *sending_offs, size_t count,
+                              int player_id)
+{
+    for (size_t i = 0; i < count; ++i) {
+        if (sending_offs[i].player_id == player_id) {
+            return sending_offs[i].minute;
+        }
+    }
+    return 0;
+}
+
 static bool split_player_name(const char *full_name, ImportedPlayer *player,
                               char *error, size_t error_size)
 {
@@ -1163,6 +1300,8 @@ static bool grow_imported_players(ImportedPlayer **players, size_t *capacity,
 }
 
 static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
+                               const SendingOff *sending_offs,
+                               size_t sending_off_count,
                                ImportedPlayer **out_players,
                                size_t *out_count,
                                char *error, size_t error_size)
@@ -1215,11 +1354,19 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
             }
         }
 
+        int source_id = 0;
+        JsonSpan number;
+        if (json_object_get(item, "playerId", &number)) {
+            int value = 0;
+            if (json_parse_int(number, &value) && value > 0) {
+                source_id = value;
+            }
+        }
+
         bool has_subbed_in = false;
         bool has_subbed_out = false;
         int subbed_in = 0;
         int subbed_out = 0;
-        JsonSpan number;
         if (json_object_get(item, "subbedInExpandedMinute", &number)) {
             if (!json_parse_int(number, &subbed_in)) {
                 set_error(error, error_size,
@@ -1245,6 +1392,11 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
         if (has_subbed_out && subbed_out > 0) {
             out_minute = match_minute_from_expanded(subbed_out, timing);
         }
+        int off_minute = 0;
+        if (source_id > 0) {
+            off_minute = sending_off_minute(sending_offs, sending_off_count,
+                                            source_id);
+        }
 
         int minutes = 0;
         if (in_minute > 0) {
@@ -1252,11 +1404,20 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
             if (out_minute > in_minute) {
                 end_minute = out_minute;
             }
+            if (off_minute > 0 && off_minute < end_minute) {
+                end_minute = off_minute;
+            }
             minutes = end_minute - in_minute;
         } else if (out_minute > 0) {
             minutes = out_minute;
+            if (off_minute > 0 && off_minute < minutes) {
+                minutes = off_minute;
+            }
         } else if (first_eleven) {
             minutes = timing->match_length;
+            if (off_minute > 0 && off_minute < minutes) {
+                minutes = off_minute;
+            }
         } else {
             continue;
         }
@@ -1302,6 +1463,8 @@ fail:
 
 static bool parse_team(JsonSpan root, const char *key,
                        const MatchTiming *timing,
+                       const SendingOff *sending_offs,
+                       size_t sending_off_count,
                        char *team_name, size_t team_name_size,
                        ImportedPlayer **players, size_t *player_count,
                        char *error, size_t error_size)
@@ -1325,8 +1488,8 @@ static bool parse_team(JsonSpan root, const char *key,
                              "team name")) {
         return false;
     }
-    return parse_team_players(team, timing, players, player_count,
-                              error, error_size);
+    return parse_team_players(team, timing, sending_offs, sending_off_count,
+                              players, player_count, error, error_size);
 }
 
 void imported_match_free(ImportedMatch *match)
@@ -1406,16 +1569,22 @@ bool imported_match_parse_html(const char *html, size_t length,
     }
     MatchTiming timing;
     resolve_match_timing(root, extra_time, &timing);
+    SendingOff sending_offs[IMPORT_MAX_SENDING_OFFS];
+    size_t sending_off_count = 0;
+    collect_sending_offs(root, sending_offs, &sending_off_count,
+                         sizeof(sending_offs) / sizeof(sending_offs[0]));
 
-    if (!parse_team(root, "home", &timing, out->home_team,
-                    sizeof(out->home_team), &out->home_players,
-                    &out->home_player_count, error, error_size)) {
+    if (!parse_team(root, "home", &timing, sending_offs, sending_off_count,
+                    out->home_team, sizeof(out->home_team),
+                    &out->home_players, &out->home_player_count,
+                    error, error_size)) {
         imported_match_free(out);
         return false;
     }
-    if (!parse_team(root, "away", &timing, out->away_team,
-                    sizeof(out->away_team), &out->away_players,
-                    &out->away_player_count, error, error_size)) {
+    if (!parse_team(root, "away", &timing, sending_offs, sending_off_count,
+                    out->away_team, sizeof(out->away_team),
+                    &out->away_players, &out->away_player_count,
+                    error, error_size)) {
         imported_match_free(out);
         return false;
     }

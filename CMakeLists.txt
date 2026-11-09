@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(PitchRate
-    VERSION 1.15.2
+    VERSION 1.15.3
     DESCRIPTION "Football player rating calculator for Windows"
     LANGUAGES C RC
 )
