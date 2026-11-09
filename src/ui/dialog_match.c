@@ -329,6 +329,54 @@ static bool record_has_player(const RecordMatchState *state, uint64_t player_id)
     return record_find_row(state, player_id, NULL);
 }
 
+static int compare_teams_by_name(const void *left, const void *right)
+{
+    const Team *a = *(const Team *const *)left;
+    const Team *b = *(const Team *const *)right;
+    wchar_t a_name[TEAM_NAME_MAX + 1] = L"";
+    wchar_t b_name[TEAM_NAME_MAX + 1] = L"";
+    ui_utf8_to_wide(a->name, a_name,
+                    sizeof(a_name) / sizeof(a_name[0]));
+    ui_utf8_to_wide(b->name, b_name,
+                    sizeof(b_name) / sizeof(b_name[0]));
+    int result = ui_text_compare(a_name, b_name);
+    if (result != 0) {
+        return result;
+    }
+    if (a->id < b->id) {
+        return -1;
+    }
+    if (a->id > b->id) {
+        return 1;
+    }
+    return 0;
+}
+
+static bool record_add_team_options(RecordMatchState *state)
+{
+    size_t count = state->app->db.team_count;
+    const Team **teams = NULL;
+    if (count > 0) {
+        teams = malloc(count * sizeof(*teams));
+        if (teams == NULL) {
+            record_show_error_wide(
+                state, L"Not enough memory to list the clubs.");
+            return false;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            teams[i] = &state->app->db.teams[i];
+        }
+        qsort(teams, count, sizeof(*teams), compare_teams_by_name);
+    }
+    for (size_t i = 0; i < count; ++i) {
+        const Team *team = teams[i];
+        ui_combo_add_utf8(state->home_team, team->name, team->id);
+        ui_combo_add_utf8(state->away_team, team->name, team->id);
+    }
+    free(teams);
+    return true;
+}
+
 static void record_rebuild_rows(RecordMatchState *state,
                                 const LineupSnapshot *preserve,
                                 size_t preserve_count,
@@ -1266,10 +1314,8 @@ static bool record_build(App *app, RecordMatchState *state)
                            L"Rating", 100);
     }
 
-    for (size_t i = 0; i < app->db.team_count; ++i) {
-        const Team *team = &app->db.teams[i];
-        ui_combo_add_utf8(state->home_team, team->name, team->id);
-        ui_combo_add_utf8(state->away_team, team->name, team->id);
+    if (!record_add_team_options(state)) {
+        return false;
     }
 
     if (state->editing) {

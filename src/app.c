@@ -20,7 +20,7 @@
 #include <wchar.h>
 
 #ifndef PITCHRATE_VERSION
-#define PITCHRATE_VERSION "1.10.0"
+#define PITCHRATE_VERSION "1.10.1"
 #endif
 
 #define MAIN_WINDOW_CLASS_NAME L"PitchRateMainWindow"

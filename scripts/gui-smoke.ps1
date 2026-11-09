@@ -173,6 +173,20 @@ function Invoke-MouseClick {
     [PitchRateSmoke]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
 }
 
+function Read-ComboItems {
+    param([IntPtr]$Combo)
+    $count = [int][PitchRateSmoke]::SendMessage(
+        $Combo, 0x0146, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    $items = @()
+    for ($i = 0; $i -lt $count; $i++) {
+        $buffer = New-Object System.Text.StringBuilder 256
+        [PitchRateSmoke]::SendMessageBuffer(
+            $Combo, 0x0148, [IntPtr]$i, $buffer) | Out-Null
+        $items += $buffer.ToString()
+    }
+    return ,$items
+}
+
 function Click-ListHeader {
     param(
         [IntPtr]$Main,
@@ -610,6 +624,49 @@ try {
         $awayAddPlayer -eq [IntPtr]::Zero) {
         throw "The record-match dialog is missing its side-by-side line-up lists or add-player buttons."
     }
+    $homeTeamCombo = [PitchRateSmoke]::FindChildById($recordDialog, 2201)
+    $awayTeamCombo = [PitchRateSmoke]::FindChildById($recordDialog, 2202)
+    if ($homeTeamCombo -eq [IntPtr]::Zero -or
+        $awayTeamCombo -eq [IntPtr]::Zero) {
+        throw "The record-match dialog is missing its team selectors."
+    }
+    $expectedTeamOrder = @("Empty FC", "Northbridge FC", "Riverside Athletic")
+    $homeTeamItems = Read-ComboItems -Combo $homeTeamCombo
+    $awayTeamItems = Read-ComboItems -Combo $awayTeamCombo
+    $expectedOrder = $expectedTeamOrder -join "|"
+    if (($homeTeamItems -join "|") -ne $expectedOrder -or
+        ($awayTeamItems -join "|") -ne $expectedOrder) {
+        throw "The match team selectors are not sorted by club name."
+    }
+    Write-Host "Alphabetical club lists OK"
+
+    $selectionCommand = [IntPtr]((1 -shl 16) -bor 2201)
+    $awaySelectionCommand = [IntPtr]((1 -shl 16) -bor 2202)
+    $homeTeamIndex = [PitchRateSmoke]::SendMessageText(
+        $homeTeamCombo, 0x0158, [IntPtr](-1), "Northbridge FC").ToInt64()
+    $awayTeamIndex = [PitchRateSmoke]::SendMessageText(
+        $awayTeamCombo, 0x0158, [IntPtr](-1), "Riverside Athletic").ToInt64()
+    if ($homeTeamIndex -lt 0 -or $awayTeamIndex -lt 0) {
+        throw "A populated club is missing from the match team list."
+    }
+    [PitchRateSmoke]::SendMessage(
+        $homeTeamCombo, 0x014E, [IntPtr]$homeTeamIndex, [IntPtr]::Zero) | Out-Null
+    [PitchRateSmoke]::SendMessage(
+        $awayTeamCombo, 0x014E, [IntPtr]$awayTeamIndex, [IntPtr]::Zero) | Out-Null
+    [PitchRateSmoke]::PostMessage(
+        $recordDialog, 0x0111, $selectionCommand, $homeTeamCombo) | Out-Null
+    [PitchRateSmoke]::PostMessage(
+        $recordDialog, 0x0111, $awaySelectionCommand, $awayTeamCombo) | Out-Null
+    Wait-Until -Description "populated home and away line-ups" -Condition {
+        return ([PitchRateSmoke]::SendMessage(
+            $homeLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -ge 1 -and
+            [PitchRateSmoke]::SendMessage(
+                $awayLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -ge 1)
+    }
+    $homeTeamData = [PitchRateSmoke]::SendMessage(
+        $homeTeamCombo, 0x0150, [IntPtr]$homeTeamIndex, [IntPtr]::Zero).ToInt64()
+    $awayTeamData = [PitchRateSmoke]::SendMessage(
+        $awayTeamCombo, 0x0150, [IntPtr]$awayTeamIndex, [IntPtr]::Zero).ToInt64()
     $homeLineupCount = [PitchRateSmoke]::SendMessage(
         $homeLineupList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
     $awayLineupCount = [PitchRateSmoke]::SendMessage(
@@ -628,12 +685,6 @@ try {
     Assert-CellEditor -Dialog $recordDialog -List $awayLineupList `
         -SubItem 2 -ExpectedText "6.00" -Label "away performance"
 
-    $homeTeamCombo = [PitchRateSmoke]::FindChildById($recordDialog, 2201)
-    $homeTeamIndex = [PitchRateSmoke]::SendMessage(
-        $homeTeamCombo, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
-    $homeTeamData = [PitchRateSmoke]::SendMessage(
-        $homeTeamCombo, 0x0150, [IntPtr]$homeTeamIndex, [IntPtr]::Zero).ToInt64()
-
     $emptyTeamIndex = [PitchRateSmoke]::SendMessageText(
         $homeTeamCombo, 0x0158, [IntPtr](-1), "Empty FC").ToInt64()
     if ($emptyTeamIndex -lt 0) {
@@ -643,7 +694,6 @@ try {
         $homeTeamCombo, 0x0150, [IntPtr]$emptyTeamIndex, [IntPtr]::Zero).ToInt64()
     [PitchRateSmoke]::SendMessage(
         $homeTeamCombo, 0x014E, [IntPtr]$emptyTeamIndex, [IntPtr]::Zero) | Out-Null
-    $selectionCommand = [IntPtr]((1 -shl 16) -bor 2201)
     [PitchRateSmoke]::PostMessage($recordDialog, 0x0111, $selectionCommand, $homeTeamCombo) | Out-Null
     Wait-Until -Description "the empty club line-up" -Condition {
         return ([PitchRateSmoke]::SendMessage(

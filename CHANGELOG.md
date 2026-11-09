@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.10.1 - 2026-11-09
+
+### Changed
+
+- The Record match and Edit match dialogs now list clubs alphabetically in the home and away team selectors.
+
 ## 1.10.0 - 2026-11-09
 
 ### Added
