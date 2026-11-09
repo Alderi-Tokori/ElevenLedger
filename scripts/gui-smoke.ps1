@@ -120,7 +120,7 @@ public class PitchRateSmoke {
         IntPtr found = IntPtr.Zero;
         EnumChildWindows(parent, (hWnd, lParam) => {
             if (ClassName(hWnd) == "Edit" && IsWindowVisible(hWnd) &&
-                ControlText(hWnd) == text) {
+                GetDlgCtrlID(hWnd) == 0 && ControlText(hWnd) == text) {
                 found = hWnd;
                 return false;
             }
@@ -822,6 +822,22 @@ matchCentreData: {
         throw "The record-match dialog did not split both teams into their own lists."
     }
     Write-Host "Side-by-side line-up lists OK"
+
+    $recordLength = [PitchRateSmoke]::FindChildById($recordDialog, 2214)
+    if ($recordLength -eq [IntPtr]::Zero) {
+        throw "The record-match dialog is missing its final-whistle field."
+    }
+    if ([PitchRateSmoke]::WindowText($recordLength) -ne "90") {
+        throw "The match dialog did not default the final whistle to 90."
+    }
+    $homeHeader = [PitchRateSmoke]::SendMessage(
+        $homeLineupList, 0x101F, [IntPtr]::Zero, [IntPtr]::Zero)
+    $homeColumns = [PitchRateSmoke]::SendMessage(
+        $homeHeader, 0x1200, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($homeColumns -ne 5) {
+        throw "The line-up list is missing its Sent off column."
+    }
+    Write-Host "Final whistle and sent-off controls OK"
 
     Assert-CellEditor -Dialog $recordDialog -List $homeLineupList `
         -SubItem 1 -ExpectedText "90" -Label "home minutes"

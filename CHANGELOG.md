@@ -2,6 +2,17 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.16.0 - 2026-11-09
+
+### Added
+
+- Match dialogs now record the final-whistle minute and each player's sending-off minute. WhoScored imports fill both from the page source and show them in the preview.
+
+### Changed
+
+- A player sent off in a lost match now uses the result share from his entry minute to the final whistle, capped at 90 minutes. Wins and draws keep the actual minutes. Line-up strength, performance and career statistics still use the actual minutes.
+- The data format is now v4. Older v1-v3 files load with a 90-minute final whistle and no sending-offs, and are upgraded on save.
+
 ## 1.15.3 - 2026-11-09
 
 ### Fixed

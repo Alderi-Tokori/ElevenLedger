@@ -82,7 +82,7 @@ Layering rules:
 1. `src/core` must not depend on Win32 UI or the `App` type. The import parser and apply engine must stay testable without a display; only `dialog_import.c` may use the clipboard and the preview controls.
 2. UI code must not write the data file directly. Use `app_tx_begin`, `app_tx_commit` and `app_tx_abort`.
 3. Derived values (current ratings, appearance before/delta/after, match summaries, player totals) are recomputed. Only source data belongs in the file.
-4. The data format is versioned. Format v3 removes player position; v1/v2 files must keep loading with their legacy position discarded and missing neutral values defaulting to false. Add migration tests before changing it again.
+4. The data format is versioned. Format v3 removes player position; format v4 adds the match final-whistle minute and each appearance's sending-off minute. v1-v3 files must keep loading with their legacy position discarded, missing neutral values defaulting to false, final whistle defaulting to 90 and sending-off defaulting to none. Add migration tests before changing it again.
 
 ## Rating model rules
 
@@ -92,11 +92,13 @@ Source of truth: `src/core/rating.h` and `src/core/rating.c`. Full documentation
 - Players have no stored or input position; do not reintroduce position as an implicit rating factor.
 - Performance: 1.0-10.0; default 6.0. New entries are quantized to two decimals.
 - Minutes: 1-120; player-impact weight caps at 90 minutes.
+- Match length: final-whistle minute 1-120, including stoppage time.
+- Removals without replacement: store the sending-off/removal minute. Such a player on a losing team uses entry-to-final-whistle result participation (capped at 90) for the team result share; wins and draws use actual minutes. Line-up strength, performance and statistics keep actual minutes.
 - Home advantage: 4.0 rating points for normal matches, 0.0 for neutral-venue matches.
 - K factor: 16.0.
 - Performance weight: 0.75.
 - The team result creates one zero-sum pool: the winning team's total gain equals the losing team's total loss.
-- Each team's pool is shared by participation. Performance is measured against the team's minutes-weighted average and only redistributes points within that team.
+- Each team's pool is shared by result participation. Performance is measured against the team's actual-minutes-weighted average and only redistributes points within that team.
 - Every match is zero-sum: all player deltas add up to zero. Do not add a per-match movement cap or a final rating clamp.
 - New match recording rejects a team line-up above 1,320 player-minutes; this validation is intentionally not applied while loading legacy data.
 - Matches always replay in date order, then ID order.
@@ -122,7 +124,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Recovery must preserve a damaged primary as `.corrupt` before restoring the backup.
 - No silent reset. If both primary and backup fail validation, stop and report the error.
 - All new file validation must reject duplicates, dangling IDs, invalid ranges, invalid UTF-8 and malformed records.
-- WhoScored imports must validate the complete plan before mutation, then create clubs, move/create players and add the match inside one app transaction. Imported minutes must reflect starting, substitution and sending-off times. Cancelling or failing the preview must leave the database unchanged.
+- WhoScored imports must validate the complete plan before mutation, then create clubs, move/create players and add the match inside one app transaction. Imported actual minutes and sending-off minutes must reflect starting, substitution and sending-off times, and the final whistle must use the real elapsed match length. Cancelling or failing the preview must leave the database unchanged.
 - Update `docs/data-format.md` and storage tests for format changes. Import behaviour belongs in `docs/whoscored-import.md`.
 
 ## UI rules
@@ -138,9 +140,9 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Inline cell editors must stay above their list in the child z-order after creation so list repaints cannot cover them.
 - Custom-class windows should set their window text explicitly after creation. Do not rely on the class's `WM_NCCREATE` path to retain text.
 - When adding a player, default the team to the most recently created player's team; use `db_last_added_player` rather than array order guesses.
-- Match dialogs show each team's squad in its own list. Add player actions from those lists must use `dialog_add_player_for_team` so the fixed team, validation and duplicate-name flow stay identical to the Players page. Team selectors include every club, even those without players; saving still requires at least one selected player per side.
+- Match dialogs show each team's squad in its own list. They expose the final-whistle minute and a per-player sending-off minute. A sending-off minute is blank/0 or between that player's actual minutes and the final whistle. Add player actions from those lists must use `dialog_add_player_for_team` so the fixed team, validation and duplicate-name flow stay identical to the Players page. Team selectors include every club, even those without players; saving still requires at least one selected player per side.
 - Adding a player whose full name matches an existing player must show the existing player's details and offer to add a duplicate, move the existing player to the selected club, or cancel. Use `db_find_player_by_name`; never add the duplicate silently.
-- The WhoScored import source dialog must accept page source from the clipboard, keep itself open and show the parser error when the source is invalid, and never fetch a URL. The preview must not mutate data before confirmation. It must show the scraped date, clubs, score, players and minutes, and recompute each player's new/same-club/other-club/archived cue whenever a name or club changes. Per-player duplicate decisions must be explicit; never move an existing player silently. Recomputing a cue must restore the default action for that cue; preserve an action only when the user explicitly chose it for the same matched player. Prefer an active player from the imported club when duplicate names exist.
+- The WhoScored import source dialog must accept page source from the clipboard, keep itself open and show the parser error when the source is invalid, and never fetch a URL. The preview must not mutate data before confirmation. It must show the scraped date, clubs, score, players, minutes, final whistle and sending-off minutes, and recompute each player's new/same-club/other-club/archived cue whenever a name or club changes. Per-player duplicate decisions must be explicit; never move an existing player silently. Recomputing a cue must restore the default action for that cue; preserve an action only when the user explicitly chose it for the same matched player. Prefer an active player from the imported club when duplicate names exist.
 - Do not add URL fetching, embedded browsers, User-Agent spoofing or anti-bot bypasses. WhoScored's browser-assisted page-source paste is the supported path.
 - Pages and dialogs must tolerate DPI settings and available work-area clamping down to the documented minimum display. Do not assume the screen size; clamp all dimensions to non-negative values.
 - Text must be valid UTF-8 internally. Convert only at the Win32 boundary.
@@ -158,7 +160,7 @@ Minimum coverage areas for changes:
 - rating maths and invariants,
 - date and UTF-8 validation,
 - database CRUD, references, replay, deletion and transfer behaviour,
-- WhoScored HTML parsing, minutes and player-name splitting,
+- WhoScored HTML parsing, match length, minutes, sending-offs and player-name splitting,
 - clipboard source validation, transactional import planning, club creation, player creation/moves, archived players and duplicate validation,
 - storage round-trip, corruption, recovery and compatibility,
 - GUI starts, pages render, modal ownership and complete save flows.

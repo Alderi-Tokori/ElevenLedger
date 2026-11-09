@@ -30,10 +30,15 @@ bool rating_team_profile(const RatingPlayerInput *players, size_t count,
 
     double weighted_sum = 0.0;
     double weight_total = 0.0;
+    double result_weight_total = 0.0;
     double performance_total = 0.0;
     for (size_t i = 0; i < count; ++i) {
+        int result_minutes = players[i].result_minutes > 0
+                                 ? players[i].result_minutes
+                                 : players[i].minutes;
         if (!isfinite(players[i].rating) ||
             players[i].minutes < 1 || players[i].minutes > 120 ||
+            result_minutes < 1 || result_minutes > 120 ||
             !isfinite(players[i].performance) ||
             players[i].performance < 1.0 ||
             players[i].performance > 10.0) {
@@ -42,15 +47,17 @@ bool rating_team_profile(const RatingPlayerInput *players, size_t count,
         double weight = rating_participation(players[i].minutes);
         weighted_sum += players[i].rating * weight;
         weight_total += weight;
+        result_weight_total += rating_participation(result_minutes);
         performance_total += players[i].performance * weight;
     }
-    if (weight_total <= 0.0 ||
+    if (weight_total <= 0.0 || result_weight_total <= 0.0 ||
         !isfinite(weighted_sum) || !isfinite(performance_total)) {
         return false;
     }
 
     *strength = weighted_sum / weight_total;
     context->total_participation = weight_total;
+    context->total_result_participation = result_weight_total;
     context->weighted_performance = performance_total;
     return isfinite(*strength);
 }
@@ -88,9 +95,13 @@ bool rating_match_summary(RatingMatchSummary *out,
     if (home_context == NULL || away_context == NULL ||
         !isfinite(home_context->total_participation) ||
         home_context->total_participation <= 0.0 ||
+        !isfinite(home_context->total_result_participation) ||
+        home_context->total_result_participation <= 0.0 ||
         !isfinite(home_context->weighted_performance) ||
         !isfinite(away_context->total_participation) ||
         away_context->total_participation <= 0.0 ||
+        !isfinite(away_context->total_result_participation) ||
+        away_context->total_result_participation <= 0.0 ||
         !isfinite(away_context->weighted_performance)) {
         set_error(error, error_size, "Invalid team line-up context.");
         return false;
@@ -168,14 +179,18 @@ bool rating_compute_match(RatingMatchSummary *out,
                                 error, error_size);
 }
 
-bool rating_player_change(const RatingMatchSummary *summary, bool home_team,
-                          double rating_before, int minutes,
-                          double performance, double *rating_delta,
-                          double *rating_after)
+bool rating_player_change_with_result_minutes(
+    const RatingMatchSummary *summary, bool home_team, double rating_before,
+    int minutes, int result_minutes, double performance, double *rating_delta,
+    double *rating_after)
 {
+    if (result_minutes == 0) {
+        result_minutes = minutes;
+    }
     if (summary == NULL || rating_delta == NULL || rating_after == NULL ||
         !isfinite(rating_before) ||
         minutes < 1 || minutes > 120 ||
+        result_minutes < 1 || result_minutes > 120 ||
         !isfinite(performance) || performance < 1.0 || performance > 10.0) {
         return false;
     }
@@ -184,17 +199,21 @@ bool rating_player_change(const RatingMatchSummary *summary, bool home_team,
         home_team ? &summary->home_context : &summary->away_context;
     if (!isfinite(context->total_participation) ||
         context->total_participation <= 0.0 ||
+        !isfinite(context->total_result_participation) ||
+        context->total_result_participation <= 0.0 ||
         !isfinite(context->weighted_performance)) {
         return false;
     }
 
     double participation = rating_participation(minutes);
+    double result_participation = rating_participation(result_minutes);
     double team_delta = home_team ? summary->home_team_delta
                                   : summary->away_team_delta;
     double team_average =
         context->weighted_performance / context->total_participation;
     double result_component =
-        team_delta * (participation / context->total_participation);
+        team_delta *
+        (result_participation / context->total_result_participation);
     double performance_component =
         (performance - team_average) *
         RATING_PERFORMANCE_WEIGHT * participation;
@@ -210,4 +229,14 @@ bool rating_player_change(const RatingMatchSummary *summary, bool home_team,
     *rating_delta = proposed_delta;
     *rating_after = proposed_rating;
     return true;
+}
+
+bool rating_player_change(const RatingMatchSummary *summary, bool home_team,
+                          double rating_before, int minutes,
+                          double performance, double *rating_delta,
+                          double *rating_after)
+{
+    return rating_player_change_with_result_minutes(
+        summary, home_team, rating_before, minutes, minutes, performance,
+        rating_delta, rating_after);
 }

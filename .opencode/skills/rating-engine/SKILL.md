@@ -19,12 +19,13 @@ PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/databas
 
 - Long-term ratings have no fixed lower or upper bound; starting ratings must be finite.
 - Match performance is 1.0-10.0 with 6.0 as the default input.
-- Participation is `min(minutes, 90)/90`.
-- Line-up strength is minutes-weighted.
+- Actual participation is `min(minutes, 90)/90`; result participation uses `result_minutes`, normally equal to actual minutes.
+- A player sent off in a lost match uses entry-to-final-whistle result minutes, capped at 90. Wins and draws use actual minutes. Line-up strength, performance and statistics always use actual minutes.
+- Line-up strength is actual-minutes-weighted.
 - Expected result uses a 40-point Elo scale. Normal matches add +4.0 home advantage; neutral-venue matches add 0.0.
 - Team movement uses K=16, actual minus expected, times a goal-margin factor. It is one pool for the whole team, not a per-player amount.
-- The pool is split by `participation / team_participation`.
-- Performance is `(performance - team_weighted_average_performance) * 0.75 * participation`. It only redistributes points between team-mates.
+- The pool is split by `result_participation / team_result_participation`.
+- Performance is `(performance - team_weighted_average_performance) * 0.75 * actual_participation`. It only redistributes points between team-mates.
 - There is no per-match movement cap and no rating clamp.
 - Every match conserves rating points: all player deltas sum to zero.
 - Matches are replayed by date and ID from each player's starting rating.
@@ -51,7 +52,8 @@ PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/databas
 - There is no per-match cap and no final rating clamp.
 - `rating_after = rating_before + rating_delta` (within floating-point tolerance).
 - Increasing performance never decreases a player's delta.
-- Increasing minutes never reduces a player's share of the result pool.
+- For a fixed result weighting, increasing minutes never reduces a player's share of the result pool.
+- A sent-off player on a losing team gets at least the result share implied by entry-to-final-whistle minutes; wins and draws keep the actual result share.
 - Deleting or changing history replays chronological state consistently.
 - Derived fields are not persisted as source data.
 

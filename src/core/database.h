@@ -47,6 +47,8 @@ typedef struct {
     int home_goals;
     int away_goals;
     bool neutral_venue;
+    /* Elapsed final-whistle minute, including stoppage time. */
+    int length;
     /* Derived team-level details, retained for history and previews. */
     RatingMatchSummary rating;
 } Match;
@@ -57,6 +59,8 @@ typedef struct {
     uint64_t team_id;
     int minutes;
     double performance;
+    /* Sending-off minute, or 0 when the player completed his appearance. */
+    int sent_off;
     /* Derived rating snapshots for history and auditability. */
     double rating_before;
     double rating_delta;
@@ -89,6 +93,8 @@ typedef struct {
     uint64_t player_id;
     int minutes;
     double performance;
+    /* Sending-off minute, or 0 when the player was not sent off. */
+    int sent_off;
 } MatchPlayerInput;
 
 typedef struct {
@@ -98,6 +104,7 @@ typedef struct {
     int home_goals;
     int away_goals;
     bool neutral_venue;
+    int length;
     const MatchPlayerInput *players;
     size_t player_count;
 } MatchInput;

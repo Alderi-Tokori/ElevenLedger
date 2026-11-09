@@ -34,6 +34,7 @@ enum {
     RECORD_AWAY_LIST_ID,
     RECORD_HOME_ADD_ID,
     RECORD_AWAY_ADD_ID,
+    RECORD_LENGTH_ID,
 };
 
 enum {
@@ -48,6 +49,7 @@ enum {
     LINEUP_COLUMN_MINUTES,
     LINEUP_COLUMN_PERFORMANCE,
     LINEUP_COLUMN_RATING,
+    LINEUP_COLUMN_SENT_OFF,
     LINEUP_COLUMN_COUNT,
 };
 
@@ -57,6 +59,7 @@ typedef struct {
     char player_name[160];
     bool selected;
     int minutes;
+    int sent_off;
     double performance;
     double current_rating;
 } LineupRow;
@@ -65,6 +68,7 @@ typedef struct {
     uint64_t player_id;
     bool selected;
     int minutes;
+    int sent_off;
     double performance;
 } LineupSnapshot;
 
@@ -76,6 +80,7 @@ typedef struct {
     HWND away_team;
     HWND home_score;
     HWND away_score;
+    HWND length;
     HWND home_list;
     HWND away_list;
     HWND home_add;
@@ -115,6 +120,8 @@ typedef struct {
     RECT label_home_score;
     RECT label_away_score;
     RECT label_away_team;
+    RECT label_length;
+    RECT length_rect;
     RECT neutral_rect;
     RECT preview_rect;
     RECT info_rect;
@@ -278,6 +285,7 @@ static bool record_capture_rows(const RecordMatchState *state,
         snapshot[i].player_id = state->rows[i].player_id;
         snapshot[i].selected = state->rows[i].selected;
         snapshot[i].minutes = state->rows[i].minutes;
+        snapshot[i].sent_off = state->rows[i].sent_off;
         snapshot[i].performance = state->rows[i].performance;
     }
     *out_snapshot = snapshot;
@@ -298,6 +306,7 @@ static void record_apply_snapshot(LineupRow *row,
         }
         row->selected = preserve[i].selected;
         row->minutes = preserve[i].minutes;
+        row->sent_off = preserve[i].sent_off;
         row->performance = preserve[i].performance;
         return;
     }
@@ -314,6 +323,7 @@ static void lineup_row_init(LineupRow *row, const Player *player,
     row->team_id = team_id;
     row->selected = false;
     row->minutes = 90;
+    row->sent_off = 0;
     row->performance = RATING_NEUTRAL_PERFORMANCE;
     row->current_rating = rating;
     format_player_name(player, row->player_name, sizeof(row->player_name));
@@ -444,6 +454,7 @@ static void record_update_preview(RecordMatchState *state)
         input->rating = state->rows[i].current_rating;
         input->minutes = state->rows[i].minutes;
         input->performance = state->rows[i].performance;
+        input->result_minutes = 0;
     }
 
     double home_strength = 0.0;
@@ -612,6 +623,7 @@ static void record_rebuild_rows(RecordMatchState *state,
                                             pre_match_rating_count, player));
                 row->selected = true;
                 row->minutes = appearance->minutes;
+                row->sent_off = appearance->sent_off;
                 row->performance = appearance->performance;
                 record_apply_snapshot(row, preserve, preserve_count);
             }
@@ -644,14 +656,20 @@ static void record_rebuild_rows(RecordMatchState *state,
         LineupRow *row = &state->rows[i];
         HWND list = record_list_for_row(state, i);
         char minutes[16];
+        char sent_off[16];
         char performance[16];
         char rating[16];
         snprintf(minutes, sizeof(minutes), "%d", row->minutes);
+        if (row->sent_off > 0) {
+            snprintf(sent_off, sizeof(sent_off), "%d", row->sent_off);
+        } else {
+            sent_off[0] = '\0';
+        }
         snprintf(performance, sizeof(performance), "%.2f",
                  row->performance);
         snprintf(rating, sizeof(rating), "%.1f", row->current_rating);
         const char *columns[LINEUP_COLUMN_COUNT] = {
-            row->player_name, minutes, performance, rating,
+            row->player_name, minutes, performance, rating, sent_off,
         };
         int list_index = ui_list_add_row(list, columns, LINEUP_COLUMN_COUNT,
                                          (LPARAM)i);
@@ -741,6 +759,7 @@ static void record_begin_cell_edit(RecordMatchState *state, HWND list,
     size_t row = 0;
     if (!record_row_from_item(state, list, item, &row) ||
         (subitem != LINEUP_COLUMN_MINUTES &&
+         subitem != LINEUP_COLUMN_SENT_OFF &&
          subitem != LINEUP_COLUMN_PERFORMANCE)) {
         return;
     }
@@ -779,6 +798,13 @@ static void record_begin_cell_edit(RecordMatchState *state, HWND list,
     if (subitem == LINEUP_COLUMN_MINUTES) {
         ui_format_wide(text, sizeof(text) / sizeof(text[0]), L"%d",
                        state->rows[row].minutes);
+    } else if (subitem == LINEUP_COLUMN_SENT_OFF) {
+        if (state->rows[row].sent_off > 0) {
+            ui_format_wide(text, sizeof(text) / sizeof(text[0]), L"%d",
+                           state->rows[row].sent_off);
+        } else {
+            text[0] = L'\0';
+        }
     } else {
         ui_format_wide(text, sizeof(text) / sizeof(text[0]), L"%.2f",
                        state->rows[row].performance);
@@ -820,6 +846,18 @@ static bool record_commit_cell_edit(RecordMatchState *state, bool accept)
                 return false;
             }
             state->rows[row].minutes = minutes;
+        } else if (subitem == LINEUP_COLUMN_SENT_OFF) {
+            int sent_off = 0;
+            if (utf8[0] != '\0' &&
+                !util_parse_int(utf8, 1, 120, &sent_off)) {
+                record_show_error_wide(
+                    state, L"The sending-off minute must be blank or a "
+                           L"whole number from 1 to 120.");
+                SetFocus(edit);
+                SendMessageW(edit, EM_SETSEL, 0, -1);
+                return false;
+            }
+            state->rows[row].sent_off = sent_off;
         } else if (subitem == LINEUP_COLUMN_PERFORMANCE) {
             double performance = 0.0;
             if (!util_parse_double(utf8, 1.0, 10.0, &performance)) {
@@ -841,6 +879,14 @@ static bool record_commit_cell_edit(RecordMatchState *state, bool accept)
         if (subitem == LINEUP_COLUMN_MINUTES) {
             ui_format_wide(display, sizeof(display) / sizeof(display[0]),
                            L"%d", state->rows[row].minutes);
+        } else if (subitem == LINEUP_COLUMN_SENT_OFF) {
+            if (state->rows[row].sent_off > 0) {
+                ui_format_wide(display,
+                               sizeof(display) / sizeof(display[0]), L"%d",
+                               state->rows[row].sent_off);
+            } else {
+                display[0] = L'\0';
+            }
         } else {
             ui_format_wide(display, sizeof(display) / sizeof(display[0]),
                            L"%.2f", state->rows[row].performance);
@@ -989,11 +1035,23 @@ static void record_layout(RecordMatchState *state, int width, int height)
     int neutral_top = field_y + field_height + ui_scale(theme, 5);
     state->neutral_rect = (RECT){
         margin, neutral_top,
-        margin + ui_scale(theme, 290),
+        margin + ui_scale(theme, 240),
+        neutral_top + ui_scale(theme, 26),
+    };
+    int length_x = state->neutral_rect.right + ui_scale(theme, 18);
+    int length_label_width = ui_scale(theme, 100);
+    state->label_length = (RECT){
+        length_x, neutral_top + ui_scale(theme, 4),
+        length_x + length_label_width, neutral_top + ui_scale(theme, 22),
+    };
+    state->length_rect = (RECT){
+        state->label_length.right + ui_scale(theme, 6), neutral_top,
+        state->label_length.right + ui_scale(theme, 6) +
+            ui_scale(theme, 54),
         neutral_top + ui_scale(theme, 26),
     };
     state->preview_rect = (RECT){
-        state->neutral_rect.right + ui_scale(theme, 18),
+        state->length_rect.right + ui_scale(theme, 18),
         state->neutral_rect.top,
         width - margin,
         state->neutral_rect.bottom,
@@ -1095,6 +1153,10 @@ static void record_layout(RecordMatchState *state, int width, int height)
                state->neutral_rect.top,
                state->neutral_rect.right - state->neutral_rect.left,
                state->neutral_rect.bottom - state->neutral_rect.top, TRUE);
+    MoveWindow(state->length, state->length_rect.left,
+               state->length_rect.top,
+               state->length_rect.right - state->length_rect.left,
+               state->length_rect.bottom - state->length_rect.top, TRUE);
     state->footer_line = (RECT){ margin, button_y - ui_scale(theme, 15),
                                  right, button_y - ui_scale(theme, 14) };
     state->error_rect = (RECT){ margin, button_y - ui_scale(theme, 2),
@@ -1102,7 +1164,7 @@ static void record_layout(RecordMatchState *state, int width, int height)
                                     ui_scale(theme, 30),
                                 height - ui_scale(theme, 8) };
 
-    static const int widths[LINEUP_COLUMN_COUNT] = { 40, 16, 18, 26 };
+    static const int widths[LINEUP_COLUMN_COUNT] = { 36, 14, 16, 21, 13 };
     ui_list_set_percent_widths(state->home_list, widths, LINEUP_COLUMN_COUNT);
     ui_list_set_percent_widths(state->away_list, widths, LINEUP_COLUMN_COUNT);
 }
@@ -1222,13 +1284,16 @@ static void record_paint(RecordMatchState *state, HWND hwnd)
         dialog_draw_label(state->app, canvas.dc,
                           state->label_away_team.left,
                           state->label_away_team.top, L"Away team");
+        dialog_draw_label(state->app, canvas.dc,
+                          state->label_length.left,
+                          state->label_length.top, L"Final whistle");
         record_draw_preview(state, canvas.dc);
         ui_draw_text(
             canvas.dc, state->app->ui.font_small, UI_COLOR_FAINT,
             state->info_rect,
             state->editing
-                ? L"Double-click Minutes or Performance to edit. Add player creates a squad member for that side. Existing players keep their original club."
-                : L"Tick everyone who played. Double-click Minutes or Performance to edit. Add player creates a squad member for that side; 6.0 is the default performance.",
+                ? L"Double-click Minutes, Sent off or Performance to edit. Add player creates a squad member for that side. Existing players keep their original club."
+                : L"Tick everyone who played. Double-click Minutes, Sent off or Performance to edit. Add player creates a squad member for that side; 6.0 is the default performance.",
             DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         ui_draw_text(canvas.dc, state->app->ui.font_body_bold,
@@ -1270,13 +1335,16 @@ static void record_save(RecordMatchState *state)
     char date[64];
     char home_goals_text[32];
     char away_goals_text[32];
+    char length_text[32];
     ui_edit_get_utf8(state->date, date, sizeof(date));
     ui_edit_get_utf8(state->home_score, home_goals_text,
                      sizeof(home_goals_text));
     ui_edit_get_utf8(state->away_score, away_goals_text,
                      sizeof(away_goals_text));
+    ui_edit_get_utf8(state->length, length_text, sizeof(length_text));
     int home_goals = 0;
     int away_goals = 0;
+    int length = 0;
     if (!util_date_valid(date)) {
         record_show_error_wide(state,
                                L"Use a valid date in YYYY-MM-DD format.");
@@ -1285,6 +1353,11 @@ static void record_save(RecordMatchState *state)
     if (!util_parse_int(home_goals_text, 0, 99, &home_goals) ||
         !util_parse_int(away_goals_text, 0, 99, &away_goals)) {
         record_show_error_wide(state, L"Goals must be between 0 and 99.");
+        return;
+    }
+    if (!util_parse_int(length_text, 1, 120, &length)) {
+        record_show_error_wide(
+            state, L"The final whistle must be between 1 and 120 minutes.");
         return;
     }
     uint64_t home_id = current_home_team(state);
@@ -1301,6 +1374,16 @@ static void record_save(RecordMatchState *state)
             continue;
         }
         selected_count++;
+        if (state->rows[i].sent_off < 0 ||
+            state->rows[i].sent_off > length ||
+            (state->rows[i].sent_off > 0 &&
+             state->rows[i].sent_off < state->rows[i].minutes)) {
+            record_show_error_wide(
+                state,
+                L"A sending-off minute must be between the minutes played "
+                L"and the final whistle.");
+            return;
+        }
         if (state->rows[i].team_id == home_id) {
             home_players++;
         } else {
@@ -1325,6 +1408,7 @@ static void record_save(RecordMatchState *state)
         }
         lineup[used].player_id = state->rows[i].player_id;
         lineup[used].minutes = state->rows[i].minutes;
+        lineup[used].sent_off = state->rows[i].sent_off;
         lineup[used].performance = state->rows[i].performance;
         used++;
     }
@@ -1335,6 +1419,7 @@ static void record_save(RecordMatchState *state)
         .home_goals = home_goals,
         .away_goals = away_goals,
         .neutral_venue = ui_checkbox_get_checked(state->neutral_venue),
+        .length = length,
         .players = lineup,
         .player_count = selected_count,
     };
@@ -1535,6 +1620,8 @@ static bool record_build(App *app, RecordMatchState *state)
     state->away_score = ui_edit_create(state->hwnd, RECORD_AWAY_SCORE_ID,
                                        L"0", 0, 0, 10, 10,
                                        theme->font_body, 2);
+    state->length = ui_edit_create(state->hwnd, RECORD_LENGTH_ID, L"90",
+                                   0, 0, 10, 10, theme->font_body, 3);
     state->home_list = ui_list_create(state->hwnd, RECORD_LIST_ID,
                                       0, 0, 10, 10, theme->font_body,
                                       theme->row_images, false);
@@ -1566,7 +1653,8 @@ static bool record_build(App *app, RecordMatchState *state)
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     if (state->date == NULL || state->home_team == NULL ||
         state->away_team == NULL || state->home_score == NULL ||
-        state->away_score == NULL || state->home_list == NULL ||
+        state->away_score == NULL || state->length == NULL ||
+        state->home_list == NULL ||
         state->away_list == NULL || state->home_add == NULL ||
         state->away_add == NULL || state->select_all == NULL ||
         state->clear_all == NULL || state->neutral_venue == NULL ||
@@ -1585,6 +1673,8 @@ static bool record_build(App *app, RecordMatchState *state)
                            L"Perf", 100);
         ui_list_add_column(lists[side], LINEUP_COLUMN_RATING,
                            L"Rating before", 100);
+        ui_list_add_column(lists[side], LINEUP_COLUMN_SENT_OFF,
+                           L"Sent off", 70);
     }
 
     if (!record_add_team_options(state)) {
@@ -1602,6 +1692,8 @@ static bool record_build(App *app, RecordMatchState *state)
         ui_edit_set_utf8(state->home_score, score);
         snprintf(score, sizeof(score), "%d", match->away_goals);
         ui_edit_set_utf8(state->away_score, score);
+        snprintf(score, sizeof(score), "%d", match->length);
+        ui_edit_set_utf8(state->length, score);
         ui_checkbox_set_checked(state->neutral_venue,
                                 match->neutral_venue);
     } else {
@@ -1745,17 +1837,20 @@ static void details_paint(MatchDetailsState *state, HWND hwnd)
             ui_utf8_to_wide(match->date, date_value,
                             sizeof(date_value) / sizeof(date_value[0]));
             if (match->neutral_venue) {
-                ui_format_wide(date_display,
-                               sizeof(date_display) / sizeof(date_display[0]),
-                               L"%ls  |  Neutral venue", date_value);
+                ui_format_wide(
+                    date_display,
+                    sizeof(date_display) / sizeof(date_display[0]),
+                    L"%ls  |  Neutral venue  |  Final whistle %d", date_value,
+                    match->length);
             } else {
-                ui_format_wide(date_display,
-                               sizeof(date_display) / sizeof(date_display[0]),
-                               L"%ls", date_value);
+                ui_format_wide(
+                    date_display,
+                    sizeof(date_display) / sizeof(date_display[0]),
+                    L"%ls  |  Final whistle %d", date_value, match->length);
             }
-            RECT date_rect = { center - ui_scale(theme, 140),
+            RECT date_rect = { center - ui_scale(theme, 210),
                                scoreboard.top + ui_scale(theme, 62),
-                               center + ui_scale(theme, 140),
+                               center + ui_scale(theme, 210),
                                scoreboard.top + ui_scale(theme, 82) };
             ui_draw_text(canvas.dc, theme->font_small, UI_COLOR_MUTED,
                          date_rect, date_display,
@@ -1844,8 +1939,8 @@ static void details_layout(MatchDetailsState *state, int width, int height)
     state->footer_line = (RECT){ margin, button_y - ui_scale(theme, 14),
                                  width - margin,
                                  button_y - ui_scale(theme, 13) };
-    static const int widths[7] = { 15, 27, 8, 9, 12, 14, 15 };
-    ui_list_set_percent_widths(state->list, widths, 7);
+    static const int widths[8] = { 14, 26, 7, 7, 9, 12, 13, 12 };
+    ui_list_set_percent_widths(state->list, widths, 8);
 }
 
 static void details_refresh(HWND list, App *app, uint64_t match_id)
@@ -1880,11 +1975,18 @@ static void details_refresh(HWND list, App *app, uint64_t match_id)
                 snprintf(player_name, sizeof(player_name), "Unknown player");
             }
             char minutes[16];
+            char sent_off[16];
             char performance[16];
             char before[16];
             char change[16];
             char after[16];
             snprintf(minutes, sizeof(minutes), "%d", appearance->minutes);
+            if (appearance->sent_off > 0) {
+                snprintf(sent_off, sizeof(sent_off), "%d",
+                         appearance->sent_off);
+            } else {
+                sent_off[0] = '\0';
+            }
             snprintf(performance, sizeof(performance), "%.2f",
                      appearance->performance);
             snprintf(before, sizeof(before), "%.2f",
@@ -1893,11 +1995,11 @@ static void details_refresh(HWND list, App *app, uint64_t match_id)
                      appearance->rating_delta);
             snprintf(after, sizeof(after), "%.2f",
                      appearance->rating_after);
-            const char *columns[7] = {
-                team_name, player_name, minutes, performance,
+            const char *columns[8] = {
+                team_name, player_name, minutes, sent_off, performance,
                 before, change, after,
             };
-            ui_list_add_row(list, columns, 7, 0);
+            ui_list_add_row(list, columns, 8, 0);
         }
     }
 }
@@ -2036,10 +2138,11 @@ void dialog_match_details(App *app, uint64_t match_id)
     ui_list_add_column(state.list, 0, L"Team", 110);
     ui_list_add_column(state.list, 1, L"Player", 190);
     ui_list_add_column(state.list, 2, L"Min", 60);
-    ui_list_add_column(state.list, 3, L"Perf", 60);
-    ui_list_add_column(state.list, 4, L"Before", 80);
-    ui_list_add_column(state.list, 5, L"Change", 80);
-    ui_list_add_column(state.list, 6, L"After", 80);
+    ui_list_add_column(state.list, 3, L"Off", 50);
+    ui_list_add_column(state.list, 4, L"Perf", 60);
+    ui_list_add_column(state.list, 5, L"Before", 80);
+    ui_list_add_column(state.list, 6, L"Change", 80);
+    ui_list_add_column(state.list, 7, L"After", 80);
     details_refresh(state.list, app, match_id);
     RECT client;
     GetClientRect(hwnd, &client);

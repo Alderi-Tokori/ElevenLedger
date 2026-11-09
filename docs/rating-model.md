@@ -17,7 +17,8 @@ The calculation is deliberately small, deterministic, auditable and **zero-sum**
 For every player who features:
 
 - `rating_before`: current long-term rating before kick-off. Any finite value is accepted.
-- `minutes`: whole minutes played, 1-120.
+- `minutes`: whole minutes actually played, 1-120.
+- `sent_off`: the minute the player was removed without replacement (a red card, or another departure the team could not replace), or `0` when the player completed his appearance.
 - `performance`: individual match rating, 1.0-10.0; 6.0 is the default input. New entries are quantized to two decimals.
 
 For the match:
@@ -25,6 +26,7 @@ For the match:
 - Home and away teams and their line-ups.
 - Home and away goals, 0-99.
 - Match date.
+- Final-whistle minute (`length`), 1-120, including stoppage time.
 - Neutral-venue flag. A neutral match removes the home-advantage adjustment; one side is still labelled home for score and line-up entry order.
 
 A player not in the line-up is unaffected by the match.
@@ -40,15 +42,27 @@ New matches require at least one player from each team and reject a line-up whos
 | `RATING_HOME_ADVANTAGE` | 4.0 | Rating-point home advantage |
 | `RATING_PERFORMANCE_WEIGHT` | 0.75 | Weight of the performance input |
 | `RATING_NEUTRAL_PERFORMANCE` | 6.0 | Default performance input |
-| Full-match minutes | 90 | Participation does not increase beyond 90 |
+| Participation cap | 90 | Actual and result participation do not increase beyond 90 |
 
-## 1. Participation factor
+## 1. Participation factors
+
+Actual participation drives line-up strength and the performance component:
 
 ```text
 participation = min(minutes, 90) / 90
 ```
 
-A player who plays the whole match has a factor of 1.0. A 45-minute player has 0.5. A 90-minute and a 120-minute appearance have the same factor; the cap keeps cup extra time from giving an outsized share.
+Result participation drives only the share of the team result pool:
+
+```text
+result_minutes = minutes                         normally
+               = length - (sent_off - minutes)   when sent off and the team loses
+result_participation = min(result_minutes, 90) / 90
+```
+
+The sent-off calculation uses the player's entry minute (`sent_off - minutes`) and counts him from entry to the final whistle. A starter sent off at 30 in a 99-minute loss therefore has 99 result minutes, capped at 90 for participation, while his line-up strength still uses his 30 actual minutes. A substitute who enters at 57 and is sent off at 70 in the same match has 42 result minutes. Result minutes are never below the actual minutes. Wins and draws keep the actual minutes, so a red card never increases a player's positive share.
+
+A player who plays the whole match has a factor of 1.0. A 45-minute player has 0.5. A 90-minute and a 120-minute appearance have the same actual participation; the cap keeps cup extra time from giving an outsized strength or performance share.
 
 ## 2. Line-up strength
 
@@ -103,20 +117,23 @@ A draw sets the margin factor to `1.00`, but it does not by itself create a zero
 For each team, using only its players:
 
 ```text
-team_participation  = sum(participation)
-team_performance    = sum(performance * participation) / team_participation
+team_participation        = sum(participation)
+team_result_participation = sum(result_participation)
+team_performance          = sum(performance * participation) / team_participation
 ```
 
-`team_performance` is the minutes-weighted average performance of the team.
+`team_performance` is the minutes-weighted average performance of the team. `team_participation` uses actual minutes; `team_result_participation` uses the result weighting described above.
 
 ## 7. Individual player movement
 
 ```text
-result_component      = team_delta * participation / team_participation
+result_component      = team_delta * result_participation / team_result_participation
 performance_component = (performance - team_performance) * 0.75 * participation
 rating_delta          = result_component + performance_component
 rating_after          = rating_before + rating_delta
 ```
+
+For a sent-off player on the losing team, only the result component uses the larger result participation. His performance input and the team strength still use the actual minutes.
 
 There is no per-match delta cap, no rating clamp and no rounding inside the engine. Ratings are any finite value. Presentation layers may round values for display.
 
@@ -133,7 +150,7 @@ sum((performance - team_performance) * 0.75 * participation)
 The result components sum to `team_delta`:
 
 ```text
-sum(team_delta * participation / team_participation) = team_delta
+sum(team_delta * result_participation / team_result_participation) = team_delta
 ```
 
 Therefore each team's total movement is exactly its team delta, and the two team totals are exact opposites. The sum of every player's rating change in the match is zero.
@@ -168,9 +185,15 @@ The 6.0 home player receives `4.25 - 0.375 = 3.88`. Each away player receives `-
 
 At a neutral venue with the same equal line-ups and a 1-0 home win, the home expectation is `0.50` instead of `0.5573`. The shared team pool becomes `+8.00 / -8.00` rather than `+7.08 / -7.08`; a 0-0 draw produces exactly zero team movement.
 
+### Sent-off example
+
+A home starter is sent off at minute 30, the final whistle is minute 99, and the home team loses. The player's actual minutes are 30, so his line-up strength and performance use `30 / 90`. His result participation uses the 99 minutes from entry to the final whistle, capped at 90, so he takes the same result share as a player who completed the match. His team-mates take correspondingly less of the negative pool. If the same player had been sent off in a win, his result share would use only the 30 actual minutes.
+
+A substitute who enters at 57 and is sent off at 70 in that 99-minute loss uses `99 - 57 = 42` result minutes, not 90 and not the 13 minutes actually played. The team pool itself is unchanged: the sent-off player's larger share is taken from his team-mates' shares.
+
 ## Chronological replay
 
-The database stores each appearance's inputs, not a mutable running total. On load or after any history mutation:
+The database stores each match's final-whistle minute and each appearance's actual minutes and sending-off minute, not a mutable running total. On load or after any history mutation:
 
 1. Every player's rating resets to their starting rating.
 2. Matches are sorted by date, then by ID for same-date ordering.
@@ -191,8 +214,9 @@ The Record match and Edit match dialogs use the same chronological rule. Their R
 - Each team's player deltas sum to its team movement.
 - All player deltas in a match sum to zero, including with uneven line-up sizes and varying minutes.
 - Performance only redistributes points within a team.
-- More minutes never reduce a player's share of the result pool.
+- More actual minutes never reduce a player's share of the result pool when result weighting is unchanged.
 - A higher performance never reduces the player's delta.
+- A sent-off player on a losing team receives at least the result share implied by the time from entry to the final whistle; the same appearance on a win or draw keeps its actual result share.
 - Ratings are not clamped to any lower or upper bound.
 - There is no per-match movement cap.
 - Full-time and extra-time player participation factors are equal.

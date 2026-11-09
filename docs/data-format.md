@@ -16,7 +16,7 @@ A different file can be selected with `--data <path>`. The parent folder is crea
 - One record per line.
 - CRC-32 footer over every byte preceding the footer.
 - Reference and range validation after parsing.
-- Ratings and match summaries are recomputed from appearance inputs on load.
+- Ratings and match summaries are recomputed from the stored match and appearance inputs on load.
 - Writes go to `data.frc.tmp`, are flushed and committed, then checksummed.
 - A valid prior save is validated, copied to `data.frc.bak.tmp`, validated again, then promoted to `data.frc.bak` before the new file is moved into place.
 - A corrupt primary does not replace a valid backup.
@@ -26,26 +26,26 @@ A different file can be selected with `--data <path>`. The parent folder is crea
 - Before promoting the current primary to backup, the save path revalidates the primary and the backup copy. A corrupt primary cannot overwrite a good backup.
 - The newly written temporary file is parsed and validated before it can replace the primary.
 
-## Format v3
+## Format v4
 
 ```text
-PITCHRATE|3
+PITCHRATE|4
 TEAM|<id>|<name>|<short_name>|<city>
 PLAYER|<id>|<team_id>|<first_name>|<last_name>|<starting_rating>|<active>
-MATCH|<id>|<yyyy-mm-dd>|<home_team_id>|<away_team_id>|<home_goals>|<away_goals>|<neutral_venue>
-APP|<match_id>|<player_id>|<team_id>|<minutes>|<performance>
+MATCH|<id>|<yyyy-mm-dd>|<home_team_id>|<away_team_id>|<home_goals>|<away_goals>|<neutral_venue>|<length>
+APP|<match_id>|<player_id>|<team_id>|<minutes>|<performance>|<sent_off>
 END
 CRC32|<8 uppercase hex digits>
 ```
 
-`neutral_venue` is `0` or `1`. `active` is `0` or `1`. Performance is stored with two-decimal quantization. `starting_rating` accepts any finite number, including negative values or values above `99.0`, and is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored.
+`neutral_venue` is `0` or `1`. `active` is `0` or `1`. `length` is the final-whistle minute, 1-120. `sent_off` is `0` when there was no removal without replacement, otherwise the sending-off minute; a non-zero value must be between that appearance's `minutes` and `length`. Performance is stored with two-decimal quantization. `starting_rating` accepts any finite number, including negative values or values above `99.0`, and is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored. Actual `minutes` are stored; the sent-off result weighting is derived during replay.
 
-### Format v1 and v2 compatibility
+### Format v1-v3 compatibility
 
 - **v1** used an eight-field `PLAYER` record with a position between last name and starting rating, and a seven-field `MATCH` record without a neutral-venue flag.
 - **v2** used the same eight-field `PLAYER` record and added the neutral-venue flag to `MATCH`.
 - **v3** removes player position. The reader still validates and discards the legacy position field from v1/v2 records.
-- V1 matches load as non-neutral. Saving any loaded v1 or v2 database upgrades it to v3.
+- V1 matches load as non-neutral. V1-v3 matches load with a final whistle of 90 and no sending-offs. Saving any loaded older database upgrades it to v4.
 
 The legacy position values were `0` goalkeeper, `1` defender, `2` midfielder and `3` forward. They are not retained after loading.
 
@@ -63,7 +63,7 @@ The checksum line has no trailing newline. A UTF-8 byte-order mark is accepted w
 
 ## Compatibility
 
-The `PITCHRATE|3` header identifies schema version 3. Versions 1 and 2 are still accepted for loading; any other version is rejected with a clear message rather than partially parsed, and neither the primary nor its backup is replaced. Any future format change must:
+The `PITCHRATE|4` header identifies schema version 4. Versions 1, 2 and 3 are still accepted for loading; any other version is rejected with a clear message rather than partially parsed, and neither the primary nor its backup is replaced. Any future format change must:
 
 - increment the version,
 - keep old files readable or provide an explicit tested migration,

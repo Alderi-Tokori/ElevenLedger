@@ -91,6 +91,13 @@ static bool validate_player(const Database *db,
                   "Minutes played must be between 1 and 120.");
         return false;
     }
+    if (player->sent_off < 0 || player->sent_off > 120 ||
+        (player->sent_off > 0 && player->sent_off < player->minutes)) {
+        set_error(error, error_size,
+                  "A sending-off minute must be between the minutes played "
+                  "and the final whistle.");
+        return false;
+    }
     if (!isfinite(player->performance) || player->performance < 1.0 ||
         player->performance > 10.0) {
         set_error(error, error_size,
@@ -157,6 +164,11 @@ static bool validate_side(const Database *db,
         if (!validate_player(db, player, &existing_id, error, error_size)) {
             return false;
         }
+        if (player->sent_off > plan->length) {
+            set_error(error, error_size,
+                      "A sending-off minute cannot be after the final whistle.");
+            return false;
+        }
         total_minutes += (uint64_t)player->minutes;
         if (existing_id == 0) {
             continue;
@@ -219,6 +231,11 @@ static bool validate_plan(const Database *db, const ImportPlan *plan,
     if (plan->home_goals < 0 || plan->home_goals > 99 ||
         plan->away_goals < 0 || plan->away_goals > 99) {
         set_error(error, error_size, "Scores must be between 0 and 99.");
+        return false;
+    }
+    if (plan->length < 1 || plan->length > 120) {
+        set_error(error, error_size,
+                  "The final whistle must be between 1 and 120 minutes.");
         return false;
     }
     if (plan->home_players == NULL || plan->away_players == NULL) {
@@ -302,6 +319,7 @@ static bool append_players(Database *db, uint64_t team_id,
         memset(entry, 0, sizeof(*entry));
         entry->player_id = player_id;
         entry->minutes = plan->minutes;
+        entry->sent_off = plan->sent_off;
         entry->performance = round(plan->performance * 100.0) / 100.0;
         ++*used;
     }
@@ -360,6 +378,7 @@ bool db_import_match(Database *db, const ImportPlan *plan,
         .home_goals = plan->home_goals,
         .away_goals = plan->away_goals,
         .neutral_venue = plan->neutral_venue,
+        .length = plan->length,
         .players = lineup,
         .player_count = used,
     };

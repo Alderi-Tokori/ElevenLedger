@@ -12,6 +12,7 @@ static RatingPlayerInput player(double rating, int minutes, double performance)
     input.rating = rating;
     input.minutes = minutes;
     input.performance = performance;
+    input.result_minutes = 0;
     return input;
 }
 
@@ -20,6 +21,7 @@ static RatingTeamContext team_context(double total_participation,
 {
     RatingTeamContext context;
     context.total_participation = total_participation;
+    context.total_result_participation = total_participation;
     context.weighted_performance =
         total_participation * average_performance;
     return context;
@@ -279,12 +281,83 @@ static bool test_ratings_are_not_capped(void)
     return true;
 }
 
+static bool test_sent_off_result_share(void)
+{
+    RatingPlayerInput home[] = {
+        { .rating = 70.0, .minutes = 30, .performance = 6.0,
+          .result_minutes = 90 },
+        { .rating = 70.0, .minutes = 90, .performance = 6.0,
+          .result_minutes = 0 },
+    };
+    RatingPlayerInput away[] = {
+        { .rating = 70.0, .minutes = 90, .performance = 6.0,
+          .result_minutes = 0 },
+    };
+    RatingMatchSummary summary;
+    char error[256];
+    CHECK(rating_compute_match(&summary, home, 2, away, 1, 0, 1, false,
+                               error, sizeof(error)));
+    CHECK_NEAR(summary.home_context.total_participation,
+               30.0 / 90.0 + 1.0, 1e-12);
+    CHECK_NEAR(summary.home_context.total_result_participation, 2.0, 1e-12);
+
+    double sent_off_delta = 0.0;
+    double sent_off_after = 0.0;
+    double team_mate_delta = 0.0;
+    double team_mate_after = 0.0;
+    CHECK(rating_player_change_with_result_minutes(
+        &summary, true, 70.0, 30, 90, 6.0, &sent_off_delta,
+        &sent_off_after));
+    CHECK(rating_player_change(&summary, true, 70.0, 90, 6.0,
+                               &team_mate_delta, &team_mate_after));
+    CHECK(sent_off_delta < 0.0);
+    CHECK(team_mate_delta < 0.0);
+    CHECK_NEAR(sent_off_delta, team_mate_delta, 1e-12);
+    CHECK_NEAR(sent_off_delta + team_mate_delta,
+               summary.home_team_delta, 1e-12);
+
+    RatingPlayerInput home_actual[] = {
+        { .rating = 70.0, .minutes = 30, .performance = 6.0,
+          .result_minutes = 0 },
+        { .rating = 70.0, .minutes = 90, .performance = 6.0,
+          .result_minutes = 0 },
+    };
+    RatingMatchSummary actual_summary;
+    CHECK(rating_compute_match(&actual_summary, home_actual, 2, away, 1,
+                               0, 1, false, error, sizeof(error)));
+    double actual_delta = 0.0;
+    double actual_after = 0.0;
+    double actual_mate_delta = 0.0;
+    double actual_mate_after = 0.0;
+    CHECK(rating_player_change(&actual_summary, true, 70.0, 30, 6.0,
+                               &actual_delta, &actual_after));
+    CHECK(rating_player_change(&actual_summary, true, 70.0, 90, 6.0,
+                               &actual_mate_delta, &actual_mate_after));
+    CHECK(sent_off_delta < actual_delta);
+    CHECK(team_mate_delta > actual_mate_delta);
+    CHECK_NEAR(actual_delta + actual_mate_delta,
+               actual_summary.home_team_delta, 1e-12);
+    CHECK_NEAR(actual_summary.home_team_delta,
+               summary.home_team_delta, 1e-12);
+
+    double win_delta = 0.0;
+    double win_after = 0.0;
+    CHECK(rating_player_change_with_result_minutes(
+        &summary, false, 70.0, 90, 90, 6.0, &win_delta, &win_after));
+    CHECK_NEAR(win_delta, -summary.home_team_delta, 1e-12);
+    return true;
+}
+
 static bool test_invalid_inputs(void)
 {
     RatingPlayerInput bad_ratings[] = { player(INFINITY, 90, 6.0) };
     RatingPlayerInput good[] = { player(70.0, 90, 6.0) };
     RatingPlayerInput bad_minutes[] = { player(70.0, 0, 6.0) };
     RatingPlayerInput bad_performance[] = { player(70.0, 90, 11.0) };
+    RatingPlayerInput bad_result_minutes[] = {
+        { .rating = 70.0, .minutes = 90, .performance = 6.0,
+          .result_minutes = 121 },
+    };
     RatingPlayerInput unbounded[] = { player(-250.0, 90, 6.0) };
     RatingMatchSummary summary;
     char error[256];
@@ -296,6 +369,8 @@ static bool test_invalid_inputs(void)
                                 false, error, sizeof(error)));
     CHECK(!rating_compute_match(&summary, good, 1, bad_performance, 1, 1, 0,
                                 false, error, sizeof(error)));
+    CHECK(!rating_compute_match(&summary, good, 1, bad_result_minutes, 1,
+                                1, 0, false, error, sizeof(error)));
     CHECK(!rating_compute_match(&summary, NULL, 0, good, 1, 1, 0,
                                 false, error, sizeof(error)));
     CHECK(rating_compute_match(&summary, unbounded, 1, good, 1, 1, 0,
@@ -332,6 +407,10 @@ static bool test_invalid_inputs(void)
     CHECK(!rating_player_change(&summary, true, INFINITY, 90, 6.0,
                                 &delta, &after));
     CHECK(!rating_player_change(NULL, true, 70.0, 90, 6.0, &delta, &after));
+    CHECK(!rating_player_change_with_result_minutes(
+        &summary, true, 70.0, 90, 121, 6.0, &delta, &after));
+    CHECK(rating_player_change_with_result_minutes(
+        &summary, true, 70.0, 90, 0, 6.0, &delta, &after));
     CHECK(!rating_team_profile(NULL, 0, NULL, NULL));
     return true;
 }
@@ -442,11 +521,23 @@ static bool test_randomized_invariants(void)
             seed = seed * 1664525u + 1013904223u;
             home[i].performance = 1.0 + (double)(seed % 901u) / 100.0;
             seed = seed * 1664525u + 1013904223u;
+            home[i].result_minutes =
+                seed % 4u == 0
+                    ? home[i].minutes +
+                          (int)(seed % (unsigned)(121 - home[i].minutes))
+                    : 0;
+            seed = seed * 1664525u + 1013904223u;
             away[i].rating = 1.0 + (double)(seed % 9801u) / 100.0;
             seed = seed * 1664525u + 1013904223u;
             away[i].minutes = 1 + (int)(seed % 120u);
             seed = seed * 1664525u + 1013904223u;
             away[i].performance = 1.0 + (double)(seed % 901u) / 100.0;
+            seed = seed * 1664525u + 1013904223u;
+            away[i].result_minutes =
+                seed % 4u == 0
+                    ? away[i].minutes +
+                          (int)(seed % (unsigned)(121 - away[i].minutes))
+                    : 0;
         }
         seed = seed * 1664525u + 1013904223u;
         int home_goals = (int)(seed % 6u);
@@ -469,9 +560,9 @@ static bool test_randomized_invariants(void)
         for (int i = 0; i < 11; ++i) {
             double delta = 0.0;
             double after = 0.0;
-            CHECK(rating_player_change(&summary, true, home[i].rating,
-                                       home[i].minutes, home[i].performance,
-                                       &delta, &after));
+            CHECK(rating_player_change_with_result_minutes(
+                &summary, true, home[i].rating, home[i].minutes,
+                home[i].result_minutes, home[i].performance, &delta, &after));
             CHECK(isfinite(delta));
             CHECK(isfinite(after));
             CHECK_NEAR(after, home[i].rating + delta, 1e-9);
@@ -480,17 +571,17 @@ static bool test_randomized_invariants(void)
             double high_delta = 0.0;
             double low_delta = 0.0;
             double unused = 0.0;
-            CHECK(rating_player_change(&summary, true, home[i].rating,
-                                       home[i].minutes, 10.0,
-                                       &high_delta, &unused));
-            CHECK(rating_player_change(&summary, true, home[i].rating,
-                                       home[i].minutes, 1.0,
-                                       &low_delta, &unused));
+            CHECK(rating_player_change_with_result_minutes(
+                &summary, true, home[i].rating, home[i].minutes,
+                home[i].result_minutes, 10.0, &high_delta, &unused));
+            CHECK(rating_player_change_with_result_minutes(
+                &summary, true, home[i].rating, home[i].minutes,
+                home[i].result_minutes, 1.0, &low_delta, &unused));
             CHECK(high_delta >= low_delta);
 
-            CHECK(rating_player_change(&summary, false, away[i].rating,
-                                       away[i].minutes, away[i].performance,
-                                       &delta, &after));
+            CHECK(rating_player_change_with_result_minutes(
+                &summary, false, away[i].rating, away[i].minutes,
+                away[i].result_minutes, away[i].performance, &delta, &after));
             CHECK(isfinite(delta));
             CHECK(isfinite(after));
             CHECK_NEAR(after, away[i].rating + delta, 1e-9);
@@ -511,6 +602,7 @@ const TestCase g_rating_tests[] = {
     TEST_CASE(test_performance_adjustment),
     TEST_CASE(test_performance_is_zero_sum_within_team),
     TEST_CASE(test_minutes_weighting),
+    TEST_CASE(test_sent_off_result_share),
     TEST_CASE(test_lineup_strength_weighted_by_minutes),
     TEST_CASE(test_ratings_are_not_capped),
     TEST_CASE(test_invalid_inputs),

@@ -14,15 +14,24 @@ typedef struct {
     double rating;
     int minutes;
     double performance;
+    /*
+     * Minutes used only for the result-pool share. Zero means "same as
+     * minutes". A sent-off player on the losing team uses the time from entry
+     * to the final whistle here while keeping the real minutes for strength,
+     * performance and statistics.
+     */
+    int result_minutes;
 } RatingPlayerInput;
 
 /*
  * Team-wide totals used to keep every match zero-sum. Result points are shared
- * in proportion to participation; performance only reallocates points between
- * team-mates. Both fields are validated as finite by the rating functions.
+ * in proportion to result participation; performance only reallocates points
+ * between team-mates. All fields are validated as finite by the rating
+ * functions.
  */
 typedef struct {
     double total_participation;
+    double total_result_participation;
     double weighted_performance;
 } RatingTeamContext;
 
@@ -81,5 +90,15 @@ bool rating_player_change(const RatingMatchSummary *summary, bool home_team,
                           double rating_before, int minutes,
                           double performance, double *rating_delta,
                           double *rating_after);
+
+/*
+ * Same as rating_player_change, but distributes the result-pool share using
+ * result_minutes instead of the actual minutes. This is used for a sent-off
+ * player on the losing team; performance and statistics still use minutes.
+ */
+bool rating_player_change_with_result_minutes(
+    const RatingMatchSummary *summary, bool home_team, double rating_before,
+    int minutes, int result_minutes, double performance, double *rating_delta,
+    double *rating_after);
 
 #endif

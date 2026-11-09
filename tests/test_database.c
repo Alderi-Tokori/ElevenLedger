@@ -193,10 +193,10 @@ static bool test_record_match_and_delete(void)
     char error[256];
 
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 7.55 },
-        { players[1], 60, 6.0 },
-        { players[2], 90, 6.0 },
-        { players[3], 90, 5.5 },
+        { players[0], 90, 7.55, 0 },
+        { players[1], 60, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
+        { players[3], 90, 5.5, 0 },
     };
     MatchInput input;
     input.date = "2026-10-04";
@@ -204,6 +204,8 @@ static bool test_record_match_and_delete(void)
     input.away_team_id = beta;
     input.home_goals = 2;
     input.away_goals = 0;
+    input.neutral_venue = false;
+    input.length = 90;
     input.players = lineup;
     input.player_count = 4;
 
@@ -284,10 +286,10 @@ static bool test_match_validation(void)
     char error[256];
 
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 6.0 },
-        { players[1], 90, 6.0 },
-        { players[2], 90, 6.0 },
-        { players[3], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
+        { players[3], 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-10-04",
@@ -295,6 +297,7 @@ static bool test_match_validation(void)
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 1,
+        .length = 90,
         .players = lineup,
         .player_count = 4,
     };
@@ -311,9 +314,9 @@ static bool test_match_validation(void)
     input.home_goals = 1;
 
     MatchPlayerInput duplicate[] = {
-        { players[0], 90, 6.0 },
-        { players[0], 90, 6.0 },
-        { players[2], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[0], 90, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
     };
     input.players = duplicate;
     input.player_count = 3;
@@ -321,23 +324,23 @@ static bool test_match_validation(void)
     CHECK(strstr(error, "more than once") != NULL);
 
     MatchPlayerInput bad_minutes[] = {
-        { players[0], 0, 6.0 },
-        { players[2], 90, 6.0 },
+        { players[0], 0, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
     };
     input.players = bad_minutes;
     input.player_count = 2;
     CHECK(!db_add_match(&db, &input, NULL, error, sizeof(error)));
 
     MatchPlayerInput bad_performance[] = {
-        { players[0], 90, 11.0 },
-        { players[2], 90, 6.0 },
+        { players[0], 90, 11.0, 0 },
+        { players[2], 90, 6.0, 0 },
     };
     input.players = bad_performance;
     CHECK(!db_add_match(&db, &input, NULL, error, sizeof(error)));
 
     MatchPlayerInput only_home[] = {
-        { players[0], 90, 6.0 },
-        { players[1], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
     };
     input.players = only_home;
     CHECK(!db_add_match(&db, &input, NULL, error, sizeof(error)));
@@ -357,9 +360,9 @@ static bool test_match_validation(void)
     CHECK(db_add_player(&db, third, "Eve", "Cross",
                         70.0, true, &outsider, error, sizeof(error)));
     MatchPlayerInput wrong_team[] = {
-        { players[0], 90, 6.0 },
-        { outsider, 90, 6.0 },
-        { players[2], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { outsider, 90, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
     };
     input.players = wrong_team;
     input.player_count = 3;
@@ -385,8 +388,8 @@ static bool test_backdated_matches_replay_chronologically(void)
                         70.0, true, &players[1], error, sizeof(error)));
 
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 6.0 },
-        { players[1], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-03-10",
@@ -394,6 +397,7 @@ static bool test_backdated_matches_replay_chronologically(void)
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -430,8 +434,8 @@ static bool test_backdated_matches_replay_chronologically(void)
     CHECK(db_add_player(&clean, beta, "Away", "Player",
                         70.0, true, &clean_players[1], error, sizeof(error)));
     MatchPlayerInput clean_lineup[] = {
-        { clean_players[0], 90, 6.0 },
-        { clean_players[1], 90, 6.0 },
+        { clean_players[0], 90, 6.0, 0 },
+        { clean_players[1], 90, 6.0, 0 },
     };
     MatchInput clean_input = input;
     clean_input.date = "2026-01-10";
@@ -477,8 +481,8 @@ static bool test_delete_player_with_history_blocked(void)
     CHECK(db_add_player(&db, beta, "Two", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 6.0 },
-        { players[1], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-10-04",
@@ -486,6 +490,7 @@ static bool test_delete_player_with_history_blocked(void)
         .away_team_id = beta,
         .home_goals = 0,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -512,8 +517,8 @@ static bool test_clone_and_id_continuity(void)
     CHECK(db_add_player(&db, beta, "Two", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 7.0 },
-        { players[1], 90, 6.0 },
+        { players[0], 90, 7.0, 0 },
+        { players[1], 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-10-04",
@@ -521,6 +526,7 @@ static bool test_clone_and_id_continuity(void)
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -573,16 +579,19 @@ static bool test_match_total_minutes_guard(void)
         lineup[i].player_id = home_players[i];
         lineup[i].minutes = 120;
         lineup[i].performance = 6.0;
+        lineup[i].sent_off = 0;
     }
     lineup[12].player_id = away_player;
     lineup[12].minutes = 1;
     lineup[12].performance = 6.0;
+    lineup[12].sent_off = 0;
     MatchInput input = {
         .date = "2026-10-10",
         .home_team_id = alpha,
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 13,
     };
@@ -592,8 +601,8 @@ static bool test_match_total_minutes_guard(void)
     CHECK(db.appearance_count == 0);
 
     MatchPlayerInput valid_lineup[] = {
-        { home_players[0], 90, 6.0 },
-        { away_player, 90, 6.0 },
+        { home_players[0], 90, 6.0, 0 },
+        { away_player, 90, 6.0, 0 },
     };
     MatchInput valid = input;
     valid.players = valid_lineup;
@@ -623,8 +632,8 @@ static bool test_neutral_venue_match(void)
     CHECK(db_add_player(&db, beta, "Away", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 6.0 },
-        { players[1], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-06-10",
@@ -633,6 +642,7 @@ static bool test_neutral_venue_match(void)
         .home_goals = 0,
         .away_goals = 0,
         .neutral_venue = true,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -671,8 +681,8 @@ static bool test_recompute_sorts_matches_by_date(void)
     CHECK(db_add_player(&db, beta, "Away", "Player",
                         70.0, true, &players[1], error, sizeof(error)));
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 6.0 },
-        { players[1], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-01-10",
@@ -680,6 +690,7 @@ static bool test_recompute_sorts_matches_by_date(void)
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -720,8 +731,8 @@ static bool test_player_transfer_preserves_historical_team(void)
     CHECK(db_add_player(&db, beta, "Away", "Player",
                         68.0, true, &away_player, error, sizeof(error)));
     MatchPlayerInput lineup[] = {
-        { home_player, 90, 6.5 },
-        { away_player, 90, 5.5 },
+        { home_player, 90, 6.5, 0 },
+        { away_player, 90, 5.5, 0 },
     };
     MatchInput input = {
         .date = "2026-05-10",
@@ -729,6 +740,7 @@ static bool test_player_transfer_preserves_historical_team(void)
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -752,9 +764,9 @@ static bool test_player_transfer_preserves_historical_team(void)
     CHECK(db_add_player(&db, gamma, "New", "Teammate",
                         69.0, true, &gamma_opponent, error, sizeof(error)));
     MatchPlayerInput next_lineup[] = {
-        { home_player, 90, 6.0 },
-        { gamma_opponent, 90, 6.0 },
-        { away_player, 90, 6.0 },
+        { home_player, 90, 6.0, 0 },
+        { gamma_opponent, 90, 6.0, 0 },
+        { away_player, 90, 6.0, 0 },
     };
     MatchInput next = {
         .date = "2026-05-17",
@@ -762,6 +774,7 @@ static bool test_player_transfer_preserves_historical_team(void)
         .away_team_id = beta,
         .home_goals = 2,
         .away_goals = 0,
+        .length = 90,
         .players = next_lineup,
         .player_count = 3,
     };
@@ -785,10 +798,10 @@ static bool test_update_match_replays_chronology(void)
     char error[256];
 
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 7.0 },
-        { players[1], 60, 6.0 },
-        { players[2], 90, 6.0 },
-        { players[3], 90, 5.0 },
+        { players[0], 90, 7.0, 0 },
+        { players[1], 60, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
+        { players[3], 90, 5.0, 0 },
     };
     MatchInput input = {
         .date = "2026-10-04",
@@ -796,6 +809,7 @@ static bool test_update_match_replays_chronology(void)
         .away_team_id = beta,
         .home_goals = 2,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 4,
     };
@@ -812,10 +826,10 @@ static bool test_update_match_replays_chronology(void)
 
     uint64_t next_id_before = db.next_match_id;
     MatchPlayerInput revised[] = {
-        { players[0], 45, 8.5 },
-        { players[1], 90, 5.0 },
-        { players[2], 90, 7.0 },
-        { players[3], 30, 6.0 },
+        { players[0], 45, 8.5, 0 },
+        { players[1], 90, 5.0, 0 },
+        { players[2], 90, 7.0, 0 },
+        { players[3], 30, 6.0, 0 },
     };
     MatchInput edit = input;
     edit.date = "2026-09-15";
@@ -889,8 +903,8 @@ static bool test_update_match_preserves_transferred_and_archived_players(void)
                         &outsider, error, sizeof(error)));
 
     MatchPlayerInput lineup[] = {
-        { home_player, 90, 6.5 },
-        { away_player, 90, 5.5 },
+        { home_player, 90, 6.5, 0 },
+        { away_player, 90, 5.5, 0 },
     };
     MatchInput input = {
         .date = "2026-05-10",
@@ -898,6 +912,7 @@ static bool test_update_match_preserves_transferred_and_archived_players(void)
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -910,9 +925,9 @@ static bool test_update_match_preserves_transferred_and_archived_players(void)
                                error, sizeof(error)));
 
     MatchPlayerInput revised[] = {
-        { home_player, 75, 7.5 },
-        { new_home, 90, 6.0 },
-        { away_player, 80, 5.0 },
+        { home_player, 75, 7.5, 0 },
+        { new_home, 90, 6.0, 0 },
+        { away_player, 80, 5.0, 0 },
     };
     MatchInput edit = input;
     edit.date = "2026-05-10";
@@ -938,9 +953,9 @@ static bool test_update_match_preserves_transferred_and_archived_players(void)
                transferred->rating_after, 1e-12);
 
     MatchPlayerInput invalid[] = {
-        { home_player, 90, 6.0 },
-        { away_player, 90, 6.0 },
-        { outsider, 90, 6.0 },
+        { home_player, 90, 6.0, 0 },
+        { away_player, 90, 6.0, 0 },
+        { outsider, 90, 6.0, 0 },
     };
     MatchInput bad = edit;
     bad.players = invalid;
@@ -952,8 +967,8 @@ static bool test_update_match_preserves_transferred_and_archived_players(void)
     CHECK_STRING(db_find_match(&db, match_id)->date, "2026-05-10");
 
     MatchPlayerInput moved_side[] = {
-        { home_player, 90, 6.0 },
-        { outsider, 90, 6.0 },
+        { home_player, 90, 6.0, 0 },
+        { outsider, 90, 6.0, 0 },
     };
     MatchInput changed_teams = bad;
     changed_teams.home_team_id = gamma;
@@ -978,8 +993,8 @@ static bool test_update_match_validation(void)
     char error[256];
 
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 6.0 },
-        { players[2], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-10-04",
@@ -987,6 +1002,7 @@ static bool test_update_match_validation(void)
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 1,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -1017,9 +1033,9 @@ static bool test_update_match_validation(void)
     CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
 
     MatchPlayerInput duplicate[] = {
-        { players[0], 90, 6.0 },
-        { players[0], 90, 6.0 },
-        { players[2], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[0], 90, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
     };
     bad = input;
     bad.players = duplicate;
@@ -1028,24 +1044,24 @@ static bool test_update_match_validation(void)
     CHECK(strstr(error, "more than once") != NULL);
 
     MatchPlayerInput bad_minutes[] = {
-        { players[0], 0, 6.0 },
-        { players[2], 90, 6.0 },
+        { players[0], 0, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
     };
     bad = input;
     bad.players = bad_minutes;
     CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
 
     MatchPlayerInput bad_performance[] = {
-        { players[0], 90, 11.0 },
-        { players[2], 90, 6.0 },
+        { players[0], 90, 11.0, 0 },
+        { players[2], 90, 6.0, 0 },
     };
     bad = input;
     bad.players = bad_performance;
     CHECK(!db_update_match(&db, match_id, &bad, error, sizeof(error)));
 
     MatchPlayerInput only_home[] = {
-        { players[0], 90, 6.0 },
-        { players[1], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
     };
     bad = input;
     bad.players = only_home;
@@ -1057,9 +1073,9 @@ static bool test_update_match_validation(void)
                         &substitute, error, sizeof(error)));
     CHECK(db_set_player_active(&db, substitute, false, error, sizeof(error)));
     MatchPlayerInput archived[] = {
-        { players[0], 90, 6.0 },
-        { players[2], 90, 6.0 },
-        { substitute, 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[2], 90, 6.0, 0 },
+        { substitute, 90, 6.0, 0 },
     };
     bad = input;
     bad.players = archived;
@@ -1088,8 +1104,8 @@ static bool test_ratings_before_match(void)
                         &players[1], error, sizeof(error)));
 
     MatchPlayerInput lineup[] = {
-        { players[0], 90, 6.0 },
-        { players[1], 90, 6.0 },
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-01-10",
@@ -1097,6 +1113,7 @@ static bool test_ratings_before_match(void)
         .away_team_id = beta,
         .home_goals = 2,
         .away_goals = 0,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -1154,6 +1171,157 @@ static bool test_ratings_before_match(void)
     CHECK_NEAR(db_find_player(&db, players[1])->current_rating,
                current_away, 1e-12);
     db_free(&db);
+    return true;
+}
+
+static bool test_sent_off_weighting_and_validation(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    char error[256];
+    uint64_t sent_off = 0;
+    uint64_t full_match = 0;
+    uint64_t opponent = 0;
+    CHECK(db_add_player(&db, alpha, "Sent", "Off", 70.0, true, &sent_off,
+                        error, sizeof(error)));
+    CHECK(db_add_player(&db, alpha, "Full", "Match", 70.0, true, &full_match,
+                        error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", 70.0, true, &opponent,
+                        error, sizeof(error)));
+
+    MatchPlayerInput lineup[] = {
+        { sent_off, 30, 6.0, 30 },
+        { full_match, 90, 6.0, 0 },
+        { opponent, 90, 6.0, 0 },
+    };
+    MatchInput input = {
+        .date = "2026-10-04",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 0,
+        .away_goals = 1,
+        .neutral_venue = false,
+        .length = 99,
+        .players = lineup,
+        .player_count = 3,
+    };
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+    const Match *match = db_find_match(&db, match_id);
+    CHECK(match != NULL);
+    CHECK(match->length == 99);
+    double sent_delta = 0.0;
+    double total = 0.0;
+    for (size_t i = 0; i < db.appearance_count; ++i) {
+        const Appearance *appearance = &db.appearances[i];
+        CHECK(appearance->sent_off == (appearance->player_id == sent_off
+                                          ? 30
+                                          : 0));
+        if (appearance->player_id == sent_off) {
+            sent_delta = appearance->rating_delta;
+        }
+        total += appearance->rating_delta;
+    }
+    CHECK_NEAR(total, 0.0, 1e-12);
+
+    db_free(&db);
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    CHECK(db_add_player(&db, alpha, "Sent", "Off", 70.0, true, &sent_off,
+                        error, sizeof(error)));
+    CHECK(db_add_player(&db, alpha, "Full", "Match", 70.0, true, &full_match,
+                        error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", 70.0, true, &opponent,
+                        error, sizeof(error)));
+    MatchPlayerInput actual_lineup[] = {
+        { sent_off, 30, 6.0, 0 },
+        { full_match, 90, 6.0, 0 },
+        { opponent, 90, 6.0, 0 },
+    };
+    input.players = actual_lineup;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+    double actual_delta = 0.0;
+    bool found_actual = false;
+    for (size_t i = 0; i < db.appearance_count; ++i) {
+        if (db.appearances[i].match_id == match_id &&
+            db.appearances[i].player_id == sent_off) {
+            actual_delta = db.appearances[i].rating_delta;
+            found_actual = true;
+        }
+    }
+    CHECK(found_actual);
+    CHECK(sent_delta < actual_delta);
+
+    db_free(&db);
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    CHECK(db_add_player(&db, alpha, "Sent", "Off", 70.0, true, &sent_off,
+                        error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", 70.0, true, &opponent,
+                        error, sizeof(error)));
+    MatchPlayerInput bad_lineup[] = {
+        { sent_off, 30, 6.0, 20 },
+        { opponent, 90, 6.0, 0 },
+    };
+    MatchInput bad = input;
+    bad.length = 90;
+    bad.players = bad_lineup;
+    bad.player_count = 2;
+    CHECK(!db_add_match(&db, &bad, NULL, error, sizeof(error)));
+    bad_lineup[0].sent_off = 95;
+    CHECK(!db_add_match(&db, &bad, NULL, error, sizeof(error)));
+    db_free(&db);
+    return true;
+}
+
+static bool test_sent_off_win_uses_actual_minutes(void)
+{
+    double deltas[2] = { 0.0, 0.0 };
+    for (int sent = 0; sent < 2; ++sent) {
+        Database db;
+        uint64_t alpha = 0;
+        uint64_t beta = 0;
+        CHECK(setup_two_teams(&db, &alpha, &beta));
+        char error[256];
+        uint64_t sent_off = 0;
+        uint64_t team_mate = 0;
+        uint64_t opponent = 0;
+        CHECK(db_add_player(&db, alpha, "Sent", "Off", 70.0, true,
+                            &sent_off, error, sizeof(error)));
+        CHECK(db_add_player(&db, alpha, "Full", "Match", 70.0, true,
+                            &team_mate, error, sizeof(error)));
+        CHECK(db_add_player(&db, beta, "Away", "Player", 70.0, true,
+                            &opponent, error, sizeof(error)));
+        MatchPlayerInput lineup[] = {
+            { sent_off, 30, 6.0, sent ? 30 : 0 },
+            { team_mate, 90, 6.0, 0 },
+            { opponent, 90, 6.0, 0 },
+        };
+        MatchInput input = {
+            .date = "2026-10-04",
+            .home_team_id = alpha,
+            .away_team_id = beta,
+            .home_goals = 1,
+            .away_goals = 0,
+            .neutral_venue = false,
+            .length = 99,
+            .players = lineup,
+            .player_count = 3,
+        };
+        uint64_t match_id = 0;
+        CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+        bool found = false;
+        for (size_t i = 0; i < db.appearance_count; ++i) {
+            if (db.appearances[i].match_id == match_id &&
+                db.appearances[i].player_id == sent_off) {
+                deltas[sent] = db.appearances[i].rating_delta;
+                found = true;
+            }
+        }
+        CHECK(found);
+        db_free(&db);
+    }
+    CHECK_NEAR(deltas[0], deltas[1], 1e-12);
     return true;
 }
 
@@ -1279,6 +1447,8 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_player_starting_rating_is_unbounded),
     TEST_CASE(test_last_added_player),
     TEST_CASE(test_record_match_and_delete),
+    TEST_CASE(test_sent_off_weighting_and_validation),
+    TEST_CASE(test_sent_off_win_uses_actual_minutes),
     TEST_CASE(test_match_validation),
     TEST_CASE(test_backdated_matches_replay_chronologically),
     TEST_CASE(test_delete_player_with_history_blocked),

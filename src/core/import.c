@@ -1397,6 +1397,9 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
             off_minute = sending_off_minute(sending_offs, sending_off_count,
                                             source_id);
         }
+        if (off_minute > timing->match_length) {
+            off_minute = timing->match_length;
+        }
 
         int minutes = 0;
         if (in_minute > 0) {
@@ -1444,6 +1447,7 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
             goto fail;
         }
         player->minutes = minutes;
+        player->sent_off = off_minute;
         ++count;
     }
 
@@ -1569,6 +1573,7 @@ bool imported_match_parse_html(const char *html, size_t length,
     }
     MatchTiming timing;
     resolve_match_timing(root, extra_time, &timing);
+    out->length = timing.match_length;
     SendingOff sending_offs[IMPORT_MAX_SENDING_OFFS];
     size_t sending_off_count = 0;
     collect_sending_offs(root, sending_offs, &sending_off_count,

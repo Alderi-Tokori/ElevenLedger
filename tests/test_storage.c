@@ -95,10 +95,10 @@ static bool populate_sample(Database *db)
     CHECK(db_add_player(db, beta, "Leo", "Foster",
                         68.0, true, &d, error, sizeof(error)));
     MatchPlayerInput lineup[] = {
-        { a, 90, 7.5 },
-        { b, 61, 6.0 },
-        { c, 90, 6.0 },
-        { d, 74, 5.0 },
+        { a, 90, 7.5, 0 },
+        { b, 30, 6.0, 30 },
+        { c, 90, 6.0, 0 },
+        { d, 74, 5.0, 0 },
     };
     MatchInput match = {
         .date = "2026-09-12",
@@ -106,6 +106,7 @@ static bool populate_sample(Database *db)
         .away_team_id = beta,
         .home_goals = 2,
         .away_goals = 1,
+        .length = 99,
         .players = lineup,
         .player_count = 4,
     };
@@ -158,7 +159,8 @@ static bool same_database(const Database *left, const Database *right)
             left->matches[i].home_goals != right->matches[i].home_goals ||
             left->matches[i].away_goals != right->matches[i].away_goals ||
             left->matches[i].neutral_venue !=
-                right->matches[i].neutral_venue) {
+                right->matches[i].neutral_venue ||
+            left->matches[i].length != right->matches[i].length) {
             return false;
         }
     }
@@ -171,6 +173,8 @@ static bool same_database(const Database *left, const Database *right)
                 right->appearances[i].team_id ||
             left->appearances[i].minutes !=
                 right->appearances[i].minutes ||
+            left->appearances[i].sent_off !=
+                right->appearances[i].sent_off ||
             fabs(left->appearances[i].performance -
                  right->appearances[i].performance) > 1e-9 ||
             fabs(left->appearances[i].rating_before -
@@ -203,6 +207,15 @@ static bool test_roundtrip_and_recompute(void)
     CHECK(loaded.team_count == 2);
     CHECK(loaded.player_count == 4);
     CHECK(loaded.match_count == 1);
+    CHECK(loaded.matches[0].length == 99);
+    bool found_sent_off = false;
+    for (size_t i = 0; i < loaded.appearance_count; ++i) {
+        if (loaded.appearances[i].minutes == 30 &&
+            loaded.appearances[i].sent_off == 30) {
+            found_sent_off = true;
+        }
+    }
+    CHECK(found_sent_off);
     CHECK(loaded.players[0].matches_played == 1);
     CHECK(loaded.players[0].minutes_played == 90);
     CHECK_NEAR(loaded.players[0].current_rating,
@@ -233,8 +246,8 @@ static bool test_neutral_venue_roundtrip(void)
     CHECK(db_add_player(&db, beta, "Away", "Player",
                         70.0, true, &away_player, error, sizeof(error)));
     MatchPlayerInput lineup[] = {
-        { home_player, 90, 6.0 },
-        { away_player, 90, 6.0 },
+        { home_player, 90, 6.0, 0 },
+        { away_player, 90, 6.0, 0 },
     };
     MatchInput input = {
         .date = "2026-06-10",
@@ -243,6 +256,7 @@ static bool test_neutral_venue_roundtrip(void)
         .home_goals = 0,
         .away_goals = 0,
         .neutral_venue = true,
+        .length = 90,
         .players = lineup,
         .player_count = 2,
     };
@@ -255,7 +269,7 @@ static bool test_neutral_venue_roundtrip(void)
     char header[16] = { 0 };
     CHECK(fread(header, 1, 11, file) == 11);
     CHECK(fclose(file) == 0);
-    CHECK(memcmp(header, "PITCHRATE|3", 11) == 0);
+    CHECK(memcmp(header, "PITCHRATE|4", 11) == 0);
 
     Database loaded;
     StorageStatus status = storage_load(paths.data_path, &loaded,
@@ -671,6 +685,10 @@ static bool test_v2_position_fields_are_ignored(void)
     CHECK(loaded.player_count == 2);
     CHECK(loaded.match_count == 1);
     CHECK(loaded.matches[0].neutral_venue);
+    CHECK(loaded.matches[0].length == 90);
+    for (size_t i = 0; i < loaded.appearance_count; ++i) {
+        CHECK(loaded.appearances[i].sent_off == 0);
+    }
     CHECK_NEAR(loaded.players[0].base_rating, 70.0, 1e-12);
     CHECK_NEAR(loaded.players[1].base_rating, 72.0, 1e-12);
     db_free(&loaded);
@@ -784,6 +802,31 @@ static bool test_semantically_invalid_file_rejected(void)
     return true;
 }
 
+static bool test_sent_off_file_validation(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    const char *content =
+        "PITCHRATE|4\n"
+        "TEAM|1|Alpha||\n"
+        "TEAM|2|Beta||\n"
+        "PLAYER|1|1|A|One|70.00|1\n"
+        "PLAYER|2|2|B|Two|70.00|1\n"
+        "MATCH|1|2026-10-01|1|2|0|1|0|90\n"
+        "APP|1|1|1|30|6.00|95\n"
+        "APP|1|2|2|90|6.00|0\n"
+        "END\n";
+    CHECK(write_raw_data_file(paths.data_path, content));
+    Database loaded;
+    char error[768];
+    StorageStatus status = storage_load(paths.data_path, &loaded,
+                                        error, sizeof(error));
+    CHECK(status == STORAGE_CORRUPT);
+    CHECK(strstr(error, "appearance") != NULL);
+    cleanup_test_paths(&paths);
+    return true;
+}
+
 static bool test_unknown_record_rejected(void)
 {
     TestPaths paths;
@@ -892,6 +935,7 @@ const TestCase g_storage_tests[] = {
     TEST_CASE(test_legacy_v1_minutes_and_precision_are_loadable),
     TEST_CASE(test_embedded_nul_is_rejected),
     TEST_CASE(test_semantically_invalid_file_rejected),
+    TEST_CASE(test_sent_off_file_validation),
     TEST_CASE(test_unknown_record_rejected),
     TEST_CASE(test_relative_data_path),
     TEST_CASE(test_nested_directory_created),

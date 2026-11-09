@@ -13,7 +13,7 @@
 #include <string.h>
 #include <windows.h>
 
-#define STORAGE_FORMAT_VERSION 3
+#define STORAGE_FORMAT_VERSION 4
 #define STORAGE_MIN_FORMAT_VERSION 1
 #define STORAGE_MAX_FILE_BYTES (64u * 1024u * 1024u)
 #define STORAGE_MAX_FIELDS 12
@@ -224,10 +224,10 @@ static bool write_match(FILE *file, const Match *match)
 {
     if (fprintf(file, "MATCH|%" PRIu64, match->id) < 0 ||
         !write_field(file, match->date) ||
-        fprintf(file, "|%" PRIu64 "|%" PRIu64 "|%d|%d|%d",
+        fprintf(file, "|%" PRIu64 "|%" PRIu64 "|%d|%d|%d|%d",
                 match->home_team_id, match->away_team_id,
                 match->home_goals, match->away_goals,
-                match->neutral_venue ? 1 : 0) < 0) {
+                match->neutral_venue ? 1 : 0, match->length) < 0) {
         return false;
     }
     return fputc('\n', file) != EOF;
@@ -236,10 +236,10 @@ static bool write_match(FILE *file, const Match *match)
 static bool write_appearance(FILE *file, const Appearance *appearance)
 {
     if (fprintf(file, "APP|%" PRIu64 "|%" PRIu64 "|%" PRIu64
-                      "|%d|%.2f",
+                      "|%d|%.2f|%d",
                 appearance->match_id, appearance->player_id,
                 appearance->team_id, appearance->minutes,
-                appearance->performance) < 0) {
+                appearance->performance, appearance->sent_off) < 0) {
         return false;
     }
     return fputc('\n', file) != EOF;
@@ -742,7 +742,10 @@ static bool parse_match_record(Database *db, char **fields, size_t count,
                                char *error, size_t error_size)
 {
     bool neutral_venue = false;
-    size_t expected_count = file_version == 1 ? 7 : 8;
+    int length = 90;
+    size_t expected_count = file_version == 1 ? 7
+                            : file_version < 4 ? 8
+                                               : 9;
     if (count != expected_count) {
         set_error(error, error_size, "Invalid MATCH record.");
         return false;
@@ -767,6 +770,11 @@ static bool parse_match_record(Database *db, char **fields, size_t count,
         }
         neutral_venue = neutral != 0;
     }
+    if (file_version >= 4 &&
+        !util_parse_int(fields[8], 1, 120, &length)) {
+        set_error(error, error_size, "Invalid final-whistle value.");
+        return false;
+    }
     if (!reserve_array((void **)&db->matches, sizeof(Match),
                        &db->match_capacity, db->match_count + 1,
                        error, error_size)) {
@@ -781,14 +789,17 @@ static bool parse_match_record(Database *db, char **fields, size_t count,
     match->home_goals = home_goals;
     match->away_goals = away_goals;
     match->neutral_venue = neutral_venue;
+    match->length = length;
     db->match_count++;
     return true;
 }
 
 static bool parse_appearance_record(Database *db, char **fields, size_t count,
+                                    int file_version,
                                     char *error, size_t error_size)
 {
-    if (count != 6) {
+    size_t expected_count = file_version >= 4 ? 7 : 6;
+    if (count != expected_count) {
         set_error(error, error_size, "Invalid APP record.");
         return false;
     }
@@ -796,12 +807,15 @@ static bool parse_appearance_record(Database *db, char **fields, size_t count,
     uint64_t player_id = 0;
     uint64_t team_id = 0;
     int minutes = 0;
+    int sent_off = 0;
     double performance = 0.0;
     if (!parse_u64(fields[1], &match_id) ||
         !parse_u64(fields[2], &player_id) ||
         !parse_u64(fields[3], &team_id) ||
         !util_parse_int(fields[4], 1, 120, &minutes) ||
-        !util_parse_double(fields[5], 1.0, 10.0, &performance)) {
+        !util_parse_double(fields[5], 1.0, 10.0, &performance) ||
+        (file_version >= 4 &&
+         !util_parse_int(fields[6], 0, 120, &sent_off))) {
         set_error(error, error_size, "Invalid appearance record values.");
         return false;
     }
@@ -817,6 +831,7 @@ static bool parse_appearance_record(Database *db, char **fields, size_t count,
     appearance->team_id = team_id;
     appearance->minutes = minutes;
     appearance->performance = round(performance * 100.0) / 100.0;
+    appearance->sent_off = sent_off;
     db->appearance_count++;
     return true;
 }
@@ -918,6 +933,7 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
                                         error, error_size);
         } else if (strcmp(fields[0], "APP") == 0) {
             parsed = parse_appearance_record(db, fields, field_count,
+                                             parsed_file_version,
                                              error, error_size);
         } else {
             set_error(error, error_size,

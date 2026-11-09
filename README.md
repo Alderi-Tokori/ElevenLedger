@@ -8,8 +8,8 @@ The application is a dependency-free C17 Win32 program. It does not use a browse
 
 - Multiple clubs and squads with availability and starting ratings.
 - Player and team lists sortable by any column, with a click to sort ascending and another click to reverse the order.
-- Match recording with side-by-side home and away squads, inline player creation for any club (including clubs without players), per-player minutes and a 1-10 individual performance input.
-- Match import from WhoScored page source copied from the browser. The scraped date, clubs, score, players and minutes are shown in an editable preview before anything is created. Coloured cues identify new players, existing squad members, players linked to another club, and archived players; duplicate actions can be changed per player.
+- Match recording with side-by-side home and away squads, inline player creation for any club (including clubs without players), per-player minutes and sending-off minutes, the final-whistle minute and a 1-10 individual performance input.
+- Match import from WhoScored page source copied from the browser. The scraped date, clubs, score, players, minutes, final whistle and sending-off minutes are shown in an editable preview before anything is created. Coloured cues identify new players, existing squad members, players linked to another club, and archived players; duplicate actions can be changed per player.
 - A date-aware live rating preview in the match form shows both line-up scores, team performance averages and the home team's change for a one-goal win or defeat as players, minutes and performances change. It uses each player's rating immediately before the fixture date.
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.
@@ -58,7 +58,7 @@ By default, data is stored at:
 %LOCALAPPDATA%\PitchRate\data.frc
 ```
 
-Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported PitchRate format version is never overwritten or silently downgraded. Legacy v1 and v2 files are loaded safely and upgraded to v3 on the next save.
+Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported PitchRate format version is never overwritten or silently downgraded. Legacy v1-v3 files are loaded safely and upgraded to v4 on the next save.
 
 ## Import a match
 
@@ -107,7 +107,7 @@ Or run the executable directly for a per-test report:
 
 The suite covers date and UTF-8 validation, rating invariants, random-model fuzzing, database history replay, minutes and performance behaviour, storage round-trips, checksum failures, backup recovery, malformed data, relative paths, WhoScored HTML parsing and transactional match import.
 
-An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, side-by-side match line-ups, inline minutes/performance editing, player creation and duplicate detection from the match dialog, the WhoScored import source dialog, and the complete record-and-save flow against a temporary data file:
+An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, side-by-side match line-ups, the final-whistle and sent-off controls, inline minutes/performance editing, player creation and duplicate detection from the match dialog, the WhoScored import source dialog, and the complete record-and-save flow against a temporary data file:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1
@@ -120,7 +120,7 @@ Ratings are long-term player ratings with no fixed upper or lower bound. New pla
 1. The line-up strength of each team is the minutes-weighted average of its players' ratings before kick-off.
 2. An Elo-style expectation is calculated with a 4.0-point home advantage, or no advantage when the match is marked as a neutral venue.
 3. A shared team result pool is calculated from the result, expectation and goal margin. The winning team gains exactly what the losing team loses.
-4. Each team's pool is shared across its line-up in proportion to minutes played. Individual performance is measured against the team's minutes-weighted average, so it moves points between team-mates rather than creating them.
+4. Each team's pool is shared across its line-up in proportion to result participation. A sent-off player on a losing team is counted from entry to the final whistle for that share; wins and draws use actual minutes. Individual performance is measured against the team's actual-minutes-weighted average, so it moves points between team-mates rather than creating them.
 5. Every match is zero-sum: the sum of all player rating changes is zero. There is no per-match movement cap and no final rating clamp. New match recording rejects a team line-up above 1,320 player-minutes; legacy data remains loadable.
 
 Matches are always replayed in date order from each player's starting rating. Deleting a match or changing a starting rating therefore updates the whole subsequent career, rather than leaving an inconsistent ledger.

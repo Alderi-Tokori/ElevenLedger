@@ -129,6 +129,7 @@ static bool test_parse_match_length_with_stoppage_time(void)
     char error[512];
     CHECK(imported_match_parse_html(html, strlen(html), &match,
                                     error, sizeof(error)));
+    CHECK(match.length == 94);
     CHECK(match.home_player_count == 5);
     CHECK(match.away_player_count == 1);
     CHECK(match.home_players[0].minutes == 94);
@@ -201,10 +202,14 @@ static bool test_parse_sending_off_minutes(void)
     char error[512];
     CHECK(imported_match_parse_html(html, strlen(html), &match,
                                     error, sizeof(error)));
+    CHECK(match.length == 94);
     CHECK(match.home_players[0].minutes == 34);
+    CHECK(match.home_players[0].sent_off == 34);
     CHECK(match.home_players[1].minutes == 94);
+    CHECK(match.home_players[1].sent_off == 0);
     CHECK(match.home_players[2].minutes == 94);
     CHECK(match.away_players[0].minutes == 13);
+    CHECK(match.away_players[0].sent_off == 70);
     CHECK(match.away_players[1].minutes == 94);
     imported_match_free(&match);
     return true;
@@ -377,6 +382,7 @@ static bool test_import_creates_players_and_match(void)
         .home_goals = 2,
         .away_goals = 1,
         .neutral_venue = false,
+        .length = 90,
         .home_players = home,
         .home_player_count = 1,
         .away_players = away,
@@ -414,6 +420,53 @@ static bool test_import_creates_players_and_match(void)
     return true;
 }
 
+static bool test_import_preserves_sending_off(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_import_db(&db, &alpha, &beta));
+    char error[512];
+    ImportPlayerPlan home[] = {
+        { .first_name = "Sent", .last_name = "Off", .minutes = 30,
+          .sent_off = 30, .performance = 6.0,
+          .action = IMPORT_PLAYER_CREATE },
+    };
+    ImportPlayerPlan away[] = {
+        { .first_name = "Away", .last_name = "One", .minutes = 90,
+          .sent_off = 0, .performance = 6.0,
+          .action = IMPORT_PLAYER_CREATE },
+    };
+    ImportPlan plan = {
+        .date = "2026-08-23",
+        .home_team_name = "Alpha FC",
+        .away_team_name = "Beta United",
+        .home_goals = 0,
+        .away_goals = 1,
+        .length = 99,
+        .home_players = home,
+        .home_player_count = 1,
+        .away_players = away,
+        .away_player_count = 1,
+    };
+    uint64_t match_id = 0;
+    CHECK(db_import_match(&db, &plan, &match_id, error, sizeof(error)));
+    const Match *match = db_find_match(&db, match_id);
+    CHECK(match != NULL);
+    CHECK(match->length == 99);
+    bool found = false;
+    for (size_t i = 0; i < db.appearance_count; ++i) {
+        if (db.appearances[i].match_id == match_id &&
+            db.appearances[i].minutes == 30) {
+            CHECK(db.appearances[i].sent_off == 30);
+            found = true;
+        }
+    }
+    CHECK(found);
+    db_free(&db);
+    return true;
+}
+
 static bool test_import_creates_missing_teams(void)
 {
     Database db;
@@ -434,6 +487,7 @@ static bool test_import_creates_missing_teams(void)
         .home_goals = 0,
         .away_goals = 0,
         .neutral_venue = true,
+        .length = 90,
         .home_players = home,
         .home_player_count = 1,
         .away_players = away,
@@ -483,6 +537,7 @@ static bool test_import_can_move_existing_player(void)
         .away_team_name = "Beta United",
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .home_players = home,
         .home_player_count = 1,
         .away_players = away,
@@ -528,6 +583,7 @@ static bool test_import_can_create_duplicate_player(void)
         .away_team_name = "Beta United",
         .home_goals = 1,
         .away_goals = 1,
+        .length = 90,
         .home_players = home,
         .home_player_count = 1,
         .away_players = away,
@@ -589,6 +645,7 @@ static bool test_import_moves_existing_to_new_team(void)
         .away_team_name = "Delta United",
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .home_players = home,
         .home_player_count = 1,
         .away_players = away,
@@ -645,6 +702,7 @@ static bool test_import_rejects_archived_existing_player(void)
         .away_team_name = "Beta United",
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .home_players = home,
         .home_player_count = 1,
         .away_players = away,
@@ -690,6 +748,7 @@ static bool test_import_rejects_reused_existing_player(void)
         .away_team_name = "Beta United",
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .home_players = home,
         .home_player_count = 2,
         .away_players = away,
@@ -730,6 +789,7 @@ static bool test_import_validates_before_mutation(void)
         .away_team_name = "New Away FC",
         .home_goals = 100,
         .away_goals = 0,
+        .length = 90,
         .home_players = home,
         .home_player_count = 1,
         .away_players = away,
@@ -781,6 +841,7 @@ static bool test_import_rejects_mismatched_existing_name(void)
         .away_team_name = "Beta United",
         .home_goals = 1,
         .away_goals = 0,
+        .length = 90,
         .home_players = home,
         .home_player_count = 1,
         .away_players = away,
@@ -805,6 +866,7 @@ const TestCase g_import_tests[] = {
     TEST_CASE(test_parse_rejects_bad_pages),
     TEST_CASE(test_find_team_by_name),
     TEST_CASE(test_import_creates_players_and_match),
+    TEST_CASE(test_import_preserves_sending_off),
     TEST_CASE(test_import_creates_missing_teams),
     TEST_CASE(test_import_can_move_existing_player),
     TEST_CASE(test_import_moves_existing_to_new_team),

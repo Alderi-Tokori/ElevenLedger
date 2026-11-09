@@ -41,9 +41,11 @@ static bool record_match(Database *db, const char *date,
     for (size_t i = 0; i < 11; ++i) {
         lineup[i].player_id = home_players[i];
         lineup[i].minutes = 90;
+        lineup[i].sent_off = 0;
         lineup[i].performance = 6.2 + (double)((i * 7 + home_goals * 3) % 22) / 10.0;
         lineup[11 + i].player_id = away_players[i];
         lineup[11 + i].minutes = 90;
+        lineup[11 + i].sent_off = 0;
         lineup[11 + i].performance = 6.0 + (double)((i * 5 + away_goals * 2) % 20) / 10.0;
     }
     lineup[7].minutes = 63;
@@ -58,6 +60,7 @@ static bool record_match(Database *db, const char *date,
         .away_team_id = away_team,
         .home_goals = home_goals,
         .away_goals = away_goals,
+        .length = 90,
         .players = lineup,
         .player_count = 22,
     };

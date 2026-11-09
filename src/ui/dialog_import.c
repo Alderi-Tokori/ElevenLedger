@@ -49,6 +49,7 @@ enum {
     IMPORT_COLUMN_FIRST = 0,
     IMPORT_COLUMN_LAST,
     IMPORT_COLUMN_MINUTES,
+    IMPORT_COLUMN_SENT_OFF,
     IMPORT_COLUMN_PERFORMANCE,
     IMPORT_COLUMN_STATUS,
     IMPORT_COLUMN_ACTION,
@@ -80,6 +81,7 @@ typedef struct {
     char first_name[PERSON_NAME_MAX + 1];
     char last_name[PERSON_NAME_MAX + 1];
     int minutes;
+    int sent_off;
     double performance;
     ImportPlayerAction action;
     bool action_chosen;
@@ -111,6 +113,7 @@ typedef struct {
     ImportRow *rows;
     size_t row_count;
     size_t home_row_count;
+    int match_length;
     bool building;
     bool ready;
     HWND cell_edit;
@@ -723,12 +726,19 @@ static void import_row_update_list(ImportMatchState *state, size_t row_index)
     HWND list = import_list_for_row(state, row_index);
     int item = import_item_for_row(state, row_index);
     char minutes[16];
+    char sent_off[16];
     char performance[16];
     snprintf(minutes, sizeof(minutes), "%d", row->minutes);
+    if (row->sent_off > 0) {
+        snprintf(sent_off, sizeof(sent_off), "%d", row->sent_off);
+    } else {
+        sent_off[0] = '\0';
+    }
     snprintf(performance, sizeof(performance), "%.2f", row->performance);
     import_set_row_utf8(list, item, IMPORT_COLUMN_FIRST, row->first_name);
     import_set_row_utf8(list, item, IMPORT_COLUMN_LAST, row->last_name);
     import_set_row_utf8(list, item, IMPORT_COLUMN_MINUTES, minutes);
+    import_set_row_utf8(list, item, IMPORT_COLUMN_SENT_OFF, sent_off);
     import_set_row_utf8(list, item, IMPORT_COLUMN_PERFORMANCE, performance);
     import_set_row_text(list, item, IMPORT_COLUMN_STATUS, row->status_text);
     import_set_row_text(list, item, IMPORT_COLUMN_ACTION, row->action_text);
@@ -926,6 +936,7 @@ static void import_begin_cell_edit(ImportMatchState *state, HWND list,
     DWORD style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS |
                   ES_AUTOHSCROLL;
     if (subitem == IMPORT_COLUMN_MINUTES ||
+        subitem == IMPORT_COLUMN_SENT_OFF ||
         subitem == IMPORT_COLUMN_PERFORMANCE) {
         style |= ES_CENTER;
     }
@@ -951,6 +962,13 @@ static void import_begin_cell_edit(ImportMatchState *state, HWND list,
     } else if (subitem == IMPORT_COLUMN_MINUTES) {
         ui_format_wide(text, sizeof(text) / sizeof(text[0]), L"%d",
                        row->minutes);
+    } else if (subitem == IMPORT_COLUMN_SENT_OFF) {
+        if (row->sent_off > 0) {
+            ui_format_wide(text, sizeof(text) / sizeof(text[0]), L"%d",
+                           row->sent_off);
+        } else {
+            text[0] = L'\0';
+        }
     } else {
         ui_format_wide(text, sizeof(text) / sizeof(text[0]), L"%.2f",
                        row->performance);
@@ -1021,8 +1039,40 @@ static bool import_commit_cell_edit(ImportMatchState *state, bool accept)
                 SendMessageW(edit, EM_SETSEL, 0, -1);
                 return false;
             }
+            if (row->sent_off > 0 && minutes > row->sent_off) {
+                import_show_error_wide(
+                    state,
+                    L"Minutes played cannot be after the sending-off minute.");
+                SetFocus(edit);
+                SendMessageW(edit, EM_SETSEL, 0, -1);
+                return false;
+            }
             state->error[0] = L'\0';
             row->minutes = minutes;
+            import_row_update_list(state, row_index);
+        } else if (subitem == IMPORT_COLUMN_SENT_OFF) {
+            int sent_off = 0;
+            if (utf8[0] != '\0' &&
+                !util_parse_int(utf8, 1, 120, &sent_off)) {
+                import_show_error_wide(
+                    state, L"The sending-off minute must be blank or a "
+                           L"whole number from 1 to 120.");
+                SetFocus(edit);
+                SendMessageW(edit, EM_SETSEL, 0, -1);
+                return false;
+            }
+            if (sent_off > state->match_length ||
+                (sent_off > 0 && sent_off < row->minutes)) {
+                import_show_error_wide(
+                    state,
+                    L"The sending-off minute must be between the minutes "
+                    L"played and the final whistle.");
+                SetFocus(edit);
+                SendMessageW(edit, EM_SETSEL, 0, -1);
+                return false;
+            }
+            state->error[0] = L'\0';
+            row->sent_off = sent_off;
             import_row_update_list(state, row_index);
         } else if (subitem == IMPORT_COLUMN_PERFORMANCE) {
             double performance = 0.0;
@@ -1476,12 +1526,16 @@ static void import_paint(ImportMatchState *state, HWND hwnd)
                              state->label_home_score.bottom },
                      L"-", DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         import_draw_legend(state, canvas.dc);
+        wchar_t info[512];
+        import_format_wide(
+            info, sizeof(info) / sizeof(info[0]),
+            L"Final whistle: %d minutes. Double-click First name, Last name, "
+            L"Minutes, Sent off or Performance to edit. The cue updates as "
+            L"names and clubs change.",
+            state->match_length);
         ui_draw_text(
             canvas.dc, state->app->ui.font_small, UI_COLOR_FAINT,
-            state->info_rect,
-            L"Double-click First name, Last name, Minutes or Performance to "
-            L"edit. The cue updates as names and clubs change. Existing club "
-            L"names are reused; new names create a club on import.",
+            state->info_rect, info,
             DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
         ui_draw_text(canvas.dc, state->app->ui.font_body_bold,
@@ -1512,15 +1566,21 @@ static void import_add_row_to_list(ImportMatchState *state, size_t index)
     ImportRow *row = &state->rows[index];
     HWND list = import_list_for_row(state, index);
     char minutes[16];
+    char sent_off[16];
     char performance[16];
     char status[256];
     char action[64];
     snprintf(minutes, sizeof(minutes), "%d", row->minutes);
+    if (row->sent_off > 0) {
+        snprintf(sent_off, sizeof(sent_off), "%d", row->sent_off);
+    } else {
+        sent_off[0] = '\0';
+    }
     snprintf(performance, sizeof(performance), "%.2f", row->performance);
     ui_wide_to_utf8(row->status_text, status, sizeof(status));
     ui_wide_to_utf8(row->action_text, action, sizeof(action));
     const char *columns[IMPORT_COLUMN_COUNT] = {
-        row->first_name, row->last_name, minutes, performance,
+        row->first_name, row->last_name, minutes, sent_off, performance,
         status, action,
     };
     int item = ui_list_add_row(list, columns, IMPORT_COLUMN_COUNT,
@@ -1587,6 +1647,8 @@ static bool import_build(ImportMatchState *state, const ImportedMatch *match)
                            L"Last name", 130);
         ui_list_add_column(lists[side], IMPORT_COLUMN_MINUTES,
                            L"Min", 50);
+        ui_list_add_column(lists[side], IMPORT_COLUMN_SENT_OFF,
+                           L"Sent off", 60);
         ui_list_add_column(lists[side], IMPORT_COLUMN_PERFORMANCE,
                            L"Perf", 50);
         ui_list_add_column(lists[side], IMPORT_COLUMN_STATUS,
@@ -1608,6 +1670,7 @@ static bool import_build(ImportMatchState *state, const ImportedMatch *match)
 
     state->row_count = match->home_player_count + match->away_player_count;
     state->home_row_count = match->home_player_count;
+    state->match_length = match->length;
     state->rows = calloc(state->row_count, sizeof(*state->rows));
     if (state->rows == NULL) {
         import_show_error_wide(
@@ -1626,6 +1689,7 @@ static bool import_build(ImportMatchState *state, const ImportedMatch *match)
         util_str_copy(row->last_name, sizeof(row->last_name),
                       source->last_name);
         row->minutes = source->minutes;
+        row->sent_off = source->sent_off;
         row->performance = RATING_NEUTRAL_PERFORMANCE;
         row->action = IMPORT_PLAYER_CREATE;
     }
@@ -1677,6 +1741,18 @@ static void import_save(ImportMatchState *state)
         return;
     }
 
+    for (size_t i = 0; i < state->row_count; ++i) {
+        ImportRow *row = &state->rows[i];
+        if (row->sent_off < 0 || row->sent_off > state->match_length ||
+            (row->sent_off > 0 && row->sent_off < row->minutes)) {
+            import_show_error_wide(
+                state,
+                L"A sending-off minute must be between the minutes played "
+                L"and the final whistle.");
+            return;
+        }
+    }
+
     import_recompute_all(state, true);
     ImportPlayerPlan *home_plans = NULL;
     ImportPlayerPlan *away_plans = NULL;
@@ -1705,6 +1781,7 @@ static void import_save(ImportMatchState *state)
         plan->first_name = row->first_name;
         plan->last_name = row->last_name;
         plan->minutes = row->minutes;
+        plan->sent_off = row->sent_off;
         plan->performance = row->performance;
         plan->action = row->action;
         plan->existing_player_id = row->existing_player_id;
@@ -1717,6 +1794,7 @@ static void import_save(ImportMatchState *state)
         .home_goals = home_goals,
         .away_goals = away_goals,
         .neutral_venue = ui_checkbox_get_checked(state->neutral_venue),
+        .length = state->match_length,
         .home_players = home_plans,
         .home_player_count = home_used,
         .away_players = away_plans,

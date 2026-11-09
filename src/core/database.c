@@ -771,7 +771,8 @@ bool db_validate(const Database *db, char *error, size_t error_size)
             db_find_team(db, match->home_team_id) == NULL ||
             db_find_team(db, match->away_team_id) == NULL ||
             match->home_goals < 0 || match->home_goals > 99 ||
-            match->away_goals < 0 || match->away_goals > 99) {
+            match->away_goals < 0 || match->away_goals > 99 ||
+            match->length < 1 || match->length > 120) {
             set_error(error, error_size, "Invalid match record.");
             return false;
         }
@@ -791,6 +792,10 @@ bool db_validate(const Database *db, char *error, size_t error_size)
             (appearance->team_id != match->home_team_id &&
              appearance->team_id != match->away_team_id) ||
             appearance->minutes < 1 || appearance->minutes > 120 ||
+            appearance->sent_off < 0 ||
+            appearance->sent_off > match->length ||
+            (appearance->sent_off > 0 &&
+             appearance->sent_off < appearance->minutes) ||
             !isfinite(appearance->performance) ||
             appearance->performance < 1.0 || appearance->performance > 10.0) {
             set_error(error, error_size, "Invalid match appearance.");
@@ -829,6 +834,35 @@ bool db_validate(const Database *db, char *error, size_t error_size)
     return true;
 }
 
+static int appearance_result_minutes(const Match *match,
+                                     const Appearance *appearance)
+{
+    if (appearance->sent_off <= 0) {
+        return appearance->minutes;
+    }
+    bool home_team = appearance->team_id == match->home_team_id;
+    bool lost = home_team ? match->home_goals < match->away_goals
+                          : match->away_goals < match->home_goals;
+    if (!lost) {
+        return appearance->minutes;
+    }
+    int entry_minute = appearance->sent_off - appearance->minutes;
+    if (entry_minute < 0) {
+        entry_minute = 0;
+    }
+    int result_minutes = match->length - entry_minute;
+    if (result_minutes < appearance->minutes) {
+        result_minutes = appearance->minutes;
+    }
+    if (result_minutes < 1) {
+        result_minutes = 1;
+    }
+    if (result_minutes > 120) {
+        result_minutes = 120;
+    }
+    return result_minutes;
+}
+
 bool db_recompute_ratings(Database *db, char *error, size_t error_size)
 {
     if (!db_validate(db, error, error_size)) {
@@ -861,6 +895,8 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
 
         double home_weight = 0.0;
         double away_weight = 0.0;
+        double home_result_weight = 0.0;
+        double away_result_weight = 0.0;
         double home_weighted_rating = 0.0;
         double away_weighted_rating = 0.0;
         double home_weighted_performance = 0.0;
@@ -875,13 +911,17 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
             }
             appearance->rating_before = player->current_rating;
             double weight = rating_participation(appearance->minutes);
+            double result_weight = rating_participation(
+                appearance_result_minutes(match, appearance));
             if (appearance->team_id == match->home_team_id) {
                 home_weight += weight;
+                home_result_weight += result_weight;
                 home_weighted_rating += player->current_rating * weight;
                 home_weighted_performance +=
                     appearance->performance * weight;
             } else {
                 away_weight += weight;
+                away_result_weight += result_weight;
                 away_weighted_rating += player->current_rating * weight;
                 away_weighted_performance +=
                     appearance->performance * weight;
@@ -894,10 +934,12 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
 
         RatingTeamContext home_context = {
             .total_participation = home_weight,
+            .total_result_participation = home_result_weight,
             .weighted_performance = home_weighted_performance,
         };
         RatingTeamContext away_context = {
             .total_participation = away_weight,
+            .total_result_participation = away_result_weight,
             .weighted_performance = away_weighted_performance,
         };
         double home_strength = home_weighted_rating / home_weight;
@@ -918,11 +960,11 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
             bool home_team = appearance->team_id == match->home_team_id;
             double delta = 0.0;
             double after = 0.0;
-            if (!rating_player_change(&summary, home_team,
-                                      appearance->rating_before,
-                                      appearance->minutes,
-                                      appearance->performance,
-                                      &delta, &after)) {
+            if (!rating_player_change_with_result_minutes(
+                    &summary, home_team, appearance->rating_before,
+                    appearance->minutes,
+                    appearance_result_minutes(match, appearance),
+                    appearance->performance, &delta, &after)) {
                 set_error(error, error_size,
                           "Could not calculate a player rating.");
                 return false;
@@ -1022,6 +1064,8 @@ bool db_ratings_before_match(const Database *db, const char *date,
             input->rating = ratings[player_index];
             input->minutes = appearance->minutes;
             input->performance = appearance->performance;
+            input->result_minutes =
+                appearance_result_minutes(match, appearance);
         }
         if (!ok) {
             break;
@@ -1049,11 +1093,11 @@ bool db_ratings_before_match(const Database *db, const char *date,
             bool home_team = appearance->team_id == match->home_team_id;
             double delta = 0.0;
             double after = 0.0;
-            if (!rating_player_change(&summary, home_team,
-                                      ratings[player_index],
-                                      appearance->minutes,
-                                      appearance->performance,
-                                      &delta, &after)) {
+            if (!rating_player_change_with_result_minutes(
+                    &summary, home_team, ratings[player_index],
+                    appearance->minutes,
+                    appearance_result_minutes(match, appearance),
+                    appearance->performance, &delta, &after)) {
                 set_error(error, error_size,
                           "Could not calculate a player rating.");
                 ok = false;
@@ -1099,6 +1143,11 @@ static bool prepare_match_input(const Database *db, const MatchInput *input,
         set_error(error, error_size, "Scores must be between 0 and 99.");
         return false;
     }
+    if (input->length < 1 || input->length > 120) {
+        set_error(error, error_size,
+                  "The final whistle must be between 1 and 120 minutes.");
+        return false;
+    }
     if (input->players == NULL || input->player_count == 0) {
         set_error(error, error_size, "Select at least one player for each team.");
         return false;
@@ -1119,6 +1168,13 @@ static bool validate_lineup_entry(const Database *db, const MatchInput *input,
     if (entry->minutes < 1 || entry->minutes > 120) {
         set_error(error, error_size,
                   "Minutes played must be between 1 and 120.");
+        return false;
+    }
+    if (entry->sent_off < 0 || entry->sent_off > input->length ||
+        (entry->sent_off > 0 && entry->sent_off < entry->minutes)) {
+        set_error(error, error_size,
+                  "A sending-off minute must be between the minutes played "
+                  "and the final whistle.");
         return false;
     }
     if (!isfinite(entry->performance) ||
@@ -1214,6 +1270,7 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
     match->home_goals = input->home_goals;
     match->away_goals = input->away_goals;
     match->neutral_venue = input->neutral_venue;
+    match->length = input->length;
 
     for (size_t i = 0; i < input->player_count; ++i) {
         const MatchPlayerInput *entry = &input->players[i];
@@ -1226,6 +1283,7 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
         appearance->minutes = entry->minutes;
         appearance->performance =
             round(entry->performance * 100.0) / 100.0;
+        appearance->sent_off = entry->sent_off;
     }
 
     db_sort_matches(db);
@@ -1326,6 +1384,7 @@ bool db_update_match(Database *db, uint64_t id, const MatchInput *input,
         replacement[i].minutes = entry->minutes;
         replacement[i].performance =
             round(entry->performance * 100.0) / 100.0;
+        replacement[i].sent_off = entry->sent_off;
     }
 
     size_t kept_appearances = db->appearance_count - previous_appearances;
@@ -1357,6 +1416,7 @@ bool db_update_match(Database *db, uint64_t id, const MatchInput *input,
     match->home_goals = input->home_goals;
     match->away_goals = input->away_goals;
     match->neutral_venue = input->neutral_venue;
+    match->length = input->length;
     memset(&match->rating, 0, sizeof(match->rating));
 
     return db_recompute_ratings(db, error, error_size);

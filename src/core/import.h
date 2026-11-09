@@ -14,6 +14,7 @@ typedef struct {
     char first_name[PERSON_NAME_MAX + 1];
     char last_name[PERSON_NAME_MAX + 1];
     int minutes;
+    int sent_off;
 } ImportedPlayer;
 
 typedef struct {
@@ -22,6 +23,8 @@ typedef struct {
     char away_team[TEAM_NAME_MAX + 1];
     int home_goals;
     int away_goals;
+    /* Final-whistle minute, including stoppage time. */
+    int length;
     ImportedPlayer *home_players;
     size_t home_player_count;
     ImportedPlayer *away_players;
@@ -48,6 +51,7 @@ typedef struct {
     const char *first_name;
     const char *last_name;
     int minutes;
+    int sent_off;
     double performance;
     ImportPlayerAction action;
     /* Required only for IMPORT_PLAYER_USE_EXISTING. */
@@ -61,6 +65,8 @@ typedef struct {
     int home_goals;
     int away_goals;
     bool neutral_venue;
+    /* Final-whistle minute, including stoppage time. */
+    int length;
     const ImportPlayerPlan *home_players;
     size_t home_player_count;
     const ImportPlayerPlan *away_players;
