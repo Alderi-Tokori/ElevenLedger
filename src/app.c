@@ -11,6 +11,7 @@
 #include "resource.h"
 
 #include <commctrl.h>
+#include <process.h>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <stdarg.h>
@@ -20,7 +21,7 @@
 #include <wchar.h>
 
 #ifndef ELEVENLEDGER_VERSION
-#define ELEVENLEDGER_VERSION "2.0.1"
+#define ELEVENLEDGER_VERSION "2.0.2"
 #endif
 
 #define MAIN_WINDOW_CLASS_NAME L"ElevenLedgerMainWindow"
@@ -279,10 +280,104 @@ void app_refresh_all(App *app)
     }
 }
 
+struct SaveJob {
+    uint64_t id;
+    HWND notify_hwnd;
+    wchar_t path[1024];
+    const Database *db;
+    HANDLE thread;
+    char error[1024];
+    bool success;
+};
+
+static unsigned __stdcall save_worker(void *parameter)
+{
+    SaveJob *job = (SaveJob *)parameter;
+    job->success = storage_save(job->path, job->db, job->error,
+                                sizeof(job->error));
+    if (job->notify_hwnd != NULL && IsWindow(job->notify_hwnd)) {
+        PostMessageW(job->notify_hwnd, APP_WM_SAVE_COMPLETE,
+                     (WPARAM)job->id, 0);
+    }
+    return 0;
+}
+
+static bool app_save_synchronously(App *app, Database *backup)
+{
+    char error[1024];
+    if (!storage_save(app->data_path, &app->db, error, sizeof(error))) {
+        db_free(&app->db);
+        app->db = *backup;
+        memset(backup, 0, sizeof(*backup));
+        app_refresh_all(app);
+        app_show_error_utf8(app, L"Could not save data", error);
+        return false;
+    }
+    db_free(backup);
+    app_refresh_all(app);
+    return true;
+}
+
+static void app_finish_pending_save(App *app, bool report_failure)
+{
+    SaveJob *job = app->save_job;
+    if (job == NULL) {
+        return;
+    }
+    if (job->thread != NULL) {
+        WaitForSingleObject(job->thread, INFINITE);
+        CloseHandle(job->thread);
+    }
+    bool success = job->success;
+    char error[1024];
+    util_str_copy(error, sizeof(error), job->error);
+    free(job);
+    app->save_job = NULL;
+    app->save_pending = false;
+
+    if (success) {
+        db_free(&app->pending_backup);
+        memset(&app->pending_backup, 0, sizeof(app->pending_backup));
+    } else {
+        db_free(&app->db);
+        app->db = app->pending_backup;
+        memset(&app->pending_backup, 0, sizeof(app->pending_backup));
+        app_refresh_all(app);
+        if (report_failure && app->main_hwnd != NULL) {
+            app_show_error_utf8(app, L"Could not save data", error);
+        }
+    }
+    if (app->main_hwnd != NULL) {
+        InvalidateRect(app->main_hwnd, NULL, FALSE);
+    }
+    if (success && app->close_when_saved) {
+        app->close_when_saved = false;
+        if (app->main_hwnd != NULL) {
+            PostMessageW(app->main_hwnd, WM_CLOSE, 0, 0);
+        }
+    } else if (!success) {
+        app->close_when_saved = false;
+    }
+}
+
+void app_handle_save_complete(App *app, WPARAM id)
+{
+    if (app == NULL || app->save_job == NULL) {
+        return;
+    }
+    if ((uint64_t)id != app->save_job->id) {
+        return;
+    }
+    app_finish_pending_save(app, true);
+}
+
 bool app_tx_begin(App *app, Database *backup)
 {
     if (app == NULL || backup == NULL) {
         return false;
+    }
+    if (app->save_job != NULL) {
+        app_finish_pending_save(app, true);
     }
     memset(backup, 0, sizeof(*backup));
     if (!db_clone(backup, &app->db)) {
@@ -298,17 +393,37 @@ bool app_tx_commit(App *app, Database *backup)
     if (app == NULL || backup == NULL) {
         return false;
     }
-    char error[1024];
-    if (!storage_save(app->data_path, &app->db, error, sizeof(error))) {
-        db_free(&app->db);
-        app->db = *backup;
-        memset(backup, 0, sizeof(*backup));
-        app_refresh_all(app);
-        app_show_error_utf8(app, L"Could not save data", error);
-        return false;
+    if (app->save_job != NULL) {
+        app_finish_pending_save(app, true);
     }
-    db_free(backup);
+
+    SaveJob *job = calloc(1, sizeof(*job));
+    if (job == NULL || app->main_hwnd == NULL) {
+        free(job);
+        return app_save_synchronously(app, backup);
+    }
+    job->id = ++app->next_save_job_id;
+    job->db = &app->db;
+    job->notify_hwnd = app->main_hwnd;
+    wcsncpy(job->path, app->data_path,
+            sizeof(job->path) / sizeof(job->path[0]) - 1);
+    job->path[sizeof(job->path) / sizeof(job->path[0]) - 1] = L'\0';
+
+    app->save_job = job;
+    app->pending_backup = *backup;
+    memset(backup, 0, sizeof(*backup));
+    app->save_pending = true;
+    job->thread = (HANDLE)_beginthreadex(NULL, 0, save_worker, job, 0, NULL);
+    if (job->thread == NULL) {
+        app->save_job = NULL;
+        app->save_pending = false;
+        free(job);
+        *backup = app->pending_backup;
+        memset(&app->pending_backup, 0, sizeof(app->pending_backup));
+        return app_save_synchronously(app, backup);
+    }
     app_refresh_all(app);
+    InvalidateRect(app->main_hwnd, NULL, FALSE);
     return true;
 }
 
@@ -511,6 +626,11 @@ void app_shutdown(App *app)
     if (app == NULL) {
         return;
     }
+    if (app->save_job != NULL) {
+        app->close_when_saved = false;
+        app_finish_pending_save(app, false);
+    }
+    db_free(&app->pending_backup);
     for (int i = 0; i < PAGE_COUNT; ++i) {
         if (app->pages[i] != NULL) {
             page_destroy(app->pages[i]);

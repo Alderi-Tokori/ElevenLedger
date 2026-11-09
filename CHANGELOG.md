@@ -2,6 +2,13 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.2 - 2026-11-10
+
+### Changed
+
+- Saves now run on a single background worker. The window remains responsive while the file is validated, written, verified and promoted, and the sidebar shows "Saving changes..." until the save completes. Closing the application waits for the pending save instead of interrupting it.
+- Match and player edits no longer repeat a full database validation during rating replay. The changed inputs are validated immediately, while full validation remains on file load and in the background save.
+
 ## 2.0.1 - 2026-11-09
 
 ### Fixed

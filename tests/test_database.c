@@ -717,6 +717,41 @@ static bool test_recompute_sorts_matches_by_date(void)
     return true;
 }
 
+static bool test_recompute_rejects_invalid_database(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    uint64_t players[2];
+    char error[256];
+    CHECK(db_add_player(&db, alpha, "Home", "Player",
+                        70.0, true, &players[0], error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player",
+                        70.0, true, &players[1], error, sizeof(error)));
+    MatchPlayerInput lineup[] = {
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
+    };
+    MatchInput input = {
+        .date = "2026-10-04",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 1,
+        .away_goals = 0,
+        .length = 90,
+        .players = lineup,
+        .player_count = 2,
+    };
+    CHECK(db_add_match(&db, &input, NULL, error, sizeof(error)));
+    db.appearances[0].player_id = 999999;
+    CHECK(!db_recompute_ratings(&db, error, sizeof(error)));
+    CHECK(strstr(error, "Invalid match appearance") != NULL);
+    CHECK(!db_validate(&db, error, sizeof(error)));
+    db_free(&db);
+    return true;
+}
+
 static bool test_player_transfer_preserves_historical_team(void)
 {
     Database db;
@@ -1542,6 +1577,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_match_total_minutes_guard),
     TEST_CASE(test_neutral_venue_match),
     TEST_CASE(test_recompute_sorts_matches_by_date),
+    TEST_CASE(test_recompute_rejects_invalid_database),
     TEST_CASE(test_player_transfer_preserves_historical_team),
     TEST_CASE(test_update_match_replays_chronology),
     TEST_CASE(test_update_match_preserves_transferred_and_archived_players),

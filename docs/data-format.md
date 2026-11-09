@@ -21,7 +21,7 @@ On first launch, when `%LOCALAPPDATA%\ElevenLedger` contains no primary or backu
 - CRC-32 footer over every byte preceding the footer.
 - Reference and range validation after parsing.
 - Ratings and match summaries are recomputed from the stored match and appearance inputs on load.
-- Writes go to `data.frc.tmp`, are flushed and committed, then checksummed.
+- Writes go to `data.frc.tmp`, are flushed and committed, then checksummed. The write and verification run on one background save worker so the window remains responsive.
 - A valid prior save is validated, copied to `data.frc.bak.tmp`, validated again, then promoted to `data.frc.bak` before the new file is moved into place.
 - A corrupt primary does not replace a valid backup.
 - Move operations use write-through replacement.
@@ -29,6 +29,7 @@ On first launch, when `%LOCALAPPDATA%\ElevenLedger` contains no primary or backu
 - On startup, a damaged primary file is preserved as `data.frc.corrupt` and replaced from the last good backup only after the backup has passed parsing and validation. If the damaged file cannot be preserved, recovery stops.
 - Before promoting the current primary to backup, the save path revalidates the primary and the backup copy. A corrupt primary cannot overwrite a good backup.
 - The newly written temporary file is parsed and validated before it can replace the primary.
+- The next data mutation waits for any pending background save, and closing the application waits for the pending save to finish.
 
 ## Format v4
 

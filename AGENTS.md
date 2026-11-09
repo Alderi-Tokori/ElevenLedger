@@ -59,7 +59,7 @@ The expected result for every completed change is:
 ## Architecture
 
 ```text
-src/app.c                 Application lifecycle, navigation state, save transactions
+src/app.c                 Application lifecycle, navigation state, asynchronous save transactions
 src/main.c                WinMain, command line, DPI awareness
 src/core/util.c           UTF-8, dates, parsing, CRC-32
 src/core/rating.c         Pure rating calculations
@@ -118,6 +118,9 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Every command that mutates data must clone a backup first (`app_tx_begin`).
 - A failed database mutation must call `app_tx_abort`.
 - A failed disk save must restore the in-memory database.
+- Disk saves run on one background worker. The UI thread must not mutate the database while a save is pending; `app_tx_begin` waits for the pending save before cloning a new backup.
+- Closing the main window waits for a pending save instead of terminating the worker.
+- Mutation functions validate their changed inputs and use the internal trusted rating replay. Full `db_validate` still runs when loading a file and in the background save worker.
 - Never truncate or replace a valid file before the replacement has been fully written, flushed and checksummed.
 - Before promoting the primary to backup, validate the primary and the backup copy. A corrupt primary must not overwrite a good backup.
 - A primary that cannot be read or uses an unsupported format version must never be silently replaced.
@@ -136,6 +139,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - New pages should use the shared `Page` base and `page_draw_shell` / `page_draw_card`.
 - Pages with a primary create action must set `Page.create_command` to the create button's command ID so Ctrl+N runs the same flow.
 - New toolbars use `ui_button_create` styles rather than native push buttons.
+- The sidebar save status shows "Saving changes..." while a background save is pending and "Saved automatically" otherwise.
 - New confirmations must use `MB_ICONWARNING` and default to the safe choice.
 - All modal dialogs must disable their owner, support Tab and Escape, re-enable and repaint the owner before returning, and use `ui_run_modal`. Close dialog windows through `dialog_close` so the owner is re-enabled and activated before the dialog is hidden, then exposed and repainted before the dialog is destroyed.
 - Inline cell editors must stay above their list in the child z-order after creation so list repaints cannot cover them.

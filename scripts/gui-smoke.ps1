@@ -1249,6 +1249,12 @@ matchCentreData: {
     if ($process.ExitCode -ne 0) {
         throw "ElevenLedger exited with code $($process.ExitCode)."
     }
+    $savedData = Get-Content -Raw -LiteralPath $dataPath
+    if (-not $savedData.Contains("|Empty FC|") -or
+        -not $savedData.Contains("|Smoke|Signing|")) {
+        throw "The background saves were not written before the application exited."
+    }
+    Write-Host "Asynchronous save persistence OK"
     Write-Host "GUI smoke test passed."
 }
 finally {

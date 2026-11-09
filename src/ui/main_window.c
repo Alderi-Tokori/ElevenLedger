@@ -17,7 +17,7 @@
 #define NAV_COUNT 5
 
 #ifndef ELEVENLEDGER_VERSION
-#define ELEVENLEDGER_VERSION "2.0.1"
+#define ELEVENLEDGER_VERSION "2.0.2"
 #endif
 
 static const wchar_t *g_navigation_labels[NAV_COUNT] = {
@@ -261,9 +261,11 @@ void main_window_draw_navigation(struct App *app, HDC dc)
     RECT status = { ui_scale(theme, 41), footer_y + ui_scale(theme, 14),
                     width - ui_scale(theme, 12),
                     footer_y + ui_scale(theme, 36) };
+    const wchar_t *save_status = app->save_pending
+                                     ? L"Saving changes..."
+                                     : L"Saved automatically";
     ui_draw_text(dc, theme->font_small, UI_COLOR_SIDEBAR_MUTED, status,
-                 L"Saved automatically",
-                 DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                 save_status, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     RECT version = { ui_scale(theme, 25), footer_y + ui_scale(theme, 51),
                      width - ui_scale(theme, 12),
@@ -402,7 +404,17 @@ static LRESULT CALLBACK main_window_proc(HWND hwnd, UINT message,
             info->ptMinTrackSize.y = minimum_height;
         }
         return 0;
+    case APP_WM_SAVE_COMPLETE:
+        if (app != NULL) {
+            app_handle_save_complete(app, wparam);
+        }
+        return 0;
     case WM_CLOSE:
+        if (app != NULL && app->save_job != NULL) {
+            app->close_when_saved = true;
+            InvalidateRect(hwnd, NULL, FALSE);
+            return 0;
+        }
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:

@@ -27,6 +27,8 @@ static double round_rating(double value)
     return round(value * 100.0) / 100.0;
 }
 
+static bool recompute_ratings(Database *db, char *error, size_t error_size);
+
 static bool grow_array(void **array, size_t element_size, size_t *capacity,
                        size_t needed)
 {
@@ -598,7 +600,7 @@ bool db_update_player(Database *db, uint64_t id, uint64_t team_id,
     player->active = active;
 
     if (player->base_rating != previous_base) {
-        if (!db_recompute_ratings(db, error, error_size)) {
+        if (!recompute_ratings(db, error, error_size)) {
             player->base_rating = previous_base;
             return false;
         }
@@ -1031,11 +1033,9 @@ static int appearance_result_minutes(const Match *match,
     return result_minutes;
 }
 
-bool db_recompute_ratings(Database *db, char *error, size_t error_size)
+/* Replays ratings after the caller has validated the changed inputs. */
+static bool recompute_ratings(Database *db, char *error, size_t error_size)
 {
-    if (!db_validate(db, error, error_size)) {
-        return false;
-    }
     db_sort_matches(db);
 
     for (size_t i = 0; i < db->player_count; ++i) {
@@ -1145,6 +1145,14 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
         }
     }
     return true;
+}
+
+bool db_recompute_ratings(Database *db, char *error, size_t error_size)
+{
+    if (!db_validate(db, error, error_size)) {
+        return false;
+    }
+    return recompute_ratings(db, error, error_size);
 }
 
 bool db_ratings_before_match(const Database *db, const char *date,
@@ -1454,8 +1462,7 @@ bool db_add_match(Database *db, const MatchInput *input, uint64_t *out_id,
         appearance->sent_off = entry->sent_off;
     }
 
-    db_sort_matches(db);
-    if (!db_recompute_ratings(db, error, error_size)) {
+    if (!recompute_ratings(db, error, error_size)) {
         return false;
     }
     if (out_id != NULL) {
@@ -1587,7 +1594,7 @@ bool db_update_match(Database *db, uint64_t id, const MatchInput *input,
     match->length = input->length;
     memset(&match->rating, 0, sizeof(match->rating));
 
-    return db_recompute_ratings(db, error, error_size);
+    return recompute_ratings(db, error, error_size);
 }
 
 bool db_delete_match(Database *db, uint64_t id,
@@ -1621,7 +1628,7 @@ bool db_delete_match(Database *db, uint64_t id,
     memmove(&db->matches[match_index], &db->matches[match_index + 1],
             (db->match_count - match_index - 1) * sizeof(Match));
     db->match_count--;
-    return db_recompute_ratings(db, error, error_size);
+    return recompute_ratings(db, error, error_size);
 }
 
 void db_team_stats(const Database *db, uint64_t team_id, TeamStats *out)
