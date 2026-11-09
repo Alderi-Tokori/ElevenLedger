@@ -2,6 +2,13 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.17.1 - 2026-11-09
+
+### Fixed
+
+- The Record match, Edit match and WhoScored import preview dialogs are wider and use proportional line-up columns, so the minute, sent-off, performance and rating columns are no longer squeezed together.
+- The Record match and Edit match dialogs now allow the sent-off minute to be edited by double-clicking the Sent off cell. Previously only minutes and performance were editable.
+
 ## 1.17.0 - 2026-11-09
 
 ### Changed

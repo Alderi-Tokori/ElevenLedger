@@ -1464,7 +1464,9 @@ static void import_layout(ImportMatchState *state, int width, int height)
                    frames[side].top + inset, list_width, list_height, TRUE);
     }
 
-    static const int widths[IMPORT_COLUMN_COUNT] = { 24, 24, 7, 8, 25, 12 };
+    static const int widths[IMPORT_COLUMN_COUNT] = {
+        18, 18, 7, 8, 7, 24, 18,
+    };
     ui_list_set_percent_widths(state->home_list, widths,
                                IMPORT_COLUMN_COUNT);
     ui_list_set_percent_widths(state->away_list, widths,
@@ -1974,7 +1976,7 @@ static uint64_t import_preview_run(App *app, const ImportedMatch *match)
     state.app = app;
     HWND hwnd = dialog_create_shell(
         app, app->main_hwnd, PITCHRATE_IMPORT_MATCH_DIALOG_CLASS,
-        L"Import match - PitchRate", 1040, 700, &state);
+        L"Import match - PitchRate", 1200, 700, &state);
     if (hwnd == NULL) {
         return 0;
     }

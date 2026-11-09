@@ -1164,7 +1164,7 @@ static void record_layout(RecordMatchState *state, int width, int height)
                                     ui_scale(theme, 30),
                                 height - ui_scale(theme, 8) };
 
-    static const int widths[LINEUP_COLUMN_COUNT] = { 36, 14, 16, 21, 13 };
+    static const int widths[LINEUP_COLUMN_COUNT] = { 34, 14, 16, 22, 14 };
     ui_list_set_percent_widths(state->home_list, widths, LINEUP_COLUMN_COUNT);
     ui_list_set_percent_widths(state->away_list, widths, LINEUP_COLUMN_COUNT);
 }
@@ -1581,7 +1581,8 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
             ListView_SubItemHitTest(list, &hit);
             if (hit.iItem >= 0 &&
                 (hit.iSubItem == LINEUP_COLUMN_MINUTES ||
-                 hit.iSubItem == LINEUP_COLUMN_PERFORMANCE)) {
+                 hit.iSubItem == LINEUP_COLUMN_PERFORMANCE ||
+                 hit.iSubItem == LINEUP_COLUMN_SENT_OFF)) {
                 record_begin_cell_edit(state, list, hit.iItem,
                                        hit.iSubItem);
             }
@@ -1725,7 +1726,7 @@ static uint64_t match_dialog_run(App *app, HWND owner, uint64_t match_id)
         app, dialog_owner, RECORD_DIALOG_CLASS,
         state.editing ? L"Edit match - PitchRate"
                       : L"Record match - PitchRate",
-        980, 650, &state);
+        1120, 650, &state);
     if (hwnd == NULL) {
         return 0;
     }

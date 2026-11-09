@@ -275,7 +275,8 @@ function Assert-CellEditor {
         [IntPtr]$List,
         [int]$SubItem,
         [string]$ExpectedText,
-        [string]$Label
+        [string]$Label,
+        [string]$NewValue
     )
 
     [PitchRateSmoke]::ForceForeground($Dialog)
@@ -315,9 +316,22 @@ function Assert-CellEditor {
     if ($above -ne [IntPtr]::Zero) {
         throw "The $Label cell editor is not above the line-up list."
     }
-    [PitchRateSmoke]::PostMessage($editor, 0x0100, [IntPtr]0x1B, [IntPtr]::Zero) | Out-Null
-    Wait-Until -Description "$Label cell editor to close" -Condition {
-        return ([PitchRateSmoke]::FindChildEditByText($Dialog, $ExpectedText) -eq [IntPtr]::Zero)
+    if ($PSBoundParameters.ContainsKey("NewValue")) {
+        [PitchRateSmoke]::SendMessageText(
+            $editor, 0x000C, [IntPtr]::Zero, $NewValue) | Out-Null
+        [PitchRateSmoke]::PostMessage(
+            $editor, 0x0100, [IntPtr]0x0D, [IntPtr]::Zero) | Out-Null
+        Wait-Until -Description "$Label cell editor to close" -Condition {
+            return ([PitchRateSmoke]::FindChildEditByText(
+                $Dialog, $NewValue) -eq [IntPtr]::Zero)
+        }
+    } else {
+        [PitchRateSmoke]::PostMessage(
+            $editor, 0x0100, [IntPtr]0x1B, [IntPtr]::Zero) | Out-Null
+        Wait-Until -Description "$Label cell editor to close" -Condition {
+            return ([PitchRateSmoke]::FindChildEditByText(
+                $Dialog, $ExpectedText) -eq [IntPtr]::Zero)
+        }
     }
     Write-Host "Cell editing OK: $Label"
 }
@@ -698,6 +712,14 @@ matchCentreData: {
     }
     $importPreview = [PitchRateSmoke]::FindTopLevel(
         [uint32]$process.Id, "PitchRateImportMatchDialog")
+    $importHomeList = [PitchRateSmoke]::FindChildById($importPreview, 2515)
+    $importHeader = [PitchRateSmoke]::SendMessage(
+        $importHomeList, 0x101F, [IntPtr]::Zero, [IntPtr]::Zero)
+    $importColumns = [PitchRateSmoke]::SendMessage(
+        $importHeader, 0x1200, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($importColumns -ne 7) {
+        throw "The import preview is missing its line-up columns."
+    }
     $importHomeTeam = [PitchRateSmoke]::FindChildById($importPreview, 2511)
     if ($importHomeTeam -eq [IntPtr]::Zero) {
         throw "The import preview is missing its home club field."
@@ -847,6 +869,8 @@ matchCentreData: {
         -SubItem 1 -ExpectedText "90" -Label "away minutes"
     Assert-CellEditor -Dialog $recordDialog -List $awayLineupList `
         -SubItem 2 -ExpectedText "6.00" -Label "away performance"
+    Assert-CellEditor -Dialog $recordDialog -List $homeLineupList `
+        -SubItem 4 -ExpectedText "" -NewValue "90" -Label "home sent-off time"
 
     $emptyTeamIndex = [PitchRateSmoke]::SendMessageText(
         $homeTeamCombo, 0x0158, [IntPtr](-1), "Empty FC").ToInt64()
