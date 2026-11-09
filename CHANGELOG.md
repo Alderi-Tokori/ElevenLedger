@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.1 - 2026-11-09
+
+### Fixed
+
+- Database validation now uses indexed lookups instead of comparing every match appearance with every other appearance. Saving a multi-season league no longer stalls while the complete history is checked.
+
 ## 2.0.0 - 2026-11-09
 
 ### Changed

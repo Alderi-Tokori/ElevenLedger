@@ -707,6 +707,221 @@ static size_t appearance_lower_bound(const Database *db, uint64_t match_id)
     return low;
 }
 
+typedef struct {
+    uint64_t id;
+    size_t index;
+} IdLookup;
+
+typedef struct {
+    uint64_t match_id;
+    uint64_t player_id;
+    uint64_t team_id;
+} AppearanceKey;
+
+typedef struct {
+    bool home;
+    bool away;
+} MatchCoverage;
+
+static int compare_id_lookup(const void *left, const void *right)
+{
+    const IdLookup *a = (const IdLookup *)left;
+    const IdLookup *b = (const IdLookup *)right;
+    if (a->id < b->id) {
+        return -1;
+    }
+    if (a->id > b->id) {
+        return 1;
+    }
+    return 0;
+}
+
+static int compare_appearance_key(const void *left, const void *right)
+{
+    const AppearanceKey *a = (const AppearanceKey *)left;
+    const AppearanceKey *b = (const AppearanceKey *)right;
+    if (a->match_id < b->match_id) {
+        return -1;
+    }
+    if (a->match_id > b->match_id) {
+        return 1;
+    }
+    if (a->player_id < b->player_id) {
+        return -1;
+    }
+    if (a->player_id > b->player_id) {
+        return 1;
+    }
+    return 0;
+}
+
+static const IdLookup *find_id_lookup(const IdLookup *lookup, size_t count,
+                                      uint64_t id)
+{
+    if (lookup == NULL || count == 0) {
+        return NULL;
+    }
+    IdLookup key = { .id = id, .index = 0 };
+    return (const IdLookup *)bsearch(&key, lookup, count, sizeof(*lookup),
+                                     compare_id_lookup);
+}
+
+/*
+ * Validation runs on the save path, so the appearance checks use sorted
+ * lookups instead of comparing every appearance with every other appearance.
+ */
+static bool validate_appearances(const Database *db, char *error,
+                                 size_t error_size)
+{
+    if (db->appearance_count == 0) {
+        if (db->match_count == 0) {
+            return true;
+        }
+        set_error(error, error_size,
+                  "Every match needs players from both teams.");
+        return false;
+    }
+
+    IdLookup *match_lookup = NULL;
+    IdLookup *player_lookup = NULL;
+    AppearanceKey *keys = NULL;
+    MatchCoverage *coverage = NULL;
+    bool valid = false;
+
+    if (db->match_count > 0) {
+        if (db->match_count > SIZE_MAX / sizeof(*match_lookup)) {
+            goto memory_error;
+        }
+        match_lookup = malloc(db->match_count * sizeof(*match_lookup));
+        if (match_lookup == NULL) {
+            goto memory_error;
+        }
+        for (size_t i = 0; i < db->match_count; ++i) {
+            match_lookup[i].id = db->matches[i].id;
+            match_lookup[i].index = i;
+        }
+        qsort(match_lookup, db->match_count, sizeof(*match_lookup),
+              compare_id_lookup);
+
+        if (db->match_count > SIZE_MAX / sizeof(*coverage)) {
+            goto memory_error;
+        }
+        coverage = calloc(db->match_count, sizeof(*coverage));
+        if (coverage == NULL) {
+            goto memory_error;
+        }
+    }
+
+    if (db->player_count > 0) {
+        if (db->player_count > SIZE_MAX / sizeof(*player_lookup)) {
+            goto memory_error;
+        }
+        player_lookup = malloc(db->player_count * sizeof(*player_lookup));
+        if (player_lookup == NULL) {
+            goto memory_error;
+        }
+        for (size_t i = 0; i < db->player_count; ++i) {
+            player_lookup[i].id = db->players[i].id;
+            player_lookup[i].index = i;
+        }
+        qsort(player_lookup, db->player_count, sizeof(*player_lookup),
+              compare_id_lookup);
+    }
+
+    if (db->appearance_count > SIZE_MAX / sizeof(*keys)) {
+        goto memory_error;
+    }
+    keys = malloc(db->appearance_count * sizeof(*keys));
+    if (keys == NULL) {
+        goto memory_error;
+    }
+
+    for (size_t i = 0; i < db->appearance_count; ++i) {
+        const Appearance *appearance = &db->appearances[i];
+        const IdLookup *match_entry =
+            find_id_lookup(match_lookup, db->match_count,
+                           appearance->match_id);
+        const IdLookup *player_entry =
+            find_id_lookup(player_lookup, db->player_count,
+                           appearance->player_id);
+        if (match_entry == NULL || player_entry == NULL) {
+            set_error(error, error_size, "Invalid match appearance.");
+            goto cleanup;
+        }
+        const Match *match = &db->matches[match_entry->index];
+        if ((appearance->team_id != match->home_team_id &&
+             appearance->team_id != match->away_team_id) ||
+            appearance->minutes < 1 || appearance->minutes > 120 ||
+            appearance->sent_off < 0 ||
+            appearance->sent_off > match->length ||
+            (appearance->sent_off > 0 &&
+             appearance->sent_off < appearance->minutes) ||
+            !isfinite(appearance->performance) ||
+            appearance->performance < 1.0 ||
+            appearance->performance > 10.0) {
+            set_error(error, error_size, "Invalid match appearance.");
+            goto cleanup;
+        }
+        keys[i].match_id = appearance->match_id;
+        keys[i].player_id = appearance->player_id;
+        keys[i].team_id = appearance->team_id;
+    }
+
+    qsort(keys, db->appearance_count, sizeof(*keys),
+          compare_appearance_key);
+    for (size_t i = 1; i < db->appearance_count; ++i) {
+        if (keys[i].match_id == keys[i - 1].match_id &&
+            keys[i].player_id == keys[i - 1].player_id) {
+            set_error(error, error_size,
+                      "A player appears twice in the same match.");
+            goto cleanup;
+        }
+    }
+
+    for (size_t i = 0; i < db->appearance_count;) {
+        uint64_t match_id = keys[i].match_id;
+        const IdLookup *match_entry =
+            find_id_lookup(match_lookup, db->match_count, match_id);
+        if (match_entry == NULL) {
+            set_error(error, error_size, "Invalid match appearance.");
+            goto cleanup;
+        }
+        size_t end = i;
+        while (end < db->appearance_count &&
+               keys[end].match_id == match_id) {
+            if (keys[end].team_id ==
+                db->matches[match_entry->index].home_team_id) {
+                coverage[match_entry->index].home = true;
+            } else {
+                coverage[match_entry->index].away = true;
+            }
+            end++;
+        }
+        i = end;
+    }
+    for (size_t i = 0; i < db->match_count; ++i) {
+        if (!coverage[i].home || !coverage[i].away) {
+            set_error(error, error_size,
+                      "Every match needs players from both teams.");
+            goto cleanup;
+        }
+    }
+
+    valid = true;
+
+cleanup:
+    free(match_lookup);
+    free(player_lookup);
+    free(keys);
+    free(coverage);
+    return valid;
+
+memory_error:
+    set_error(error, error_size,
+              "Not enough memory to validate the database.");
+    goto cleanup;
+}
+
 bool db_validate(const Database *db, char *error, size_t error_size)
 {
     if (db == NULL) {
@@ -784,54 +999,7 @@ bool db_validate(const Database *db, char *error, size_t error_size)
         }
     }
 
-    for (size_t i = 0; i < db->appearance_count; ++i) {
-        const Appearance *appearance = &db->appearances[i];
-        const Match *match = db_find_match(db, appearance->match_id);
-        const Player *player = db_find_player(db, appearance->player_id);
-        if (match == NULL || player == NULL ||
-            (appearance->team_id != match->home_team_id &&
-             appearance->team_id != match->away_team_id) ||
-            appearance->minutes < 1 || appearance->minutes > 120 ||
-            appearance->sent_off < 0 ||
-            appearance->sent_off > match->length ||
-            (appearance->sent_off > 0 &&
-             appearance->sent_off < appearance->minutes) ||
-            !isfinite(appearance->performance) ||
-            appearance->performance < 1.0 || appearance->performance > 10.0) {
-            set_error(error, error_size, "Invalid match appearance.");
-            return false;
-        }
-        for (size_t j = 0; j < i; ++j) {
-            if (db->appearances[j].match_id == appearance->match_id &&
-                db->appearances[j].player_id == appearance->player_id) {
-                set_error(error, error_size,
-                          "A player appears twice in the same match.");
-                return false;
-            }
-        }
-    }
-
-    for (size_t i = 0; i < db->match_count; ++i) {
-        const Match *match = &db->matches[i];
-        size_t home_count = 0;
-        size_t away_count = 0;
-        for (size_t j = 0; j < db->appearance_count; ++j) {
-            if (db->appearances[j].match_id != match->id) {
-                continue;
-            }
-            if (db->appearances[j].team_id == match->home_team_id) {
-                home_count++;
-            } else {
-                away_count++;
-            }
-        }
-        if (home_count == 0 || away_count == 0) {
-            set_error(error, error_size,
-                      "Every match needs players from both teams.");
-            return false;
-        }
-    }
-    return true;
+    return validate_appearances(db, error, error_size);
 }
 
 static int appearance_result_minutes(const Match *match,

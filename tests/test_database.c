@@ -2,7 +2,10 @@
 
 #include "core/database.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static bool setup_two_teams(Database *db, uint64_t *alpha, uint64_t *beta)
 {
@@ -1441,6 +1444,89 @@ static bool test_team_stats_are_minutes_and_results_aware(void)
     return true;
 }
 
+static bool test_validate_scales_to_several_seasons(void)
+{
+    /* Five seasons of a 20-club league: 1,900 matches, 57,000 appearances. */
+    enum { TEAMS = 20, SQUAD = 25, SEASONS = 5, PER_SIDE = 15 };
+    Database db;
+    db_init(&db);
+    size_t match_total = (size_t)SEASONS * TEAMS * (TEAMS - 1);
+    size_t appearance_total = match_total * PER_SIDE * 2;
+    db.teams = calloc(TEAMS, sizeof(*db.teams));
+    db.players = calloc(TEAMS * SQUAD, sizeof(*db.players));
+    db.matches = calloc(match_total, sizeof(*db.matches));
+    db.appearances = calloc(appearance_total, sizeof(*db.appearances));
+    CHECK(db.teams != NULL && db.players != NULL && db.matches != NULL &&
+          db.appearances != NULL);
+    db.team_count = db.team_capacity = TEAMS;
+    db.player_count = db.player_capacity = TEAMS * SQUAD;
+    db.match_capacity = match_total;
+    db.appearance_capacity = appearance_total;
+    for (int i = 0; i < TEAMS; ++i) {
+        db.teams[i].id = (uint64_t)i + 1;
+        snprintf(db.teams[i].name, sizeof(db.teams[i].name), "Team %d", i);
+    }
+    for (int i = 0; i < TEAMS * SQUAD; ++i) {
+        Player *player = &db.players[i];
+        player->id = (uint64_t)i + 1;
+        player->team_id = (uint64_t)(i / SQUAD) + 1;
+        snprintf(player->first_name, sizeof(player->first_name), "P%d", i);
+        player->base_rating = 50.0;
+        player->active = true;
+    }
+    size_t match_index = 0;
+    size_t appearance_index = 0;
+    for (int season = 0; season < SEASONS; ++season) {
+        for (int home = 0; home < TEAMS; ++home) {
+            for (int away = 0; away < TEAMS; ++away) {
+                if (home == away) {
+                    continue;
+                }
+                Match *match = &db.matches[match_index];
+                match->id = (uint64_t)match_index + 1;
+                snprintf(match->date, sizeof(match->date), "%04d-%02d-%02d",
+                         2015 + season, 1 + (int)(match_index % 12),
+                         1 + (int)(match_index % 28));
+                match->home_team_id = (uint64_t)home + 1;
+                match->away_team_id = (uint64_t)away + 1;
+                match->home_goals = (int)(match_index % 4);
+                match->away_goals = (int)((match_index / 3) % 3);
+                match->length = 95;
+                for (int side = 0; side < 2; ++side) {
+                    int team = side == 0 ? home : away;
+                    for (int k = 0; k < PER_SIDE; ++k) {
+                        Appearance *appearance =
+                            &db.appearances[appearance_index++];
+                        appearance->match_id = match->id;
+                        appearance->player_id =
+                            (uint64_t)(team * SQUAD + k) + 1;
+                        appearance->team_id = (uint64_t)team + 1;
+                        appearance->minutes = k < 11 ? 90 : 20;
+                        appearance->performance = 6.5;
+                    }
+                }
+                match_index++;
+            }
+        }
+    }
+    db.match_count = match_index;
+    db.appearance_count = appearance_index;
+    db.next_team_id = TEAMS + 1;
+    db.next_player_id = TEAMS * SQUAD + 1;
+    db.next_match_id = match_index + 1;
+
+    char error[256];
+    clock_t started = clock();
+    CHECK(db_validate(&db, error, sizeof(error)));
+    double seconds = (double)(clock() - started) / CLOCKS_PER_SEC;
+    fprintf(stderr, "  db_validate on %u appearances took %.3f s\n",
+            (unsigned)appearance_index, seconds);
+    /* Each validation must fit inside one 60 fps frame on the UI thread. */
+    CHECK(seconds < 0.016);
+    db_free(&db);
+    return true;
+}
+
 const TestCase g_database_tests[] = {
     TEST_CASE(test_team_crud_and_validation),
     TEST_CASE(test_player_crud_and_archive),
@@ -1464,6 +1550,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_find_player_by_name),
     TEST_CASE(test_find_active_player_by_name_in_team),
     TEST_CASE(test_team_stats_are_minutes_and_results_aware),
+    TEST_CASE(test_validate_scales_to_several_seasons),
 };
 
 const size_t g_database_test_count =
