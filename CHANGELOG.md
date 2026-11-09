@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.4 - 2026-11-10
+
+### Changed
+
+- Saving now refreshes only the visible page. Hidden player, team and match lists rebuild when they are opened instead of after every save, removing a large UI stall on multi-season databases.
+
 ## 2.0.3 - 2026-11-10
 
 ### Changed

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(ElevenLedger
-    VERSION 2.0.3
+    VERSION 2.0.4
     DESCRIPTION "Football player rating calculator for Windows"
     LANGUAGES C RC
 )

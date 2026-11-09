@@ -50,7 +50,7 @@ void app_shutdown(App *app);
 
 void app_navigate(App *app, PageId page);
 void app_layout_pages(App *app);
-void app_refresh_all(App *app);
+void app_refresh_active(App *app);
 bool app_tx_begin(App *app, Database *backup);
 bool app_tx_commit(App *app, Database *backup);
 void app_tx_abort(App *app, Database *backup);

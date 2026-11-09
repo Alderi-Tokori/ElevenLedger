@@ -21,7 +21,7 @@
 #include <wchar.h>
 
 #ifndef ELEVENLEDGER_VERSION
-#define ELEVENLEDGER_VERSION "2.0.3"
+#define ELEVENLEDGER_VERSION "2.0.4"
 #endif
 
 #define MAIN_WINDOW_CLASS_NAME L"ElevenLedgerMainWindow"
@@ -267,16 +267,14 @@ void app_navigate(App *app, PageId page)
     InvalidateRect(app->main_hwnd, NULL, FALSE);
 }
 
-void app_refresh_all(App *app)
+void app_refresh_active(App *app)
 {
-    if (app == NULL) {
+    if (app == NULL || app->active_page < 0 || app->active_page >= PAGE_COUNT) {
         return;
     }
-    for (int i = 0; i < PAGE_COUNT; ++i) {
-        Page *page = app->pages[i];
-        if (page != NULL && page->hwnd != NULL && page->on_refresh != NULL) {
-            page->on_refresh(page);
-        }
+    Page *page = app->pages[app->active_page];
+    if (page != NULL && page->hwnd != NULL && page->on_refresh != NULL) {
+        page->on_refresh(page);
     }
 }
 
@@ -309,12 +307,12 @@ static bool app_save_synchronously(App *app, Database *backup)
         db_free(&app->db);
         app->db = *backup;
         memset(backup, 0, sizeof(*backup));
-        app_refresh_all(app);
+        app_refresh_active(app);
         app_show_error_utf8(app, L"Could not save data", error);
         return false;
     }
     db_free(backup);
-    app_refresh_all(app);
+    app_refresh_active(app);
     return true;
 }
 
@@ -342,7 +340,7 @@ static void app_finish_pending_save(App *app, bool report_failure)
         db_free(&app->db);
         app->db = app->pending_backup;
         memset(&app->pending_backup, 0, sizeof(app->pending_backup));
-        app_refresh_all(app);
+        app_refresh_active(app);
         if (report_failure && app->main_hwnd != NULL) {
             app_show_error_utf8(app, L"Could not save data", error);
         }
@@ -422,7 +420,7 @@ bool app_tx_commit(App *app, Database *backup)
         memset(&app->pending_backup, 0, sizeof(app->pending_backup));
         return app_save_synchronously(app, backup);
     }
-    app_refresh_all(app);
+    app_refresh_active(app);
     InvalidateRect(app->main_hwnd, NULL, FALSE);
     return true;
 }
@@ -435,7 +433,7 @@ void app_tx_abort(App *app, Database *backup)
     db_free(&app->db);
     app->db = *backup;
     memset(backup, 0, sizeof(*backup));
-    app_refresh_all(app);
+    app_refresh_active(app);
 }
 
 void app_open_data_folder(App *app)
