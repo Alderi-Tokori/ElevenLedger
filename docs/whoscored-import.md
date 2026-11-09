@@ -97,10 +97,16 @@ For a green row, the same action chooser offers **Add separate player** or
 **Use existing player**, so two different people with the same name can remain
 separate records.
 
-The cue is recomputed whenever a first name, last name or club field changes. If
-correcting a name creates a match with a player in another club, the row turns
-amber and the action button becomes available immediately. Archived players
-cannot be used in a new match.
+The cue is recomputed whenever a first name, last name or club field changes.
+The row returns to the default action for its new cue unless you explicitly
+chose an action for that same existing player. Explicit choices survive further
+name or club edits until the row matches a different player. If the imported
+club already has an active player with the same name, that player is preferred
+even when the same name also exists in another club.
+
+If correcting a name or club creates a match with a player in another club, the
+row turns amber and the action button becomes available immediately. Archived
+players cannot be used in a new match.
 
 If the same existing player would be used twice in the imported line-up, the
 import is rejected with a validation error.

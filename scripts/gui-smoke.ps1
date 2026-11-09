@@ -633,6 +633,124 @@ try {
             [PitchRateSmoke]::IsWindowEnabled($main))
     }
     Write-Host "WhoScored import source dialog OK"
+
+    # Correcting the imported club must reuse a player who already exists in
+    # that club, not preserve the old "create separate player" default.
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40002, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the Players page before the import" -Condition {
+        $candidate = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::WindowText($candidate) -eq "Players")
+    }
+    $playersPageForImport = [PitchRateSmoke]::FindChildByClass(
+        $main, "PitchRatePage", $true)
+    $playersListForImport = [PitchRateSmoke]::FindChildById(
+        $playersPageForImport, 1200)
+    $playersBeforeImport = [PitchRateSmoke]::SendMessage(
+        $playersListForImport, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40004, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the Matches page for the import" -Condition {
+        $candidate = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::WindowText($candidate) -eq "Matches")
+    }
+    $matchesPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    [PitchRateSmoke]::PostMessage(
+        $matchesPage, 0x0111, [IntPtr]1304, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the import source dialog for the import" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, "PitchRateImportSourceDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate))
+    }
+    $importSource = [PitchRateSmoke]::FindTopLevel(
+        [uint32]$process.Id, "PitchRateImportSourceDialog")
+    $importHtml = @"
+<html><body><script>
+require.config.params['matchheader'] = {
+    input: [313,304,'Unknown FC','Riverside Athletic','23/08/2026 20:45:00'],
+    matchId: 99001
+};
+matchCentreData: {
+    "startDate":"2026-08-23T20:45:00",
+    "score":"1 : 0",
+    "maxMinute":94,
+    "periodEndMinutes":{"1":47,"2":94},
+    "home":{"name":"Unknown FC","players":[
+        {"name":"Theo Marsh","isFirstEleven":true},
+        {"name":"Callum Reid","isFirstEleven":true}]},
+    "away":{"name":"Riverside Athletic","players":[
+        {"name":"Jamie Reed","isFirstEleven":true},
+        {"name":"Tomas Novak","isFirstEleven":true}]}
+}
+</script></body></html>
+"@
+    Set-Clipboard -Value $importHtml
+    [PitchRateSmoke]::PostMessage(
+        $importSource, 0x0111, [IntPtr]2500, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the import preview dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, "PitchRateImportMatchDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    $importPreview = [PitchRateSmoke]::FindTopLevel(
+        [uint32]$process.Id, "PitchRateImportMatchDialog")
+    $importHomeTeam = [PitchRateSmoke]::FindChildById($importPreview, 2511)
+    if ($importHomeTeam -eq [IntPtr]::Zero) {
+        throw "The import preview is missing its home club field."
+    }
+    [PitchRateSmoke]::SendMessageText(
+        $importHomeTeam, 0x000C, [IntPtr]::Zero, "Northbridge FC") | Out-Null
+    [PitchRateSmoke]::PostMessage(
+        $importPreview, 0x0111, [IntPtr]2519, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the import preview to close" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, "PitchRateImportMatchDialog") -eq [IntPtr]::Zero)
+    }
+    Wait-Until -Description "the imported match details" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, "PitchRateMatchDetailsDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    $importDetails = [PitchRateSmoke]::FindTopLevel(
+        [uint32]$process.Id, "PitchRateMatchDetailsDialog")
+    [PitchRateSmoke]::PostMessage(
+        $importDetails, 0x0111, [IntPtr]2302, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the imported match details to close" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, "PitchRateMatchDetailsDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40002, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the Players page after the import" -Condition {
+        $candidate = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::WindowText($candidate) -eq "Players")
+    }
+    $playersPageForImport = [PitchRateSmoke]::FindChildByClass(
+        $main, "PitchRatePage", $true)
+    $playersListForImport = [PitchRateSmoke]::FindChildById(
+        $playersPageForImport, 1200)
+    $playersAfterImport = [PitchRateSmoke]::SendMessage(
+        $playersListForImport, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($playersAfterImport -ne $playersBeforeImport) {
+        throw "The import created a duplicate player instead of reusing the existing ones."
+    }
+    Write-Host "WhoScored import reuses existing players OK"
+
+    [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40004, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the Matches page after the import" -Condition {
+        $candidate = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::WindowText($candidate) -eq "Matches")
+    }
+    $matchesPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
+    $matchesList = [PitchRateSmoke]::FindChildById($matchesPage, 1300)
     $matchesBefore = [PitchRateSmoke]::SendMessage($matchesList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40000, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the record-match dialog" -Condition {

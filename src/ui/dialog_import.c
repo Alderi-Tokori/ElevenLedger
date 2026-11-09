@@ -82,6 +82,8 @@ typedef struct {
     int minutes;
     double performance;
     ImportPlayerAction action;
+    bool action_chosen;
+    uint64_t chosen_player_id;
     uint64_t existing_player_id;
     uint64_t matched_team_id;
     size_t match_count;
@@ -633,12 +635,20 @@ static void import_row_status_text(ImportRow *row)
 static void import_recompute_row(ImportMatchState *state, ImportRow *row)
 {
     uint64_t target_team = import_row_team_id(state, row);
-    ImportPlayerAction previous_action = row->action;
-    uint64_t previous_existing = row->existing_player_id;
+    bool action_chosen = row->action_chosen;
+    ImportPlayerAction chosen_action = row->action;
+    uint64_t chosen_player_id = row->chosen_player_id;
 
     size_t count = 0;
     const Player *existing = db_find_player_by_name(
         &state->app->db, row->first_name, row->last_name, &count);
+    if (target_team != 0) {
+        const Player *in_team = db_find_active_player_by_name_in_team(
+            &state->app->db, row->first_name, row->last_name, target_team);
+        if (in_team != NULL) {
+            existing = in_team;
+        }
+    }
     row->match_count = count;
     row->existing_player_id = 0;
     row->matched_team_id = 0;
@@ -648,6 +658,8 @@ static void import_recompute_row(ImportMatchState *state, ImportRow *row)
     if (existing == NULL) {
         row->status = IMPORT_ROW_NEW;
         row->action = IMPORT_PLAYER_CREATE;
+        row->action_chosen = false;
+        row->chosen_player_id = 0;
         import_row_status_text(row);
         return;
     }
@@ -664,21 +676,21 @@ static void import_recompute_row(ImportMatchState *state, ImportRow *row)
     if (row->archived) {
         row->status = IMPORT_ROW_ARCHIVED;
         row->action = IMPORT_PLAYER_CREATE;
-    } else if (target_team != 0 && existing->team_id == target_team) {
-        row->status = IMPORT_ROW_SAME_CLUB;
-        if (previous_action == IMPORT_PLAYER_CREATE &&
-            previous_existing == existing->id) {
-            row->action = IMPORT_PLAYER_CREATE;
-        } else {
-            row->action = IMPORT_PLAYER_USE_EXISTING;
-        }
+        row->action_chosen = false;
+        row->chosen_player_id = 0;
     } else {
-        row->status = IMPORT_ROW_OTHER_CLUB;
-        if (previous_action == IMPORT_PLAYER_USE_EXISTING &&
-            previous_existing == existing->id) {
-            row->action = IMPORT_PLAYER_USE_EXISTING;
+        bool same_club = target_team != 0 &&
+                         existing->team_id == target_team;
+        row->status = same_club ? IMPORT_ROW_SAME_CLUB
+                                : IMPORT_ROW_OTHER_CLUB;
+        if (action_chosen && chosen_player_id == existing->id) {
+            row->action = chosen_action;
+            row->chosen_player_id = existing->id;
         } else {
-            row->action = IMPORT_PLAYER_CREATE;
+            row->action = same_club ? IMPORT_PLAYER_USE_EXISTING
+                                    : IMPORT_PLAYER_CREATE;
+            row->action_chosen = false;
+            row->chosen_player_id = 0;
         }
     }
     import_row_status_text(row);
@@ -1059,6 +1071,14 @@ static void import_cancel_cell_edit(ImportMatchState *state)
     }
 }
 
+static void import_set_action_choice(ImportRow *row,
+                                     ImportPlayerAction action)
+{
+    row->action = action;
+    row->action_chosen = true;
+    row->chosen_player_id = row->existing_player_id;
+}
+
 static void import_change_action(ImportMatchState *state)
 {
     if (state->cell_edit != NULL &&
@@ -1175,10 +1195,10 @@ static void import_change_action(ImportMatchState *state)
     int pressed = IDCANCEL;
     if (SUCCEEDED(TaskDialogIndirect(&config, &pressed, NULL, NULL))) {
         if (pressed == IMPORT_DUPLICATE_ADD_ID) {
-            row->action = IMPORT_PLAYER_CREATE;
+            import_set_action_choice(row, IMPORT_PLAYER_CREATE);
         } else if (pressed == IMPORT_DUPLICATE_MOVE_ID ||
                    pressed == IMPORT_DUPLICATE_USE_ID) {
-            row->action = IMPORT_PLAYER_USE_EXISTING;
+            import_set_action_choice(row, IMPORT_PLAYER_USE_EXISTING);
         } else {
             return;
         }
@@ -1204,9 +1224,9 @@ static void import_change_action(ImportMatchState *state)
         int answer = MessageBoxW(state->hwnd, fallback,
                                  L"Player import action", fallback_flags);
         if (answer == IDYES) {
-            row->action = IMPORT_PLAYER_CREATE;
+            import_set_action_choice(row, IMPORT_PLAYER_CREATE);
         } else if (answer == IDNO) {
-            row->action = IMPORT_PLAYER_USE_EXISTING;
+            import_set_action_choice(row, IMPORT_PLAYER_USE_EXISTING);
         } else {
             return;
         }

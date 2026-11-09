@@ -2,6 +2,13 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.15.2 - 2026-11-09
+
+### Fixed
+
+- WhoScored import no longer creates a duplicate player when the preview's club field is corrected to the club the player already belongs to. Rows now return to the default action for their recomputed cue, while an explicitly chosen per-player action is kept for the same matched player.
+- The import preview now prefers a club's own active player when the same name also exists in another club.
+
 ## 1.15.1 - 2026-11-09
 
 ### Fixed

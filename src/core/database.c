@@ -272,6 +272,30 @@ static bool normalize_player_name(const char *source, char *output,
     return true;
 }
 
+const Player *db_find_active_player_by_name_in_team(
+    const Database *db, const char *first_name, const char *last_name,
+    uint64_t team_id)
+{
+    if (db == NULL || team_id == 0) {
+        return NULL;
+    }
+    char first[PERSON_NAME_MAX + 1];
+    char last[PERSON_NAME_MAX + 1];
+    if (!normalize_player_name(first_name, first, sizeof(first)) ||
+        !normalize_player_name(last_name, last, sizeof(last))) {
+        return NULL;
+    }
+    for (size_t i = 0; i < db->player_count; ++i) {
+        const Player *player = &db->players[i];
+        if (player->active && player->team_id == team_id &&
+            util_ascii_iequal(player->first_name, first) &&
+            util_ascii_iequal(player->last_name, last)) {
+            return player;
+        }
+    }
+    return NULL;
+}
+
 const Player *db_find_player_by_name(const Database *db,
                                      const char *first_name,
                                      const char *last_name,

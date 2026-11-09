@@ -135,6 +135,14 @@ const Player *db_find_player_by_name(const Database *db,
                                      const char *last_name,
                                      size_t *out_count);
 
+/*
+ * Finds an active player with the supplied trimmed full name in one club.
+ * Returns NULL when that club has no matching player.
+ */
+const Player *db_find_active_player_by_name_in_team(
+    const Database *db, const char *first_name, const char *last_name,
+    uint64_t team_id);
+
 bool db_add_team(Database *db, const char *name, const char *short_name,
                  const char *city, uint64_t *out_id,
                  char *error, size_t error_size);

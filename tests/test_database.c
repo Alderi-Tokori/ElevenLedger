@@ -1209,6 +1209,46 @@ static bool test_find_player_by_name(void)
     return true;
 }
 
+static bool test_find_active_player_by_name_in_team(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    char error[256];
+    uint64_t away_ada = 0;
+    uint64_t home_ada = 0;
+    uint64_t archived = 0;
+
+    CHECK(db_add_player(&db, beta, "Ada", "Lovelace", 80.0, true,
+                        &away_ada, error, sizeof(error)));
+    CHECK(db_add_player(&db, alpha, "  ada ", " lovelace ", 70.0, true,
+                        &home_ada, error, sizeof(error)));
+    CHECK(db_add_player(&db, alpha, "Old", "Timer", 60.0, true,
+                        &archived, error, sizeof(error)));
+    CHECK(db_set_player_active(&db, archived, false, error, sizeof(error)));
+
+    const Player *found = db_find_active_player_by_name_in_team(
+        &db, " ADA ", "LOVELACE", alpha);
+    CHECK(found != NULL);
+    CHECK(found->id == home_ada);
+
+    found = db_find_active_player_by_name_in_team(
+        &db, "Ada", "Lovelace", beta);
+    CHECK(found != NULL);
+    CHECK(found->id == away_ada);
+
+    CHECK(db_find_active_player_by_name_in_team(
+              &db, "Ada", "Lovelace", 999999) == NULL);
+    CHECK(db_find_active_player_by_name_in_team(
+              &db, "Old", "Timer", alpha) == NULL);
+    CHECK(db_find_active_player_by_name_in_team(
+              &db, "Nobody", "Here", alpha) == NULL);
+
+    db_free(&db);
+    return true;
+}
+
 static bool test_team_stats_are_minutes_and_results_aware(void)
 {
     Database db;
@@ -1252,6 +1292,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_update_match_validation),
     TEST_CASE(test_ratings_before_match),
     TEST_CASE(test_find_player_by_name),
+    TEST_CASE(test_find_active_player_by_name_in_team),
     TEST_CASE(test_team_stats_are_minutes_and_results_aware),
 };
 
