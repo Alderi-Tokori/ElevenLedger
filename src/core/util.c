@@ -30,51 +30,64 @@ bool util_utf8_valid(const char *text)
     if (text == NULL) {
         return false;
     }
+    return util_utf8_valid_n(text, strlen(text));
+}
+
+bool util_utf8_valid_n(const char *text, size_t length)
+{
+    if (text == NULL) {
+        return false;
+    }
     const unsigned char *p = (const unsigned char *)text;
-    while (*p != 0) {
+    const unsigned char *end = p + length;
+    while (p < end) {
         unsigned char c = *p++;
+        if (c == 0) {
+            return false;
+        }
         if (c < 0x80) {
             continue;
         }
+        size_t remaining = (size_t)(end - p);
         if (c >= 0xC2 && c <= 0xDF) {
-            if (p[0] < 0x80 || p[0] > 0xBF) {
+            if (remaining < 1 || p[0] < 0x80 || p[0] > 0xBF) {
                 return false;
             }
             p += 1;
         } else if (c == 0xE0) {
-            if (p[0] < 0xA0 || p[0] > 0xBF ||
+            if (remaining < 2 || p[0] < 0xA0 || p[0] > 0xBF ||
                 p[1] < 0x80 || p[1] > 0xBF) {
                 return false;
             }
             p += 2;
         } else if ((c >= 0xE1 && c <= 0xEC) || (c >= 0xEE && c <= 0xEF)) {
-            if (p[0] < 0x80 || p[0] > 0xBF ||
+            if (remaining < 2 || p[0] < 0x80 || p[0] > 0xBF ||
                 p[1] < 0x80 || p[1] > 0xBF) {
                 return false;
             }
             p += 2;
         } else if (c == 0xED) {
-            if (p[0] < 0x80 || p[0] > 0x9F ||
+            if (remaining < 2 || p[0] < 0x80 || p[0] > 0x9F ||
                 p[1] < 0x80 || p[1] > 0xBF) {
                 return false;
             }
             p += 2;
         } else if (c == 0xF0) {
-            if (p[0] < 0x90 || p[0] > 0xBF ||
+            if (remaining < 3 || p[0] < 0x90 || p[0] > 0xBF ||
                 p[1] < 0x80 || p[1] > 0xBF ||
                 p[2] < 0x80 || p[2] > 0xBF) {
                 return false;
             }
             p += 3;
         } else if (c >= 0xF1 && c <= 0xF3) {
-            if (p[0] < 0x80 || p[0] > 0xBF ||
+            if (remaining < 3 || p[0] < 0x80 || p[0] > 0xBF ||
                 p[1] < 0x80 || p[1] > 0xBF ||
                 p[2] < 0x80 || p[2] > 0xBF) {
                 return false;
             }
             p += 3;
         } else if (c == 0xF4) {
-            if (p[0] < 0x80 || p[0] > 0x8F ||
+            if (remaining < 3 || p[0] < 0x80 || p[0] > 0x8F ||
                 p[1] < 0x80 || p[1] > 0xBF ||
                 p[2] < 0x80 || p[2] > 0xBF) {
                 return false;

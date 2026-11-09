@@ -604,6 +604,46 @@ try {
     if ($matchesList -eq [IntPtr]::Zero) {
         throw "The matches page is missing its match list."
     }
+    $importButton = [PitchRateSmoke]::FindChildById($matchesPage, 1304)
+    if ($importButton -eq [IntPtr]::Zero) {
+        throw "The matches page is missing its WhoScored import button."
+    }
+    [PitchRateSmoke]::PostMessage(
+        $matchesPage, 0x0111, [IntPtr]1304, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the WhoScored import URL dialog" -Condition {
+        $candidate = [PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, "PitchRateImportUrlDialog")
+        return ($candidate -ne [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowVisible($candidate) -and
+            -not [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    $importDialog = [PitchRateSmoke]::FindTopLevel(
+        [uint32]$process.Id, "PitchRateImportUrlDialog")
+    $importUrlEdit = [PitchRateSmoke]::FindChildById($importDialog, 2500)
+    $importFetch = [PitchRateSmoke]::FindChildById($importDialog, 2501)
+    $importCancel = [PitchRateSmoke]::FindChildById($importDialog, 2502)
+    if ($importUrlEdit -eq [IntPtr]::Zero -or
+        $importFetch -eq [IntPtr]::Zero -or
+        $importCancel -eq [IntPtr]::Zero) {
+        throw "The WhoScored import dialog is missing its URL or action controls."
+    }
+    [PitchRateSmoke]::SendMessageText(
+        $importUrlEdit, 0x000C, [IntPtr]::Zero,
+        "https://example.com/matches/1/live/not-whoscored") | Out-Null
+    [PitchRateSmoke]::PostMessage(
+        $importDialog, 0x0111, [IntPtr]2501, [IntPtr]::Zero) | Out-Null
+    Start-Sleep -Milliseconds 150
+    if (-not [PitchRateSmoke]::IsWindowVisible($importDialog)) {
+        throw "An invalid WhoScored URL closed the import dialog."
+    }
+    [PitchRateSmoke]::PostMessage(
+        $importDialog, 0x0111, [IntPtr]2502, [IntPtr]::Zero) | Out-Null
+    Wait-Until -Description "the import URL dialog to close" -Condition {
+        return ([PitchRateSmoke]::FindTopLevel(
+            [uint32]$process.Id, "PitchRateImportUrlDialog") -eq [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($main))
+    }
+    Write-Host "WhoScored import URL dialog OK"
     $matchesBefore = [PitchRateSmoke]::SendMessage($matchesList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40000, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the record-match dialog" -Condition {

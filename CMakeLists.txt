@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(PitchRate
-    VERSION 1.12.0
+    VERSION 1.13.0
     DESCRIPTION "Football player rating calculator for Windows"
     LANGUAGES C RC
 )
@@ -33,6 +33,8 @@ configure_file(
 
 add_library(pitchrate_core STATIC
     src/core/database.c
+    src/core/import.c
+    src/core/import_apply.c
     src/core/rating.c
     src/core/storage.c
     src/core/util.c
@@ -65,6 +67,7 @@ add_executable(pitchrate WIN32
     src/ui/page_guide.c
     src/ui/dialogs.c
     src/ui/dialog_match.c
+    src/ui/dialog_import.c
     src/ui/main_window.c
     ${CMAKE_CURRENT_BINARY_DIR}/generated/app.rc
 )
@@ -79,6 +82,7 @@ target_link_libraries(pitchrate PRIVATE
     user32
     shell32
     uxtheme
+    winhttp
 )
 target_compile_definitions(pitchrate PRIVATE
     PITCHRATE_VERSION="${PROJECT_VERSION}"
@@ -109,6 +113,7 @@ if(PITCHRATE_BUILD_TESTS)
         tests/test_rating.c
         tests/test_database.c
         tests/test_storage.c
+        tests/test_import.c
     )
     target_link_libraries(pitchrate_tests PRIVATE pitchrate_core)
     target_compile_options(pitchrate_tests PRIVATE

@@ -42,6 +42,7 @@ The smoke test must report:
 - main window visible with the expected title,
 - every page navigates,
 - modal ownership works,
+- the WhoScored import URL dialog opens, rejects invalid hosts and closes cleanly,
 - record and save flow succeeds,
 - clean exit code 0.
 

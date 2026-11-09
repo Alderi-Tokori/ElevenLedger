@@ -20,6 +20,13 @@ static bool test_utf8_validation(void)
     CHECK(!util_utf8_valid("\xED\xA0\x80"));   /* surrogate */
     CHECK(!util_utf8_valid("\xF4\x90\x80\x80")); /* > U+10FFFF */
     CHECK(!util_utf8_valid("\xE2\x82"));       /* truncated */
+    CHECK(util_utf8_valid_n("Plain ASCII", 11));
+    CHECK(util_utf8_valid_n("Étoile", 7));
+    CHECK(util_utf8_valid_n("A\xC3\x89", 3));
+    CHECK(!util_utf8_valid_n("Étoile", 1));    /* truncated */
+    CHECK(!util_utf8_valid_n("A\0B", 3));       /* embedded NUL */
+    CHECK(!util_utf8_valid_n("\xC0\xAF", 2));   /* overlong */
+    CHECK(!util_utf8_valid_n(NULL, 0));
     return true;
 }
 

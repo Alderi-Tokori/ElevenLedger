@@ -6,6 +6,9 @@
 
 #include <windows.h>
 
+#define PITCHRATE_IMPORT_URL_DIALOG_CLASS L"PitchRateImportUrlDialog"
+#define PITCHRATE_IMPORT_MATCH_DIALOG_CLASS L"PitchRateImportMatchDialog"
+
 LRESULT CALLBACK team_dialog_proc(HWND hwnd, UINT message,
                                   WPARAM wparam, LPARAM lparam);
 LRESULT CALLBACK player_dialog_proc(HWND hwnd, UINT message,
@@ -14,6 +17,10 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
                                           WPARAM wparam, LPARAM lparam);
 LRESULT CALLBACK match_details_dialog_proc(HWND hwnd, UINT message,
                                            WPARAM wparam, LPARAM lparam);
+LRESULT CALLBACK import_url_dialog_proc(HWND hwnd, UINT message,
+                                        WPARAM wparam, LPARAM lparam);
+LRESULT CALLBACK import_match_dialog_proc(HWND hwnd, UINT message,
+                                          WPARAM wparam, LPARAM lparam);
 
 bool dialog_register_class(HINSTANCE instance, const wchar_t *name,
                            WNDPROC proc);

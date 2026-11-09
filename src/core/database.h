@@ -117,6 +117,8 @@ void db_free(Database *db);
 bool db_clone(Database *destination, const Database *source);
 
 const Team *db_find_team(const Database *db, uint64_t id);
+/* Trims the name and matches existing clubs ASCII case-insensitively. */
+const Team *db_find_team_by_name(const Database *db, const char *name);
 const Player *db_find_player(const Database *db, uint64_t id);
 const Match *db_find_match(const Database *db, uint64_t id);
 

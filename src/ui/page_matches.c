@@ -15,12 +15,14 @@ enum {
     MATCH_RECORD_ID = 1301,
     MATCH_VIEW_ID = 1302,
     MATCH_EDIT_ID = 1303,
+    MATCH_IMPORT_ID = 1304,
 };
 
 typedef struct {
     Page base;
     HWND list;
     HWND record_button;
+    HWND import_button;
     HWND view_button;
     HWND edit_button;
     bool populating;
@@ -152,6 +154,7 @@ static void matches_layout(Page *page, int width, int height)
     int gap = ui_scale(theme, 8);
     int top = ui_scale(theme, 24);
     int record_width = ui_scale(theme, 142);
+    int import_width = ui_scale(theme, 188);
     int view_width = ui_scale(theme, 108);
     int edit_width = ui_scale(theme, 84);
     int right = page->width - margin;
@@ -163,6 +166,10 @@ static void matches_layout(Page *page, int width, int height)
     MoveWindow(matches->record_button,
                right - view_width - gap - edit_width - gap - record_width,
                top, record_width, button_height, TRUE);
+    MoveWindow(matches->import_button,
+               right - view_width - gap - edit_width - gap - record_width -
+                   gap - import_width,
+               top, import_width, button_height, TRUE);
 
     static const int widths[7] = { 12, 22, 9, 22, 11, 12, 12 };
     ui_list_set_percent_widths(matches->list, widths, 7);
@@ -197,7 +204,7 @@ static void matches_paint(Page *page, HDC dc)
     if (page->app->db.match_count == 0) {
         page_draw_empty_state(
             page, dc, L"No matches recorded",
-            L"Record a result with line-ups and minutes to calculate player ratings.");
+            L"Record a result with line-ups, or import a completed match from WhoScored.");
     }
 }
 
@@ -222,6 +229,16 @@ static void matches_record(MatchesPage *page)
     }
 }
 
+static void matches_import(MatchesPage *page)
+{
+    App *app = page->base.app;
+    uint64_t match_id = dialog_import_match(app);
+    if (match_id != 0) {
+        matches_select_id(page, match_id);
+        dialog_match_details(app, match_id);
+    }
+}
+
 static LRESULT matches_message(Page *page, UINT message, WPARAM wparam,
                                LPARAM lparam)
 {
@@ -230,6 +247,10 @@ static LRESULT matches_message(Page *page, UINT message, WPARAM wparam,
         int command = LOWORD(wparam);
         if (command == MATCH_RECORD_ID) {
             matches_record(matches);
+            return 0;
+        }
+        if (command == MATCH_IMPORT_ID) {
+            matches_import(matches);
             return 0;
         }
         if (command == MATCH_VIEW_ID) {
@@ -314,6 +335,9 @@ Page *matches_page_create(App *app)
     matches->record_button = ui_button_create(
         matches->base.hwnd, MATCH_RECORD_ID, L"+  Record match",
         0, 0, 10, 10, UI_BUTTON_PRIMARY, theme->font_button);
+    matches->import_button = ui_button_create(
+        matches->base.hwnd, MATCH_IMPORT_ID, L"Import from WhoScored",
+        0, 0, 10, 10, UI_BUTTON_SOFT, theme->font_button);
     matches->view_button = ui_button_create(
         matches->base.hwnd, MATCH_VIEW_ID, L"View details",
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
@@ -321,7 +345,8 @@ Page *matches_page_create(App *app)
         matches->base.hwnd, MATCH_EDIT_ID, L"Edit match",
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     if (matches->list == NULL || matches->record_button == NULL ||
-        matches->view_button == NULL || matches->edit_button == NULL) {
+        matches->import_button == NULL || matches->view_button == NULL ||
+        matches->edit_button == NULL) {
         page_destroy(&matches->base);
         free(matches);
         return NULL;

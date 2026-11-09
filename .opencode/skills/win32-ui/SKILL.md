@@ -35,12 +35,15 @@ PitchRate uses native Win32 with GDI drawing. There is no web runtime or third-p
 - Inline cell editors must set the `PitchRate.CellEditor` property so the modal loop dispatches Enter/Escape to them.
 - Never mutate the database directly from a dialog. Clone with `app_tx_begin`, mutate, then `app_tx_commit` or `app_tx_abort`.
 - Save buttons should keep the dialog open on validation or disk failure.
+- Import-style previews must stay read-only until the user confirms. Recompute per-row cues when editable names or clubs change, and apply the whole plan through one transaction. `src/ui/dialog_import.c` shows custom-draw cues and per-player duplicate decisions.
+- Network downloads belong on a worker thread. Keep the dialog open on HTTP or parsing failure and post completion back with a private `WM_APP` message.
 
 ## Controls
 
 - Use `ui_button_create` styles for primary/secondary/danger/ghost/soft actions.
 - Use the custom checkbox for themed consistent checkboxes.
 - Use `ui_list_create` and `ui_list_custom_draw` for tables; keep row image height for readable rows.
+- Import previews use `dialog_import.c` as the reference for row-level cue colours keyed by `LVIF_PARAM`, inline name/minute/performance editors and in-place row text updates.
 - Sortable lists use `LVM_SORTITEMS` with a per-refresh sort context and show `HDF_SORTUP`/`HDF_SORTDOWN` through `ui_list_set_sort_indicator`. Players and Teams default to name ascending; the first header click sorts ascending and the next click reverses it.
 - Avoid cross-process pointer-based ListView messages in tests; they are unsafe outside the process. Use real clicks or command messages for automation.
 - Keep search filters, sort order and selected IDs across refresh.

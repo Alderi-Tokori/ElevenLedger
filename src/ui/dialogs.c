@@ -112,6 +112,10 @@ void dialogs_register_classes(HINSTANCE instance)
                           record_match_dialog_proc);
     dialog_register_class(instance, MATCH_DETAILS_DIALOG_CLASS,
                           match_details_dialog_proc);
+    dialog_register_class(instance, PITCHRATE_IMPORT_URL_DIALOG_CLASS,
+                          import_url_dialog_proc);
+    dialog_register_class(instance, PITCHRATE_IMPORT_MATCH_DIALOG_CLASS,
+                          import_match_dialog_proc);
 }
 
 HWND dialog_create_shell(App *app, HWND owner, const wchar_t *class_name,

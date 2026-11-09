@@ -2,6 +2,15 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.13.0 - 2026-11-09
+
+### Added
+
+- Matches can be imported from a WhoScored match URL. PitchRate downloads the page, reads the embedded match data, and opens an editable preview with the fixture date, home and away clubs, score, players and minutes. Cancelling the preview creates nothing.
+- The import preview recomputes a coloured cue for every player when names or clubs change: new player, existing squad member, player linked to another club, or archived player. Players linked to another club can be created as a separate record or moved to the imported club per player.
+- New clubs are created by name when confirmed, and all club, player and match changes run in one save transaction. Existing players keep their rating and history when moved.
+- Match page downloads run on a worker thread. Blocked or malformed pages leave the URL dialog open with a clear HTTP or parsing error.
+
 ## 1.12.0 - 2026-11-09
 
 ### Changed

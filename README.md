@@ -2,13 +2,14 @@
 
 PitchRate is a local-first Windows desktop application for calculating and tracking football player ratings. It pairs a transparent, team-aware rating model with a fast native interface for managing teams, squads and match history.
 
-The application is a dependency-free C17 Win32 program. It does not use a browser runtime, .NET, Python, or an online service. Match data stays on the computer and is saved atomically with a checksummed backup.
+The application is a dependency-free C17 Win32 program. It does not use a browser runtime, .NET, Python, or an online service. Match data stays on the computer and is saved atomically with a checksummed backup. The only network access is an optional, user-started WhoScored match page download.
 
 ## Highlights
 
 - Multiple clubs and squads with availability and starting ratings.
 - Player and team lists sortable by any column, with a click to sort ascending and another click to reverse the order.
 - Match recording with side-by-side home and away squads, inline player creation for any club (including clubs without players), per-player minutes and a 1-10 individual performance input.
+- Match import from a WhoScored match URL. The scraped date, clubs, score, players and minutes are shown in an editable preview before anything is created. Coloured cues identify new players, existing squad members, players linked to another club, and archived players; duplicate actions can be changed per player.
 - A date-aware live rating preview in the match form shows both line-up scores, team performance averages and the home team's change for a one-goal win or defeat as players, minutes and performances change. It uses each player's rating immediately before the fixture date.
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.
@@ -59,6 +60,20 @@ By default, data is stored at:
 
 Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported PitchRate format version is never overwritten or silently downgraded. Legacy v1 and v2 files are loaded safely and upgraded to v3 on the next save.
 
+## Import a match
+
+Open **Matches** and choose **Import from WhoScored**. Paste a match page URL;
+PitchRate downloads that page and opens an editable preview. Nothing is written
+until **Import match** is confirmed. The preview shows each player's minutes and
+a live cue for new players, existing squad members, players linked to another
+club, and archived players. Existing players can be reused or moved, or a
+separate player can be created.
+
+WhoScored may block automated requests with a browser check. In that case the
+import dialog stays open and reports the HTTP status instead of creating
+anything. Details and limitations are in
+[docs/whoscored-import.md](docs/whoscored-import.md).
+
 ## Keyboard shortcuts
 
 - `Ctrl+1` to `Ctrl+5`: switch between Dashboard, Players, Teams, Matches and Rating guide.
@@ -88,9 +103,9 @@ Or run the executable directly for a per-test report:
 .\build\pitchrate_tests.exe
 ```
 
-The suite covers date and UTF-8 validation, rating invariants, random-model fuzzing, database history replay, minutes and performance behaviour, storage round-trips, checksum failures, backup recovery, malformed data and relative paths.
+The suite covers date and UTF-8 validation, rating invariants, random-model fuzzing, database history replay, minutes and performance behaviour, storage round-trips, checksum failures, backup recovery, malformed data, relative paths, WhoScored HTML parsing, URL validation and transactional match import.
 
-An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, side-by-side match line-ups, inline minutes/performance editing, player creation and duplicate detection from the match dialog, and the complete record-and-save flow against a temporary data file:
+An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, side-by-side match line-ups, inline minutes/performance editing, player creation and duplicate detection from the match dialog, the WhoScored import URL dialog, and the complete record-and-save flow against a temporary data file:
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\gui-smoke.ps1
@@ -129,6 +144,7 @@ docs/           Rating and data-format documentation
 - [AGENTS.md](AGENTS.md): development rules and definition of done.
 - [docs/rating-model.md](docs/rating-model.md): rating algorithm and invariants.
 - [docs/data-format.md](docs/data-format.md): storage format and recovery behaviour.
+- [docs/whoscored-import.md](docs/whoscored-import.md): match URL import, scrape fields, duplicate cues and network limits.
 - `.opencode/skills/`: focused workflow skills for rating, UI and release work.
 
 ## License

@@ -193,6 +193,28 @@ const Team *db_find_team(const Database *db, uint64_t id)
     return NULL;
 }
 
+const Team *db_find_team_by_name(const Database *db, const char *name)
+{
+    if (db == NULL || name == NULL) {
+        return NULL;
+    }
+    char temp[TEXT_TEMP_CAPACITY];
+    if (strlen(name) >= sizeof(temp)) {
+        return NULL;
+    }
+    util_str_copy(temp, sizeof(temp), name);
+    char *trimmed = util_trim(temp);
+    if (!util_text_valid(trimmed, TEAM_NAME_MAX, false)) {
+        return NULL;
+    }
+    for (size_t i = 0; i < db->team_count; ++i) {
+        if (util_ascii_iequal(db->teams[i].name, trimmed)) {
+            return &db->teams[i];
+        }
+    }
+    return NULL;
+}
+
 const Player *db_find_player(const Database *db, uint64_t id)
 {
     if (db == NULL) {

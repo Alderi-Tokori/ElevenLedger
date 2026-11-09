@@ -10,6 +10,8 @@ void util_str_copy(char *dst, size_t dst_capacity, const char *src);
 
 /* Validates strict UTF-8 (no overlong forms, surrogates, or values > U+10FFFF). */
 bool util_utf8_valid(const char *text);
+/* Length-aware variant; rejects embedded NUL bytes and truncated sequences. */
+bool util_utf8_valid_n(const char *text, size_t length);
 
 /*
  * Validates a user-facing text field after trimming surrounding whitespace.

@@ -17,7 +17,7 @@
 #define NAV_COUNT 5
 
 #ifndef PITCHRATE_VERSION
-#define PITCHRATE_VERSION "1.12.0"
+#define PITCHRATE_VERSION "1.13.0"
 #endif
 
 static const wchar_t *g_navigation_labels[NAV_COUNT] = {

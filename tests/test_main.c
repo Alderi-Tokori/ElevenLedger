@@ -11,6 +11,8 @@ extern const TestCase g_database_tests[];
 extern const size_t g_database_test_count;
 extern const TestCase g_storage_tests[];
 extern const size_t g_storage_test_count;
+extern const TestCase g_import_tests[];
+extern const size_t g_import_test_count;
 
 static bool run_group(const char *name, const TestCase *tests, size_t count,
                       size_t *passed, size_t *failed)
@@ -42,6 +44,8 @@ int main(void)
     run_group("database", g_database_tests, g_database_test_count,
               &passed, &failed);
     run_group("storage", g_storage_tests, g_storage_test_count,
+              &passed, &failed);
+    run_group("import", g_import_tests, g_import_test_count,
               &passed, &failed);
 
     printf("\n%zu passed, %zu failed.\n", passed, failed);
