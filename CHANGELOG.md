@@ -2,6 +2,13 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.14.0 - 2026-11-09
+
+### Added
+
+- The WhoScored import dialog now offers **Open in browser** and **Paste page source**. If WhoScored blocks direct downloads with a browser check, the user can pass the check in their normal browser, view the page source with Ctrl+U, copy it and paste it into PitchRate. The pasted source is parsed locally and still requires confirmation in the import preview.
+- The 403 message now explains the browser-assisted path instead of only reporting the block.
+
 ## 1.13.0 - 2026-11-09
 
 ### Added

@@ -69,9 +69,11 @@ a live cue for new players, existing squad members, players linked to another
 club, and archived players. Existing players can be reused or moved, or a
 separate player can be created.
 
-WhoScored may block automated requests with a browser check. In that case the
-import dialog stays open and reports the HTTP status instead of creating
-anything. Details and limitations are in
+WhoScored may block automated requests with a browser check. The import dialog
+then stays open and reports the HTTP status. Choose **Open in browser**, complete
+the check there, press **Ctrl+U** to view the source, copy all of it, and choose
+**Paste page source** in PitchRate. The page source is parsed locally and the
+normal preview still requires confirmation. Details and limitations are in
 [docs/whoscored-import.md](docs/whoscored-import.md).
 
 ## Keyboard shortcuts

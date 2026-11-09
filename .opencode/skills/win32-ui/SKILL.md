@@ -37,6 +37,7 @@ PitchRate uses native Win32 with GDI drawing. There is no web runtime or third-p
 - Save buttons should keep the dialog open on validation or disk failure.
 - Import-style previews must stay read-only until the user confirms. Recompute per-row cues when editable names or clubs change, and apply the whole plan through one transaction. `src/ui/dialog_import.c` shows custom-draw cues and per-player duplicate decisions.
 - Network downloads belong on a worker thread. Keep the dialog open on HTTP or parsing failure and post completion back with a private `WM_APP` message.
+- When a protected site blocks direct downloads, offer an open-in-browser + paste-page-source path instead of bypassing the check. Validate the clipboard text and reuse the normal parser and transaction path.
 
 ## Controls
 

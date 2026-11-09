@@ -1,15 +1,17 @@
 # WhoScored Match Import
 
 PitchRate can create a match from a WhoScored match page. The import is always
-explicit: PitchRate downloads the page, parses the embedded match data, shows a
-preview, and writes nothing until the user confirms.
+explicit: PitchRate obtains the page source, parses the embedded match data,
+shows a preview, and writes nothing until the user confirms.
 
 ## User flow
 
 1. Open **Matches** and choose **Import from WhoScored**.
 2. Paste a match URL such as
    `https://fr.whoscored.com/matches/1984066/live/france-ligue-1-2026-2027-rennes-paris-saint-germain`.
-3. PitchRate downloads that page and opens the import preview.
+3. Choose **Download match**. If WhoScored blocks the direct download, use the
+   browser-assisted path below. PitchRate opens the import preview once it has
+   a page source.
 4. Review and edit the date, clubs, score, player names, minutes and
    performance values. The neutral-venue option defaults to off.
 5. Choose what to do for players who already exist in another club.
@@ -17,6 +19,23 @@ preview, and writes nothing until the user confirms.
    records the match in one transaction.
 
 Cancelling the preview leaves the database unchanged.
+
+### If WhoScored blocks the download
+
+WhoScored may protect its pages with an interactive browser check. PitchRate does
+not run JavaScript, so it cannot pass that check by itself. It does not attempt
+to bypass it either. Use the browser-assisted path instead:
+
+1. Paste the match URL and choose **Open in browser**.
+2. Complete any check in the browser and wait for the match page to load.
+3. Press **Ctrl+U** to view the page source.
+4. Press **Ctrl+A** and then **Ctrl+C** to copy the source.
+5. Return to PitchRate and choose **Paste page source**.
+
+The source is parsed locally and the normal preview opens. Copying the rendered
+page with Ctrl+A/C on the normal page is not enough because it produces visible
+text rather than HTML source. If Ctrl+U is unavailable, save the page with
+**Ctrl+S**, open the saved `.html` file in a text editor, and copy all of it.
 
 ## What is imported
 
@@ -92,13 +111,18 @@ does not run JavaScript and cannot complete a browser challenge. A blocked
 request keeps the URL dialog open and explains the HTTP status, for example:
 
 ```text
-WhoScored refused the request (HTTP 403). The site may be blocking automated
-access. Try again later or use a normal browser to check the link.
+WhoScored refused the request (HTTP 403). Choose Open in browser, complete the
+check there, press Ctrl+U, copy all, then choose Paste page source.
 ```
+
+The browser-assisted path does not bypass the check: the user completes it in
+their own browser, then provides the resulting page source. The same parser and
+confirmation preview are used.
 
 The import also fails with a clear message if the page does not contain
 `matchCentreData`, is not UTF-8, is larger than 16 MiB, or has no usable date,
 teams, score or player minutes.
 
-Only the explicit download started by the user performs network access. Imported
-data is stored locally with the rest of the PitchRate data file.
+Only the explicit download started by the user performs network access. Pasted
+page source is processed locally. Imported data is stored locally with the rest
+of the PitchRate data file.

@@ -9,8 +9,10 @@
 #include "ui/theme.h"
 
 #include <commctrl.h>
+#include <limits.h>
 #include <math.h>
 #include <process.h>
+#include <shellapi.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +28,8 @@ enum {
     IMPORT_URL_EDIT_ID = 2500,
     IMPORT_URL_FETCH_ID,
     IMPORT_URL_CANCEL_ID,
+    IMPORT_URL_OPEN_ID,
+    IMPORT_URL_PASTE_ID,
 };
 
 enum {
@@ -73,6 +77,8 @@ typedef struct {
     HWND url;
     HWND fetch;
     HWND cancel;
+    HWND open_browser;
+    HWND paste;
     HANDLE thread;
     ImportFetchJob *job;
     bool fetching;
@@ -314,9 +320,9 @@ static bool import_http_get(const wchar_t *url, char **out_body,
         if (status == 403) {
             import_format_wide(
                 error, error_count,
-                L"WhoScored refused the request (HTTP 403). The site may be "
-                L"blocking automated access. Try again later or use a normal "
-                L"browser to check the link.");
+                L"WhoScored refused the request (HTTP 403). Choose Open in "
+                L"browser, complete the check there, press Ctrl+U, copy all, "
+                L"then choose Paste page source.");
         } else if (status == 404) {
             import_format_wide(error, error_count,
                                   L"WhoScored could not find that match "
@@ -436,8 +442,8 @@ static void import_url_layout(ImportUrlState *state, int width, int height)
                width - margin * 2, field_height, TRUE);
     y += label_height + field_height + ui_scale(theme, 12);
     state->hint_rect = (RECT){ margin, y, width - margin,
-                               y + ui_scale(theme, 22) };
-    y += ui_scale(theme, 30);
+                               y + ui_scale(theme, 36) };
+    y += ui_scale(theme, 44);
     state->status_rect = (RECT){ margin, y, width - margin,
                                  y + ui_scale(theme, 24) };
     int error_top = y + ui_scale(theme, 26);
@@ -454,12 +460,21 @@ static void import_url_layout(ImportUrlState *state, int width, int height)
                                 error_bottom };
     int fetch_width = ui_scale(theme, 168);
     int cancel_width = ui_scale(theme, 92);
+    int paste_width = ui_scale(theme, 168);
+    int open_width = ui_scale(theme, 132);
     int right = width - margin;
-    MoveWindow(state->fetch, right - fetch_width, button_y,
+    int fetch_x = right - fetch_width;
+    int cancel_x = fetch_x - ui_scale(theme, 10) - cancel_width;
+    int paste_x = cancel_x - ui_scale(theme, 10) - paste_width;
+    int open_x = paste_x - ui_scale(theme, 10) - open_width;
+    MoveWindow(state->fetch, fetch_x, button_y,
                fetch_width, button_height, TRUE);
-    MoveWindow(state->cancel,
-               right - fetch_width - ui_scale(theme, 10) - cancel_width,
-               button_y, cancel_width, button_height, TRUE);
+    MoveWindow(state->cancel, cancel_x, button_y, cancel_width,
+               button_height, TRUE);
+    MoveWindow(state->paste, paste_x, button_y, paste_width,
+               button_height, TRUE);
+    MoveWindow(state->open_browser, open_x, button_y, open_width,
+               button_height, TRUE);
 }
 
 static LRESULT import_url_paint(ImportUrlState *state, HWND hwnd)
@@ -480,9 +495,11 @@ static LRESULT import_url_paint(ImportUrlState *state, HWND hwnd)
         ui_draw_text(
             canvas.dc, state->app->ui.font_small, UI_COLOR_FAINT,
             state->hint_rect,
-            L"Paste a link such as https://fr.whoscored.com/matches/1984066/live/... "
-            L"Only that page is downloaded.",
-            DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS);
+            L"Paste a WhoScored match URL, or use Open in browser when "
+            L"WhoScored blocks the download.\n"
+            L"After the browser shows the page, press Ctrl+U, copy all, then "
+            L"choose Paste page source.",
+            DT_LEFT | DT_TOP | DT_WORDBREAK);
         ui_draw_text(canvas.dc, state->app->ui.font_small,
                      state->fetching ? UI_COLOR_ACCENT : UI_COLOR_MUTED,
                      state->status_rect, state->status,
@@ -527,6 +544,8 @@ static void import_url_finish_fetch(ImportUrlState *state)
         free(job);
         EnableWindow(state->url, TRUE);
         EnableWindow(state->fetch, TRUE);
+        EnableWindow(state->open_browser, TRUE);
+        EnableWindow(state->paste, TRUE);
         EnableWindow(state->cancel, TRUE);
         import_url_set_status(state, L"Check the URL and try again.");
         SetFocus(state->fetch);
@@ -602,6 +621,8 @@ static void import_url_start_fetch(ImportUrlState *state)
     state->cancel_requested = false;
     EnableWindow(state->url, FALSE);
     EnableWindow(state->fetch, FALSE);
+    EnableWindow(state->open_browser, FALSE);
+    EnableWindow(state->paste, FALSE);
     EnableWindow(state->cancel, TRUE);
     import_url_set_status(state, L"Downloading the match page...");
     state->thread = (HANDLE)_beginthreadex(
@@ -612,6 +633,8 @@ static void import_url_start_fetch(ImportUrlState *state)
         free(job);
         EnableWindow(state->url, TRUE);
         EnableWindow(state->fetch, TRUE);
+        EnableWindow(state->open_browser, TRUE);
+        EnableWindow(state->paste, TRUE);
         import_url_show_error(state,
                               L"Could not start the download thread.");
         import_url_set_status(state, L"Try again.");
@@ -628,6 +651,165 @@ static void import_url_cancel(ImportUrlState *state)
         EnableWindow(state->cancel, FALSE);
         return;
     }
+    dialog_close(state->hwnd);
+}
+
+static bool import_clipboard_read(HWND owner, char **out_text,
+                                  size_t *out_length, wchar_t *error,
+                                  size_t error_count)
+{
+    *out_text = NULL;
+    *out_length = 0;
+    if (!OpenClipboard(owner)) {
+        import_format_wide(error, error_count,
+                           L"Could not open the clipboard. Close other "
+                           L"clipboard tools and try again.");
+        return false;
+    }
+
+    HANDLE handle = GetClipboardData(CF_UNICODETEXT);
+    if (handle == NULL) {
+        CloseClipboard();
+        import_format_wide(
+            error, error_count,
+            L"The clipboard does not contain text. Open the WhoScored page "
+            L"in your browser, press Ctrl+U, select all and copy.");
+        return false;
+    }
+    SIZE_T byte_count = GlobalSize(handle);
+    const wchar_t *wide = (const wchar_t *)GlobalLock(handle);
+    if (wide == NULL || byte_count < sizeof(wchar_t)) {
+        if (wide != NULL) {
+            GlobalUnlock(handle);
+        }
+        CloseClipboard();
+        import_format_wide(error, error_count,
+                           L"Could not read the clipboard text.");
+        return false;
+    }
+
+    size_t wide_count = (size_t)byte_count / sizeof(wchar_t);
+    size_t text_length = 0;
+    while (text_length < wide_count && wide[text_length] != L'\0') {
+        ++text_length;
+    }
+    if (text_length == 0) {
+        GlobalUnlock(handle);
+        CloseClipboard();
+        import_format_wide(error, error_count,
+                           L"The clipboard text is empty.");
+        return false;
+    }
+    if (text_length > (size_t)IMPORT_HTML_MAX ||
+        text_length > (size_t)INT_MAX / 4) {
+        GlobalUnlock(handle);
+        CloseClipboard();
+        import_format_wide(error, error_count,
+                           L"The clipboard text is too large to import.");
+        return false;
+    }
+
+    int needed = WideCharToMultiByte(
+        CP_UTF8, WC_ERR_INVALID_CHARS, wide, (int)text_length, NULL, 0,
+        NULL, NULL);
+    if (needed <= 0 || (size_t)needed > (size_t)IMPORT_HTML_MAX) {
+        GlobalUnlock(handle);
+        CloseClipboard();
+        import_format_wide(
+            error, error_count,
+            needed <= 0 ? L"The clipboard text is not valid Unicode."
+                        : L"The clipboard text is too large to import.");
+        return false;
+    }
+    char *text = malloc((size_t)needed + 1);
+    if (text == NULL) {
+        GlobalUnlock(handle);
+        CloseClipboard();
+        import_format_wide(error, error_count,
+                           L"Not enough memory to read the clipboard text.");
+        return false;
+    }
+    int written = WideCharToMultiByte(
+        CP_UTF8, WC_ERR_INVALID_CHARS, wide, (int)text_length, text, needed,
+        NULL, NULL);
+    GlobalUnlock(handle);
+    CloseClipboard();
+    if (written != needed) {
+        free(text);
+        import_format_wide(error, error_count,
+                           L"Could not convert the clipboard text.");
+        return false;
+    }
+    text[needed] = '\0';
+    *out_text = text;
+    *out_length = (size_t)needed;
+    return true;
+}
+
+static void import_url_open_browser(ImportUrlState *state)
+{
+    if (state->fetching) {
+        return;
+    }
+    wchar_t wide_url[IMPORT_URL_MAX + 1];
+    ui_edit_get_wide(state->url, wide_url,
+                     sizeof(wide_url) / sizeof(wide_url[0]));
+    import_trim_wide_in_place(wide_url);
+    SetWindowTextW(state->url, wide_url);
+    char utf8_url[IMPORT_URL_MAX * 4 + 1];
+    ui_wide_to_utf8(wide_url, utf8_url, sizeof(utf8_url));
+    if (!import_url_valid(utf8_url)) {
+        import_url_show_error(
+            state,
+            L"Enter a full WhoScored match URL before opening the browser.");
+        SetFocus(state->url);
+        return;
+    }
+    HINSTANCE result = ShellExecuteW(state->hwnd, L"open", wide_url, NULL,
+                                     NULL, SW_SHOWNORMAL);
+    if ((INT_PTR)result <= 32) {
+        import_url_show_error(
+            state, L"Windows could not open the URL in the default browser.");
+        return;
+    }
+    state->error[0] = L'\0';
+    import_url_set_status(
+        state,
+        L"Complete the browser check, press Ctrl+U to view the source, "
+        L"copy all, then choose Paste page source.");
+}
+
+static void import_url_paste_source(ImportUrlState *state)
+{
+    if (state->fetching) {
+        return;
+    }
+    char *text = NULL;
+    size_t length = 0;
+    wchar_t error[512];
+    if (!import_clipboard_read(state->hwnd, &text, &length, error,
+                               sizeof(error) / sizeof(error[0]))) {
+        import_url_show_error(state, error);
+        return;
+    }
+    if (!util_utf8_valid_n(text, length)) {
+        free(text);
+        import_url_show_error(state,
+                              L"The clipboard text is not valid UTF-8.");
+        return;
+    }
+    if (strstr(text, "matchCentreData") == NULL) {
+        free(text);
+        import_url_show_error(
+            state,
+            L"The clipboard does not contain WhoScored page source. Open "
+            L"the match in your browser, press Ctrl+U, select all and copy, "
+            L"then try again.");
+        return;
+    }
+    state->error[0] = L'\0';
+    state->html = text;
+    state->html_length = length;
     dialog_close(state->hwnd);
 }
 
@@ -670,6 +852,14 @@ LRESULT CALLBACK import_url_dialog_proc(HWND hwnd, UINT message,
                 state->error[0] = L'\0';
                 InvalidateRect(hwnd, NULL, FALSE);
             }
+            return 0;
+        }
+        if (LOWORD(wparam) == IMPORT_URL_OPEN_ID) {
+            import_url_open_browser(state);
+            return 0;
+        }
+        if (LOWORD(wparam) == IMPORT_URL_PASTE_ID) {
+            import_url_paste_source(state);
             return 0;
         }
         if (LOWORD(wparam) == IMPORT_URL_FETCH_ID) {
@@ -716,13 +906,20 @@ static bool import_url_dialog_run(App *app, char **out_html,
     state.url = ui_edit_create(hwnd, IMPORT_URL_EDIT_ID, L"",
                                0, 0, 10, 10, theme->font_body,
                                IMPORT_URL_MAX);
-    state.fetch = ui_button_create(
-        hwnd, IMPORT_URL_FETCH_ID, L"Download match",
-        0, 0, 10, 10, UI_BUTTON_PRIMARY, theme->font_button);
+    state.open_browser = ui_button_create(
+        hwnd, IMPORT_URL_OPEN_ID, L"Open in browser",
+        0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
+    state.paste = ui_button_create(
+        hwnd, IMPORT_URL_PASTE_ID, L"Paste page source",
+        0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     state.cancel = ui_button_create(
         hwnd, IMPORT_URL_CANCEL_ID, L"Cancel",
         0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
-    if (state.url == NULL || state.fetch == NULL || state.cancel == NULL) {
+    state.fetch = ui_button_create(
+        hwnd, IMPORT_URL_FETCH_ID, L"Download match",
+        0, 0, 10, 10, UI_BUTTON_PRIMARY, theme->font_button);
+    if (state.url == NULL || state.fetch == NULL || state.cancel == NULL ||
+        state.open_browser == NULL || state.paste == NULL) {
         dialog_close(hwnd);
         return false;
     }

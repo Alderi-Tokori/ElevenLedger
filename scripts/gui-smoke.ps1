@@ -622,9 +622,13 @@ try {
     $importUrlEdit = [PitchRateSmoke]::FindChildById($importDialog, 2500)
     $importFetch = [PitchRateSmoke]::FindChildById($importDialog, 2501)
     $importCancel = [PitchRateSmoke]::FindChildById($importDialog, 2502)
+    $importOpen = [PitchRateSmoke]::FindChildById($importDialog, 2503)
+    $importPaste = [PitchRateSmoke]::FindChildById($importDialog, 2504)
     if ($importUrlEdit -eq [IntPtr]::Zero -or
         $importFetch -eq [IntPtr]::Zero -or
-        $importCancel -eq [IntPtr]::Zero) {
+        $importCancel -eq [IntPtr]::Zero -or
+        $importOpen -eq [IntPtr]::Zero -or
+        $importPaste -eq [IntPtr]::Zero) {
         throw "The WhoScored import dialog is missing its URL or action controls."
     }
     [PitchRateSmoke]::SendMessageText(
