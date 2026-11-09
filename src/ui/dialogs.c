@@ -178,6 +178,19 @@ void dialog_close(HWND dialog)
     }
     HWND owner = GetWindow(dialog, GW_OWNER);
     /*
+     * Restore the owner before hiding the dialog. A hidden window activates
+     * another top-level window when it was active, and the disabled owner
+     * cannot take that activation. Windows would then briefly raise whichever
+     * window is next in the z-order, exposing another application above
+     * PitchRate until the modal loop re-enables and activates the owner.
+     * Activating the owner first keeps the transition inside PitchRate.
+     */
+    if (owner != NULL && IsWindow(owner) && !IsWindowEnabled(owner)) {
+        EnableWindow(owner, TRUE);
+        SetForegroundWindow(owner);
+        SetActiveWindow(owner);
+    }
+    /*
      * Hide the dialog before refreshing its owner. Painting a covered window
      * is clipped to its visible region, so the owner must be exposed first.
      * Keep the refresh synchronous so no stale or fully transparent frame can

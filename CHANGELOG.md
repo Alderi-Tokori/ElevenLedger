@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.18.1 - 2026-11-09
+
+### Fixed
+
+- Closing a team, player, match, match-details or WhoScored import dialog no longer lets another application flash into the foreground. The dialog now re-enables and activates its owner before it is hidden, so the main window never disappears for a frame.
+
 ## 1.18.0 - 2026-11-09
 
 ### Added

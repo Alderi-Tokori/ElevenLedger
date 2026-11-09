@@ -173,6 +173,77 @@ function Invoke-MouseClick {
     [PitchRateSmoke]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
 }
 
+function Close-DialogAndCheckForeground {
+    param(
+        [IntPtr]$Dialog,
+        [IntPtr]$Main,
+        [int]$CancelId,
+        [uint32]$ProcessId,
+        [string]$DialogClass,
+        [string]$Description = "the dialog"
+    )
+    [PitchRateSmoke]::ForceForeground($Dialog)
+    $foregroundProcess = [uint32]0
+    $deadline = [DateTime]::UtcNow.AddMilliseconds(500)
+    do {
+        $foreground = [PitchRateSmoke]::GetForegroundWindow()
+        if ($foreground -ne [IntPtr]::Zero) {
+            [PitchRateSmoke]::GetWindowThreadProcessId(
+                $foreground, [ref]$foregroundProcess) | Out-Null
+        }
+        if ($foregroundProcess -eq $ProcessId) {
+            break
+        }
+        Start-Sleep -Milliseconds 5
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if ($foregroundProcess -ne $ProcessId) {
+        throw "Could not bring $Description to the foreground before closing it."
+    }
+    [PitchRateSmoke]::PostMessage(
+        $Dialog, 0x0111, [IntPtr]$CancelId, [IntPtr]::Zero) | Out-Null
+    $leaked = [IntPtr]::Zero
+    $deadline = [DateTime]::UtcNow.AddMilliseconds(2000)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $foreground = [PitchRateSmoke]::GetForegroundWindow()
+        if ($foreground -ne [IntPtr]::Zero) {
+            $foregroundProcess = [uint32]0
+            [PitchRateSmoke]::GetWindowThreadProcessId(
+                $foreground, [ref]$foregroundProcess) | Out-Null
+            if ($foregroundProcess -ne $ProcessId) {
+                $leaked = $foreground
+                break
+            }
+        }
+        if ([PitchRateSmoke]::FindTopLevel($ProcessId, $DialogClass) -eq
+                [IntPtr]::Zero -and
+            [PitchRateSmoke]::IsWindowEnabled($Main)) {
+            break
+        }
+    }
+    if ($leaked -ne [IntPtr]::Zero) {
+        throw ("Closing $Description exposed another application in the " +
+            "foreground ($([PitchRateSmoke]::ClassName($leaked)) " +
+            "'$([PitchRateSmoke]::WindowText($leaked))').")
+    }
+    if ([PitchRateSmoke]::FindTopLevel($ProcessId, $DialogClass) -ne
+            [IntPtr]::Zero) {
+        throw "Closing $Description did not close it."
+    }
+    if (-not [PitchRateSmoke]::IsWindowEnabled($Main)) {
+        throw "Closing $Description left the main window disabled."
+    }
+    $foreground = [PitchRateSmoke]::GetForegroundWindow()
+    if ($foreground -ne [IntPtr]::Zero) {
+        $foregroundProcess = [uint32]0
+        [PitchRateSmoke]::GetWindowThreadProcessId(
+            $foreground, [ref]$foregroundProcess) | Out-Null
+        if ($foregroundProcess -ne $ProcessId) {
+            throw ("The main window did not return to the foreground after " +
+                "closing $Description.")
+        }
+    }
+}
+
 function Read-ComboItems {
     param([IntPtr]$Combo)
     $count = [int][PitchRateSmoke]::SendMessage(
@@ -1158,11 +1229,9 @@ matchCentreData: {
             -not [PitchRateSmoke]::IsWindowEnabled($main))
     }
     $editDialog = [PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog")
-    [PitchRateSmoke]::PostMessage($editDialog, 0x0111, [IntPtr]2209, [IntPtr]::Zero) | Out-Null
-    Wait-Until -Description "the match-list edit dialog to cancel" -Condition {
-        return ([PitchRateSmoke]::FindTopLevel([uint32]$process.Id, "PitchRateMatchDialog") -eq [IntPtr]::Zero -and
-            [PitchRateSmoke]::IsWindowEnabled($main))
-    }
+    Close-DialogAndCheckForeground -Dialog $editDialog -Main $main `
+        -CancelId 2209 -ProcessId ([uint32]$process.Id) `
+        -DialogClass "PitchRateMatchDialog" -Description "the match edit dialog"
     Write-Host "Match-list edit command OK"
     $matchesPage = [PitchRateSmoke]::FindChildByClass($main, "PitchRatePage", $true)
     $matchesList = [PitchRateSmoke]::FindChildById($matchesPage, 1300)

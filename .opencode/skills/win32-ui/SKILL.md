@@ -30,7 +30,7 @@ PitchRate uses native Win32 with GDI drawing. There is no web runtime or third-p
 - Use `dialog_create_shell`, a per-dialog `...State` struct on the caller stack and `ui_run_modal`.
 - Set the window caption explicitly after creation. Custom `WM_NCCREATE` handlers do not reliably retain title text.
 - Use control IDs in the dialog's enum range and handle them in `WM_COMMAND`.
-- Track modal ownership: `ui_run_modal` disables the owner and re-enables it on exit.
+- Track modal ownership: `ui_run_modal` disables the owner and re-enables it on exit. `dialog_close` must re-enable and activate the owner before hiding the dialog, otherwise Windows activates the next application and the main window briefly disappears.
 - Support Escape (modal loop) and Tab (IsDialogMessage/WS_EX_CONTROLPARENT).
 - Inline cell editors must set the `PitchRate.CellEditor` property so the modal loop dispatches Enter/Escape to them.
 - Never mutate the database directly from a dialog. Clone with `app_tx_begin`, mutate, then `app_tx_commit` or `app_tx_abort`.

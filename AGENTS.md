@@ -136,7 +136,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Pages with a primary create action must set `Page.create_command` to the create button's command ID so Ctrl+N runs the same flow.
 - New toolbars use `ui_button_create` styles rather than native push buttons.
 - New confirmations must use `MB_ICONWARNING` and default to the safe choice.
-- All modal dialogs must disable their owner, support Tab and Escape, re-enable and repaint the owner before returning, and use `ui_run_modal`. Close dialog windows through `dialog_close` so the owner is exposed and repainted before the dialog is destroyed.
+- All modal dialogs must disable their owner, support Tab and Escape, re-enable and repaint the owner before returning, and use `ui_run_modal`. Close dialog windows through `dialog_close` so the owner is re-enabled and activated before the dialog is hidden, then exposed and repainted before the dialog is destroyed.
 - Inline cell editors must stay above their list in the child z-order after creation so list repaints cannot cover them.
 - Custom-class windows should set their window text explicitly after creation. Do not rely on the class's `WM_NCCREATE` path to retain text.
 - When adding a player, default the team to the most recently created player's team; use `db_last_added_player` rather than array order guesses.
