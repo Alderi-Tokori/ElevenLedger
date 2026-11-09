@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.15.1 - 2026-11-09
+
+### Fixed
+
+- WhoScored import now uses the real elapsed match length from `maxMinute` (falling back to the last `periodEndMinutes` entry) instead of assuming 90 or 120 minutes. Starting players receive stoppage-time minutes, and substitution times are converted from WhoScored's expanded clock back to real match minutes.
+
 ## 1.15.0 - 2026-11-09
 
 ### Changed

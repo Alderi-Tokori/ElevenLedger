@@ -45,10 +45,20 @@ The page must contain WhoScored's embedded `matchCentreData`. PitchRate reads:
 - every player who appeared, with minutes derived from the starting line-up and
   substitution minutes. Unused substitutes are omitted.
 
-Normal matches use a 90-minute length. Matches with an extra-time score use 120
-minutes. A substitute who comes on at minute 90 is recorded with one minute.
-Minutes are clamped to the 1-120 range accepted by PitchRate. The imported
-performance defaults to 6.00 and can be edited before import.
+PitchRate uses the real elapsed match length. It reads `maxMinute` (for example
+94 for a match that ended at 90+4), falls back to the last recorded
+`periodEndMinutes` entry, and finally falls back to 90 or 120 minutes when the
+page has no timing data. `minuteExpanded` and `expandedMaxMinute` are not used
+as the match length: WhoScored's expanded clock adds the first-half stoppage
+offset back into the second half, so it runs ahead of the real match clock.
+
+Starting players receive the full match length. Substitution times are converted
+from the expanded clock back to the real match clock before minutes are
+calculated. A substitute receives the time between their entry and the end of
+the match, or their own substitution-out time when they are replaced again.
+A substitute who enters during stoppage time is recorded with at least one
+minute. Minutes are clamped to the 1-120 range accepted by PitchRate. The
+imported performance defaults to 6.00 and can be edited before import.
 
 Player names are split at the first space: the first token becomes the first
 name and the remainder becomes the last name. A single-word name is stored as a

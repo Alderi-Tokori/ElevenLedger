@@ -1006,6 +1006,104 @@ static bool parse_fixture_date(JsonSpan root, char *date,
     return false;
 }
 
+typedef struct {
+    int match_length;
+    int first_half_end;
+    int expanded_offset;
+} MatchTiming;
+
+static bool read_positive_int(JsonSpan object, const char *key, int *out)
+{
+    JsonSpan span;
+    int value = 0;
+    if (!json_object_get(object, key, &span) ||
+        !json_parse_int(span, &value) || value <= 0) {
+        return false;
+    }
+    *out = value;
+    return true;
+}
+
+static int last_period_end_minute(JsonSpan root)
+{
+    JsonSpan period_ends;
+    if (!json_object_get(root, "periodEndMinutes", &period_ends) ||
+        period_ends.start >= period_ends.end ||
+        *period_ends.start != '{') {
+        return 0;
+    }
+    static const char *keys[] = { "4", "3", "2", "1" };
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); ++i) {
+        int value = 0;
+        if (read_positive_int(period_ends, keys[i], &value)) {
+            return value;
+        }
+    }
+    return 0;
+}
+
+static void resolve_match_timing(JsonSpan root, bool extra_time,
+                                 MatchTiming *timing)
+{
+    memset(timing, 0, sizeof(*timing));
+    timing->match_length = extra_time ? 120 : 90;
+    timing->first_half_end = 45;
+
+    JsonSpan period_ends;
+    if (json_object_get(root, "periodEndMinutes", &period_ends) &&
+        period_ends.start < period_ends.end &&
+        *period_ends.start == '{') {
+        int first_half = 0;
+        if (read_positive_int(period_ends, "1", &first_half)) {
+            timing->first_half_end = first_half;
+        }
+    }
+
+    /*
+     * maxMinute is the elapsed match clock, including stoppage time. The
+     * expanded clock adds the first-half stoppage offset back into the second
+     * half, so expandedMaxMinute is not the match length. Prefer maxMinute,
+     * then the last recorded period end, then the nominal length.
+     */
+    int raw_length = 0;
+    if (!read_positive_int(root, "maxMinute", &raw_length)) {
+        raw_length = last_period_end_minute(root);
+    }
+    if (raw_length <= 0) {
+        raw_length = extra_time ? 120 : 90;
+    }
+
+    int expanded_max = 0;
+    if (read_positive_int(root, "expandedMaxMinute", &expanded_max) &&
+        expanded_max > raw_length) {
+        timing->expanded_offset = expanded_max - raw_length;
+    }
+
+    if (raw_length > 120) {
+        raw_length = 120;
+    }
+    if (raw_length < 1) {
+        raw_length = 1;
+    }
+    timing->match_length = raw_length;
+}
+
+static int match_minute_from_expanded(int expanded,
+                                      const MatchTiming *timing)
+{
+    int minute = expanded;
+    if (minute > timing->first_half_end && timing->expanded_offset > 0) {
+        minute -= timing->expanded_offset;
+    }
+    if (minute < 1) {
+        minute = 1;
+    }
+    if (minute > 120) {
+        minute = 120;
+    }
+    return minute;
+}
+
 static bool split_player_name(const char *full_name, ImportedPlayer *player,
                               char *error, size_t error_size)
 {
@@ -1064,7 +1162,7 @@ static bool grow_imported_players(ImportedPlayer **players, size_t *capacity,
     return true;
 }
 
-static bool parse_team_players(JsonSpan team, int match_length,
+static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
                                ImportedPlayer **out_players,
                                size_t *out_count,
                                char *error, size_t error_size)
@@ -1139,17 +1237,26 @@ static bool parse_team_players(JsonSpan team, int match_length,
             has_subbed_out = true;
         }
 
-        int minutes = 0;
+        int in_minute = 0;
+        int out_minute = 0;
         if (has_subbed_in && subbed_in > 0) {
-            int end_minute = match_length;
-            if (has_subbed_out && subbed_out > subbed_in) {
-                end_minute = subbed_out;
+            in_minute = match_minute_from_expanded(subbed_in, timing);
+        }
+        if (has_subbed_out && subbed_out > 0) {
+            out_minute = match_minute_from_expanded(subbed_out, timing);
+        }
+
+        int minutes = 0;
+        if (in_minute > 0) {
+            int end_minute = timing->match_length;
+            if (out_minute > in_minute) {
+                end_minute = out_minute;
             }
-            minutes = end_minute - subbed_in;
-        } else if (has_subbed_out && subbed_out > 0) {
-            minutes = subbed_out;
+            minutes = end_minute - in_minute;
+        } else if (out_minute > 0) {
+            minutes = out_minute;
         } else if (first_eleven) {
-            minutes = match_length;
+            minutes = timing->match_length;
         } else {
             continue;
         }
@@ -1193,7 +1300,8 @@ fail:
     return false;
 }
 
-static bool parse_team(JsonSpan root, const char *key, int match_length,
+static bool parse_team(JsonSpan root, const char *key,
+                       const MatchTiming *timing,
                        char *team_name, size_t team_name_size,
                        ImportedPlayer **players, size_t *player_count,
                        char *error, size_t error_size)
@@ -1217,7 +1325,7 @@ static bool parse_team(JsonSpan root, const char *key, int match_length,
                              "team name")) {
         return false;
     }
-    return parse_team_players(team, match_length, players, player_count,
+    return parse_team_players(team, timing, players, player_count,
                               error, error_size);
 }
 
@@ -1296,15 +1404,16 @@ bool imported_match_parse_html(const char *html, size_t length,
             extra_time = true;
         }
     }
-    int match_length = extra_time ? 120 : 90;
+    MatchTiming timing;
+    resolve_match_timing(root, extra_time, &timing);
 
-    if (!parse_team(root, "home", match_length, out->home_team,
+    if (!parse_team(root, "home", &timing, out->home_team,
                     sizeof(out->home_team), &out->home_players,
                     &out->home_player_count, error, error_size)) {
         imported_match_free(out);
         return false;
     }
-    if (!parse_team(root, "away", match_length, out->away_team,
+    if (!parse_team(root, "away", &timing, out->away_team,
                     sizeof(out->away_team), &out->away_players,
                     &out->away_player_count, error, error_size)) {
         imported_match_free(out);
