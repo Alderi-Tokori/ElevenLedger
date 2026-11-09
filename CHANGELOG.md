@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.3 - 2026-11-10
+
+### Changed
+
+- File validation before saving no longer replays every rating. The existing primary and the newly written temp file are still parsed and fully checked, while the backup copy is verified by checksum against the validated primary instead of being parsed again.
+
 ## 2.0.2 - 2026-11-10
 
 ### Changed

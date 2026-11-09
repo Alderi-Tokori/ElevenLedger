@@ -17,7 +17,7 @@
 #define NAV_COUNT 5
 
 #ifndef ELEVENLEDGER_VERSION
-#define ELEVENLEDGER_VERSION "2.0.2"
+#define ELEVENLEDGER_VERSION "2.0.3"
 #endif
 
 static const wchar_t *g_navigation_labels[NAV_COUNT] = {

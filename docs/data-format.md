@@ -20,9 +20,10 @@ On first launch, when `%LOCALAPPDATA%\ElevenLedger` contains no primary or backu
 - One record per line.
 - CRC-32 footer over every byte preceding the footer.
 - Reference and range validation after parsing.
-- Ratings and match summaries are recomputed from the stored match and appearance inputs on load.
+- Ratings and match summaries are recomputed from the stored match and appearance inputs when a database is loaded for use.
+- Validation-only file checks parse records and verify references and ranges without recomputing ratings.
 - Writes go to `data.frc.tmp`, are flushed and committed, then checksummed. The write and verification run on one background save worker so the window remains responsive.
-- A valid prior save is validated, copied to `data.frc.bak.tmp`, validated again, then promoted to `data.frc.bak` before the new file is moved into place.
+- A valid prior save is validated, copied to `data.frc.bak.tmp`, checksum-verified against the validated primary, then promoted to `data.frc.bak` before the new file is moved into place.
 - A corrupt primary does not replace a valid backup.
 - Move operations use write-through replacement.
 - A primary file that cannot be read, or that uses an unsupported format version, is never replaced automatically.

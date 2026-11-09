@@ -28,9 +28,15 @@
 #define STORAGE_MAGIC_LENGTH 10
 
 static StorageStatus load_file(const wchar_t *path, Database *db,
+                               bool recompute, uint32_t *out_content_crc,
                                char *error, size_t error_size);
 static StorageStatus validate_data_file(const wchar_t *path,
+                                        uint32_t *out_content_crc,
                                         char *error, size_t error_size);
+static StorageStatus validate_data_file_checksum(const wchar_t *path,
+                                                 uint32_t expected_crc,
+                                                 char *error,
+                                                 size_t error_size);
 
 static void set_error(char *error, size_t error_size, const char *format, ...)
 {
@@ -466,8 +472,9 @@ bool storage_save(const wchar_t *path, const Database *db,
     }
 
     char current_error[768] = "";
-    StorageStatus current_status = validate_data_file(path, current_error,
-                                                      sizeof(current_error));
+    uint32_t current_crc = 0;
+    StorageStatus current_status = validate_data_file(
+        path, &current_crc, current_error, sizeof(current_error));
     bool update_backup = false;
     if (current_status == STORAGE_OK) {
         update_backup = true;
@@ -518,7 +525,7 @@ bool storage_save(const wchar_t *path, const Database *db,
         return false;
     }
     char temp_error[768] = "";
-    if (validate_data_file(temp_path, temp_error,
+    if (validate_data_file(temp_path, NULL, temp_error,
                            sizeof(temp_error)) != STORAGE_OK) {
         set_error(error, error_size,
                   "The newly written data file did not pass validation. %s",
@@ -541,8 +548,9 @@ bool storage_save(const wchar_t *path, const Database *db,
             return false;
         }
         char backup_error[768] = "";
-        if (validate_data_file(backup_temp, backup_error,
-                               sizeof(backup_error)) != STORAGE_OK) {
+        if (validate_data_file_checksum(backup_temp, current_crc,
+                                        backup_error,
+                                        sizeof(backup_error)) != STORAGE_OK) {
             set_error(error, error_size,
                       "The backup copy could not be verified. %s",
                       backup_error);
@@ -595,7 +603,7 @@ bool storage_repair_from_backup(const wchar_t *path,
         return false;
     }
     char backup_error[768] = "";
-    if (validate_data_file(backup_path, backup_error,
+    if (validate_data_file(backup_path, NULL, backup_error,
                            sizeof(backup_error)) != STORAGE_OK) {
         set_error(error, error_size, "The backup file is not valid. %s",
                   backup_error);
@@ -1043,8 +1051,8 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
     return true;
 }
 
-static bool finish_loaded_database(Database *db, char *error,
-                                   size_t error_size)
+static bool finish_loaded_database(Database *db, bool recompute,
+                                   char *error, size_t error_size)
 {
     uint64_t max_team = 0;
     uint64_t max_player = 0;
@@ -1073,13 +1081,33 @@ static bool finish_loaded_database(Database *db, char *error,
     db->next_player_id = max_player + 1;
     db->next_match_id = max_match + 1;
 
-    db_sort_matches(db);
-    return db_recompute_ratings(db, error, error_size);
+    if (recompute) {
+        return db_recompute_ratings(db, error, error_size);
+    }
+    return db_validate(db, error, error_size);
 }
 
-static StorageStatus load_file(const wchar_t *path, Database *db,
-                               char *error, size_t error_size)
+static StorageStatus read_checked_file(const wchar_t *path, char **out_buffer,
+                                       size_t *out_length,
+                                       size_t *out_footer_start,
+                                       uint32_t *out_content_crc,
+                                       char *error, size_t error_size)
 {
+    if (out_buffer == NULL) {
+        set_error(error, error_size, "Invalid data file buffer.");
+        return STORAGE_IO_ERROR;
+    }
+    *out_buffer = NULL;
+    if (out_length != NULL) {
+        *out_length = 0;
+    }
+    if (out_footer_start != NULL) {
+        *out_footer_start = 0;
+    }
+    if (out_content_crc != NULL) {
+        *out_content_crc = 0;
+    }
+
     DWORD attributes = GetFileAttributesW(path);
     if (attributes == INVALID_FILE_ATTRIBUTES) {
         DWORD code = GetLastError();
@@ -1201,6 +1229,37 @@ static StorageStatus load_file(const wchar_t *path, Database *db,
         return STORAGE_CORRUPT;
     }
 
+    *out_buffer = buffer;
+    if (out_length != NULL) {
+        *out_length = length;
+    }
+    if (out_footer_start != NULL) {
+        *out_footer_start = footer_start;
+    }
+    if (out_content_crc != NULL) {
+        *out_content_crc = actual_crc;
+    }
+    return STORAGE_OK;
+}
+
+static StorageStatus load_file(const wchar_t *path, Database *db,
+                               bool recompute, uint32_t *out_content_crc,
+                               char *error, size_t error_size)
+{
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t footer_start = 0;
+    uint32_t content_crc = 0;
+    StorageStatus status = read_checked_file(path, &buffer, &length,
+                                             &footer_start, &content_crc,
+                                             error, error_size);
+    if (status != STORAGE_OK) {
+        return status;
+    }
+    if (out_content_crc != NULL) {
+        *out_content_crc = content_crc;
+    }
+
     size_t offset = 0;
     if (length >= 3 &&
         (unsigned char)buffer[0] == 0xEF &&
@@ -1219,7 +1278,7 @@ static StorageStatus load_file(const wchar_t *path, Database *db,
     bool parsed = parse_records(buffer, offset, footer_start, db,
                                 &incompatible_version, error, error_size);
     if (parsed) {
-        parsed = finish_loaded_database(db, error, error_size);
+        parsed = finish_loaded_database(db, recompute, error, error_size);
     }
     free(buffer);
     if (!parsed) {
@@ -1231,13 +1290,36 @@ static StorageStatus load_file(const wchar_t *path, Database *db,
 }
 
 static StorageStatus validate_data_file(const wchar_t *path,
+                                        uint32_t *out_content_crc,
                                         char *error, size_t error_size)
 {
     Database db;
     db_init(&db);
-    StorageStatus status = load_file(path, &db, error, error_size);
+    StorageStatus status = load_file(path, &db, false, out_content_crc,
+                                     error, error_size);
     db_free(&db);
     return status;
+}
+
+static StorageStatus validate_data_file_checksum(const wchar_t *path,
+                                                 uint32_t expected_crc,
+                                                 char *error,
+                                                 size_t error_size)
+{
+    char *buffer = NULL;
+    uint32_t content_crc = 0;
+    StorageStatus status = read_checked_file(path, &buffer, NULL, NULL,
+                                             &content_crc, error, error_size);
+    free(buffer);
+    if (status != STORAGE_OK) {
+        return status;
+    }
+    if (content_crc != expected_crc) {
+        set_error(error, error_size,
+                  "The backup copy did not match the validated primary.");
+        return STORAGE_CORRUPT;
+    }
+    return STORAGE_OK;
 }
 
 StorageStatus storage_load(const wchar_t *path, Database *db,
@@ -1250,7 +1332,7 @@ StorageStatus storage_load(const wchar_t *path, Database *db,
     db_init(db);
 
     char main_error[768] = "";
-    StorageStatus main_status = load_file(path, db, main_error,
+    StorageStatus main_status = load_file(path, db, true, NULL, main_error,
                                           sizeof(main_error));
     if (main_status == STORAGE_OK) {
         return STORAGE_OK;
@@ -1266,7 +1348,8 @@ StorageStatus storage_load(const wchar_t *path, Database *db,
         return STORAGE_IO_ERROR;
     }
     char backup_error[768] = "";
-    StorageStatus backup_status = load_file(backup_path, db, backup_error,
+    StorageStatus backup_status = load_file(backup_path, db, true, NULL,
+                                            backup_error,
                                             sizeof(backup_error));
     free(backup_path);
 

@@ -122,7 +122,8 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Closing the main window waits for a pending save instead of terminating the worker.
 - Mutation functions validate their changed inputs and use the internal trusted rating replay. Full `db_validate` still runs when loading a file and in the background save worker.
 - Never truncate or replace a valid file before the replacement has been fully written, flushed and checksummed.
-- Before promoting the primary to backup, validate the primary and the backup copy. A corrupt primary must not overwrite a good backup.
+- Before promoting the primary to backup, validate the primary and checksum-verify the backup copy against it. A corrupt primary must not overwrite a good backup.
+- Validation-only file checks must not recompute ratings; only a database loaded for use rebuilds derived values.
 - A primary that cannot be read or uses an unsupported format version must never be silently replaced.
 - Recovery must preserve a damaged primary as `.corrupt` before restoring the backup.
 - No silent reset. If both primary and backup fail validation, stop and report the error.
