@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.11.0 - 2026-11-09
+
+### Added
+
+- The Record match and Edit match dialogs now show a live rating preview. It reports each side's minutes-weighted line-up score and performance average, the expected home result, and the projected home team change for a one-goal win or defeat. The preview updates as players are ticked, team selectors change, minutes and performance are edited, and the neutral-venue option is toggled.
+
 ## 1.10.1 - 2026-11-09
 
 ### Changed

@@ -99,12 +99,23 @@ typedef struct {
     bool editing;
     uint64_t match_id;
     uint64_t saved_match_id;
+    bool preview_home_valid;
+    bool preview_away_valid;
+    bool preview_summary_valid;
+    double preview_home_strength;
+    double preview_away_strength;
+    double preview_home_performance;
+    double preview_away_performance;
+    double preview_home_expected;
+    double preview_home_win_delta;
+    double preview_home_loss_delta;
     RECT label_date;
     RECT label_home_team;
     RECT label_home_score;
     RECT label_away_score;
     RECT label_away_team;
     RECT neutral_rect;
+    RECT preview_rect;
     RECT info_rect;
     RECT section_rect;
     RECT home_header_rect;
@@ -329,6 +340,105 @@ static bool record_has_player(const RecordMatchState *state, uint64_t player_id)
     return record_find_row(state, player_id, NULL);
 }
 
+static void record_update_preview(RecordMatchState *state)
+{
+    state->preview_home_valid = false;
+    state->preview_away_valid = false;
+    state->preview_summary_valid = false;
+    state->preview_home_strength = 0.0;
+    state->preview_away_strength = 0.0;
+    state->preview_home_performance = 0.0;
+    state->preview_away_performance = 0.0;
+    state->preview_home_expected = 0.0;
+    state->preview_home_win_delta = 0.0;
+    state->preview_home_loss_delta = 0.0;
+
+    uint64_t home_id = current_home_team(state);
+    uint64_t away_id = current_away_team(state);
+    size_t home_count = 0;
+    size_t away_count = 0;
+    for (size_t i = 0; i < state->row_count; ++i) {
+        if (!state->rows[i].selected) {
+            continue;
+        }
+        if (state->rows[i].team_id == home_id) {
+            home_count++;
+        } else if (state->rows[i].team_id == away_id) {
+            away_count++;
+        }
+    }
+
+    size_t selected_count = home_count + away_count;
+    RatingPlayerInput *players = NULL;
+    if (selected_count > 0) {
+        players = malloc(selected_count * sizeof(*players));
+        if (players == NULL) {
+            return;
+        }
+    }
+    size_t home_index = 0;
+    size_t away_index = home_count;
+    for (size_t i = 0; i < state->row_count; ++i) {
+        if (!state->rows[i].selected) {
+            continue;
+        }
+        RatingPlayerInput *input = NULL;
+        if (state->rows[i].team_id == home_id) {
+            input = &players[home_index++];
+        } else if (state->rows[i].team_id == away_id) {
+            input = &players[away_index++];
+        }
+        if (input == NULL) {
+            continue;
+        }
+        input->rating = state->rows[i].current_rating;
+        input->minutes = state->rows[i].minutes;
+        input->performance = state->rows[i].performance;
+    }
+
+    double home_strength = 0.0;
+    double away_strength = 0.0;
+    RatingTeamContext home_context = { 0 };
+    RatingTeamContext away_context = { 0 };
+    bool home_valid = home_count > 0 &&
+        rating_team_profile(players, home_count, &home_strength,
+                            &home_context);
+    bool away_valid = away_count > 0 &&
+        rating_team_profile(players + home_count, away_count, &away_strength,
+                            &away_context);
+    if (home_valid) {
+        state->preview_home_valid = true;
+        state->preview_home_strength = home_strength;
+        state->preview_home_performance =
+            home_context.weighted_performance / home_context.total_participation;
+    }
+    if (away_valid) {
+        state->preview_away_valid = true;
+        state->preview_away_strength = away_strength;
+        state->preview_away_performance =
+            away_context.weighted_performance / away_context.total_participation;
+    }
+
+    if (home_valid && away_valid) {
+        char error[128];
+        RatingMatchSummary win_summary;
+        RatingMatchSummary loss_summary;
+        bool neutral = ui_checkbox_get_checked(state->neutral_venue);
+        if (rating_match_summary(&win_summary, home_strength, away_strength,
+                                 &home_context, &away_context, 1, 0, neutral,
+                                 error, sizeof(error)) &&
+            rating_match_summary(&loss_summary, home_strength, away_strength,
+                                 &home_context, &away_context, 0, 1, neutral,
+                                 error, sizeof(error))) {
+            state->preview_summary_valid = true;
+            state->preview_home_expected = win_summary.home_expected;
+            state->preview_home_win_delta = win_summary.home_team_delta;
+            state->preview_home_loss_delta = loss_summary.home_team_delta;
+        }
+    }
+    free(players);
+}
+
 static int compare_teams_by_name(const void *left, const void *right)
 {
     const Team *a = *(const Team *const *)left;
@@ -384,6 +494,7 @@ static void record_rebuild_rows(RecordMatchState *state,
 {
     record_cancel_cell_edit(state);
     record_free_rows(state);
+    record_update_preview(state);
     ListView_DeleteAllItems(state->home_list);
     ListView_DeleteAllItems(state->away_list);
     uint64_t home_id = current_home_team(state);
@@ -505,6 +616,7 @@ static void record_rebuild_rows(RecordMatchState *state,
         }
     }
     state->building = false;
+    record_update_preview(state);
     InvalidateRect(state->hwnd, NULL, FALSE);
 }
 
@@ -518,8 +630,13 @@ static void record_apply_checkbox(RecordMatchState *state, HWND list,
     if (!record_row_from_item(state, list, item, &row)) {
         return;
     }
-    state->rows[row].selected =
-        ListView_GetCheckState(list, item) != 0;
+    bool selected = ListView_GetCheckState(list, item) != 0;
+    if (state->rows[row].selected == selected) {
+        return;
+    }
+    state->rows[row].selected = selected;
+    record_update_preview(state);
+    InvalidateRect(state->hwnd, &state->preview_rect, FALSE);
 }
 
 static LRESULT CALLBACK cell_edit_subclass(HWND hwnd, UINT message,
@@ -684,6 +801,7 @@ static bool record_commit_cell_edit(RecordMatchState *state, bool accept)
                               LVIS_SELECTED | LVIS_FOCUSED,
                               LVIS_SELECTED | LVIS_FOCUSED);
     }
+    record_update_preview(state);
     InvalidateRect(state->hwnd, NULL, FALSE);
     return true;
 }
@@ -718,6 +836,7 @@ static void record_select_all(RecordMatchState *state, bool selected)
         }
     }
     state->building = false;
+    record_update_preview(state);
     InvalidateRect(state->hwnd, NULL, FALSE);
 }
 
@@ -812,6 +931,15 @@ static void record_layout(RecordMatchState *state, int width, int height)
         margin + ui_scale(theme, 290),
         neutral_top + ui_scale(theme, 26),
     };
+    state->preview_rect = (RECT){
+        state->neutral_rect.right + ui_scale(theme, 18),
+        state->neutral_rect.top,
+        width - margin,
+        state->neutral_rect.bottom,
+    };
+    if (state->preview_rect.right < state->preview_rect.left) {
+        state->preview_rect.right = state->preview_rect.left;
+    }
     state->info_rect = (RECT){ margin,
                                state->neutral_rect.bottom + ui_scale(theme, 1),
                                width - margin,
@@ -942,6 +1070,68 @@ static void record_draw_team_heading(RecordMatchState *state, HDC dc,
                             DT_END_ELLIPSIS);
 }
 
+static void record_draw_preview(RecordMatchState *state, HDC dc)
+{
+    RECT rect = state->preview_rect;
+    if (rect.right <= rect.left || rect.bottom <= rect.top) {
+        return;
+    }
+    int line_height = (rect.bottom - rect.top) / 2;
+    RECT score_line = { rect.left, rect.top, rect.right,
+                        rect.top + line_height };
+    RECT change_line = { rect.left, score_line.bottom, rect.right,
+                         rect.bottom };
+
+    wchar_t home_score[32] = L"-";
+    wchar_t away_score[32] = L"-";
+    wchar_t home_performance[32] = L"-";
+    wchar_t away_performance[32] = L"-";
+    if (state->preview_home_valid) {
+        ui_format_wide(home_score, sizeof(home_score) / sizeof(home_score[0]),
+                       L"%.1f", state->preview_home_strength);
+        ui_format_wide(home_performance,
+                       sizeof(home_performance) / sizeof(home_performance[0]),
+                       L"%.2f", state->preview_home_performance);
+    }
+    if (state->preview_away_valid) {
+        ui_format_wide(away_score, sizeof(away_score) / sizeof(away_score[0]),
+                       L"%.1f", state->preview_away_strength);
+        ui_format_wide(away_performance,
+                       sizeof(away_performance) / sizeof(away_performance[0]),
+                       L"%.2f", state->preview_away_performance);
+    }
+
+    wchar_t expected[64] = L"";
+    if (state->preview_summary_valid) {
+        ui_format_wide(expected, sizeof(expected) / sizeof(expected[0]),
+                       L"   |   Expected home result %.1f%%",
+                       state->preview_home_expected * 100.0);
+    }
+    wchar_t scores[256];
+    ui_format_wide(
+        scores, sizeof(scores) / sizeof(scores[0]),
+        L"Line-up scores   Home %ls (perf %ls)   |   Away %ls (perf %ls)%ls",
+        home_score, home_performance, away_score, away_performance, expected);
+
+    wchar_t changes[256];
+    if (state->preview_summary_valid) {
+        ui_format_wide(
+            changes, sizeof(changes) / sizeof(changes[0]),
+            L"Home team change   Win 1-0: %+.2f   |   Loss 0-1: %+.2f",
+            state->preview_home_win_delta, state->preview_home_loss_delta);
+    } else {
+        ui_format_wide(changes, sizeof(changes) / sizeof(changes[0]),
+                       L"Select players on both sides to preview rating changes.");
+    }
+
+    ui_draw_text(dc, state->app->ui.font_small, UI_COLOR_MUTED, score_line,
+                 scores, DT_LEFT | DT_VCENTER | DT_SINGLELINE |
+                             DT_END_ELLIPSIS);
+    ui_draw_text(dc, state->app->ui.font_small, UI_COLOR_MUTED, change_line,
+                 changes, DT_LEFT | DT_VCENTER | DT_SINGLELINE |
+                              DT_END_ELLIPSIS);
+}
+
 static void record_paint(RecordMatchState *state, HWND hwnd)
 {
     PAINTSTRUCT paint;
@@ -971,6 +1161,7 @@ static void record_paint(RecordMatchState *state, HWND hwnd)
         dialog_draw_label(state->app, canvas.dc,
                           state->label_away_team.left,
                           state->label_away_team.top, L"Away team");
+        record_draw_preview(state, canvas.dc);
         ui_draw_text(
             canvas.dc, state->app->ui.font_small, UI_COLOR_FAINT,
             state->info_rect,
@@ -1154,6 +1345,12 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
             break;
         }
         switch (LOWORD(wparam)) {
+        case RECORD_NEUTRAL_VENUE_ID:
+            if (HIWORD(wparam) == BN_CLICKED) {
+                record_update_preview(state);
+                InvalidateRect(hwnd, &state->preview_rect, FALSE);
+            }
+            return 0;
         case RECORD_HOME_TEAM_ID:
             if (HIWORD(wparam) == CBN_SELCHANGE) {
                 record_selected_other_team(state, true);
