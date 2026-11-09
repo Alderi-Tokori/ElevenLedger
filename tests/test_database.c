@@ -1074,6 +1074,89 @@ static bool test_update_match_validation(void)
     return true;
 }
 
+static bool test_ratings_before_match(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    char error[256];
+    uint64_t players[2];
+    CHECK(db_add_player(&db, alpha, "Home", "Player", 80.0, true,
+                        &players[0], error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", 60.0, true,
+                        &players[1], error, sizeof(error)));
+
+    MatchPlayerInput lineup[] = {
+        { players[0], 90, 6.0 },
+        { players[1], 90, 6.0 },
+    };
+    MatchInput input = {
+        .date = "2026-01-10",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 2,
+        .away_goals = 0,
+        .players = lineup,
+        .player_count = 2,
+    };
+    uint64_t same_date_first = 0;
+    CHECK(db_add_match(&db, &input, &same_date_first, error, sizeof(error)));
+    input.home_goals = 1;
+    input.away_goals = 1;
+    uint64_t same_date_second = 0;
+    CHECK(db_add_match(&db, &input, &same_date_second, error, sizeof(error)));
+    input.date = "2026-02-10";
+    input.home_goals = 0;
+    input.away_goals = 2;
+    uint64_t later_match = 0;
+    CHECK(db_add_match(&db, &input, &later_match, error, sizeof(error)));
+
+    double ratings[2] = { 0.0, 0.0 };
+    CHECK(db_ratings_before_match(&db, "2026-01-10", same_date_first,
+                                  ratings, error, sizeof(error)));
+    CHECK_NEAR(ratings[0], 80.0, 1e-12);
+    CHECK_NEAR(ratings[1], 60.0, 1e-12);
+
+    CHECK(db_ratings_before_match(&db, "2026-01-10", same_date_second,
+                                  ratings, error, sizeof(error)));
+    const Appearance *first_home =
+        find_appearance(&db, same_date_first, players[0]);
+    const Appearance *first_away =
+        find_appearance(&db, same_date_first, players[1]);
+    CHECK(first_home != NULL && first_away != NULL);
+    CHECK_NEAR(ratings[0], first_home->rating_after, 1e-12);
+    CHECK_NEAR(ratings[1], first_away->rating_after, 1e-12);
+
+    CHECK(db_ratings_before_match(&db, "2026-02-10", later_match,
+                                  ratings, error, sizeof(error)));
+    const Appearance *second_home =
+        find_appearance(&db, same_date_second, players[0]);
+    const Appearance *second_away =
+        find_appearance(&db, same_date_second, players[1]);
+    CHECK(second_home != NULL && second_away != NULL);
+    CHECK_NEAR(ratings[0], second_home->rating_after, 1e-12);
+    CHECK_NEAR(ratings[1], second_away->rating_after, 1e-12);
+
+    double current_home = db_find_player(&db, players[0])->current_rating;
+    double current_away = db_find_player(&db, players[1])->current_rating;
+    CHECK(db_ratings_before_match(&db, "2026-03-01", db.next_match_id,
+                                  ratings, error, sizeof(error)));
+    CHECK_NEAR(ratings[0], current_home, 1e-12);
+    CHECK_NEAR(ratings[1], current_away, 1e-12);
+
+    CHECK(!db_ratings_before_match(&db, "not-a-date", db.next_match_id,
+                                   ratings, error, sizeof(error)));
+    CHECK(!db_ratings_before_match(&db, "2026-03-01", db.next_match_id,
+                                   NULL, error, sizeof(error)));
+    CHECK_NEAR(db_find_player(&db, players[0])->current_rating,
+               current_home, 1e-12);
+    CHECK_NEAR(db_find_player(&db, players[1])->current_rating,
+               current_away, 1e-12);
+    db_free(&db);
+    return true;
+}
+
 static bool test_find_player_by_name(void)
 {
     Database db;
@@ -1167,6 +1250,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_update_match_replays_chronology),
     TEST_CASE(test_update_match_preserves_transferred_and_archived_players),
     TEST_CASE(test_update_match_validation),
+    TEST_CASE(test_ratings_before_match),
     TEST_CASE(test_find_player_by_name),
     TEST_CASE(test_team_stats_are_minutes_and_results_aware),
 };

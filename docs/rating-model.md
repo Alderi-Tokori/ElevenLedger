@@ -178,6 +178,8 @@ The database stores each appearance's inputs, not a mutable running total. On lo
 
 This makes editing or deleting a match, changing a starting rating or transferring a player safe and consistent. Changing a player's current club does not rewrite their historical appearances; the appearance retains the team that played the match. When an existing match is edited, players already in its line-up keep the club they represented, even if they have since transferred or been archived. Saving the edit replays all subsequent history.
 
+The Record match and Edit match dialogs use the same chronological rule. Their Rating before column and live rating preview show each player's rating immediately before the fixture's position in the replay, including for old-match edits and backdated dates. Changing the fixture date recalculates the preview at the new position.
+
 ## Invariants covered by tests
 
 - Home and away expectations sum to 1.

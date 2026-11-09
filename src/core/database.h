@@ -177,6 +177,19 @@ bool db_delete_match(Database *db, uint64_t id,
  * wrapper so that any failure can restore the complete prior database.
  */
 bool db_recompute_ratings(Database *db, char *error, size_t error_size);
+
+/*
+ * Computes each player's rating immediately before the chronological match
+ * slot identified by (date, match_id). Earlier dates are included, as are
+ * same-date matches with a lower ID; the identified match and everything after
+ * it are excluded. Pass the database's next match ID to preview a new match.
+ * The ratings array receives db->player_count values in player array order.
+ * The database's matches and appearances must already be in their normal
+ * chronological / match-ID order, which every database mutation guarantees.
+ */
+bool db_ratings_before_match(const Database *db, const char *date,
+                             uint64_t match_id, double *ratings,
+                             char *error, size_t error_size);
 bool db_validate(const Database *db, char *error, size_t error_size);
 
 void db_sort_matches(Database *db);

@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.11.1 - 2026-11-09
+
+### Fixed
+
+- The Record match and Edit match previews, and the line-up Rating before column, now use each player's rating immediately before the fixture's chronological position instead of the player's final current rating. Old-match edits and backdated fixtures therefore preview the same pre-match ratings used by history recalculation; changing the fixture date refreshes the preview.
+
 ## 1.11.0 - 2026-11-09
 
 ### Added

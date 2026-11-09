@@ -89,6 +89,7 @@ typedef struct {
     size_t row_count;
     size_t home_row_count;
     bool building;
+    bool ready;
     HWND cell_edit;
     HWND cell_list;
     uint64_t cell_edit_generation;
@@ -306,7 +307,7 @@ static void record_cancel_cell_edit(RecordMatchState *state);
 static bool record_commit_cell_edit(RecordMatchState *state, bool accept);
 
 static void lineup_row_init(LineupRow *row, const Player *player,
-                            uint64_t team_id)
+                            uint64_t team_id, double rating)
 {
     memset(row, 0, sizeof(*row));
     row->player_id = player->id;
@@ -314,7 +315,7 @@ static void lineup_row_init(LineupRow *row, const Player *player,
     row->selected = false;
     row->minutes = 90;
     row->performance = RATING_NEUTRAL_PERFORMANCE;
-    row->current_rating = player->current_rating;
+    row->current_rating = rating;
     format_player_name(player, row->player_name, sizeof(row->player_name));
 }
 
@@ -338,6 +339,55 @@ static int compare_lineup_rows_by_name(const void *left, const void *right)
 static bool record_has_player(const RecordMatchState *state, uint64_t player_id)
 {
     return record_find_row(state, player_id, NULL);
+}
+
+static bool record_collect_pre_match_ratings(const RecordMatchState *state,
+                                             double **out_ratings,
+                                             size_t *out_count)
+{
+    *out_ratings = NULL;
+    *out_count = 0;
+    if (state->date == NULL) {
+        return false;
+    }
+    char date[MATCH_DATE_MAX + 1];
+    ui_edit_get_utf8(state->date, date, sizeof(date));
+    if (!util_date_valid(date)) {
+        return false;
+    }
+    Database *db = &state->app->db;
+    if (db->player_count == 0) {
+        return true;
+    }
+    double *ratings = malloc(db->player_count * sizeof(*ratings));
+    if (ratings == NULL) {
+        return false;
+    }
+    uint64_t match_id = state->editing ? state->match_id : db->next_match_id;
+    char error[256];
+    if (!db_ratings_before_match(db, date, match_id, ratings,
+                                 error, sizeof(error))) {
+        free(ratings);
+        return false;
+    }
+    *out_ratings = ratings;
+    *out_count = db->player_count;
+    return true;
+}
+
+static double record_pre_match_rating(const RecordMatchState *state,
+                                      const double *ratings, size_t count,
+                                      const Player *player)
+{
+    if (ratings == NULL || player == NULL ||
+        count != state->app->db.player_count) {
+        return player != NULL ? player->current_rating : 0.0;
+    }
+    size_t index = (size_t)(player - state->app->db.players);
+    if (index >= count) {
+        return player->current_rating;
+    }
+    return ratings[index];
 }
 
 static void record_update_preview(RecordMatchState *state)
@@ -529,6 +579,10 @@ static void record_rebuild_rows(RecordMatchState *state,
         record_show_error_wide(state, L"Not enough memory to load the line-ups.");
         return;
     }
+    double *pre_match_ratings = NULL;
+    size_t pre_match_rating_count = 0;
+    (void)record_collect_pre_match_ratings(state, &pre_match_ratings,
+                                           &pre_match_rating_count);
 
     const uint64_t teams[2] = { home_id, away_id };
     for (int side = 0; side < 2; ++side) {
@@ -552,7 +606,10 @@ static void record_rebuild_rows(RecordMatchState *state,
                     continue;
                 }
                 LineupRow *row = &state->rows[state->row_count++];
-                lineup_row_init(row, player, teams[side]);
+                lineup_row_init(
+                    row, player, teams[side],
+                    record_pre_match_rating(state, pre_match_ratings,
+                                            pre_match_rating_count, player));
                 row->selected = true;
                 row->minutes = appearance->minutes;
                 row->performance = appearance->performance;
@@ -567,7 +624,10 @@ static void record_rebuild_rows(RecordMatchState *state,
                 continue;
             }
             LineupRow *row = &state->rows[state->row_count++];
-            lineup_row_init(row, player, teams[side]);
+            lineup_row_init(
+                row, player, teams[side],
+                record_pre_match_rating(state, pre_match_ratings,
+                                        pre_match_rating_count, player));
             record_apply_snapshot(row, preserve, preserve_count);
         }
         qsort(&state->rows[side_start], state->row_count - side_start,
@@ -576,6 +636,7 @@ static void record_rebuild_rows(RecordMatchState *state,
             state->home_row_count = state->row_count;
         }
     }
+    free(pre_match_ratings);
 
     state->building = true;
     bool insert_failed = false;
@@ -1041,7 +1102,7 @@ static void record_layout(RecordMatchState *state, int width, int height)
                                     ui_scale(theme, 30),
                                 height - ui_scale(theme, 8) };
 
-    static const int widths[LINEUP_COLUMN_COUNT] = { 44, 16, 20, 20 };
+    static const int widths[LINEUP_COLUMN_COUNT] = { 40, 16, 18, 26 };
     ui_list_set_percent_widths(state->home_list, widths, LINEUP_COLUMN_COUNT);
     ui_list_set_percent_widths(state->away_list, widths, LINEUP_COLUMN_COUNT);
 }
@@ -1345,6 +1406,21 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
             break;
         }
         switch (LOWORD(wparam)) {
+        case RECORD_DATE_ID:
+            if (state->ready && HIWORD(wparam) == EN_CHANGE) {
+                char date[MATCH_DATE_MAX + 1];
+                ui_edit_get_utf8(state->date, date, sizeof(date));
+                if (!util_date_valid(date)) {
+                    return 0;
+                }
+                LineupSnapshot *snapshot = NULL;
+                size_t snapshot_count = 0;
+                if (record_capture_rows(state, &snapshot, &snapshot_count)) {
+                    record_rebuild_rows(state, snapshot, snapshot_count, 0);
+                    free(snapshot);
+                }
+            }
+            return 0;
         case RECORD_NEUTRAL_VENUE_ID:
             if (HIWORD(wparam) == BN_CLICKED) {
                 record_update_preview(state);
@@ -1508,7 +1584,7 @@ static bool record_build(App *app, RecordMatchState *state)
         ui_list_add_column(lists[side], LINEUP_COLUMN_PERFORMANCE,
                            L"Perf", 100);
         ui_list_add_column(lists[side], LINEUP_COLUMN_RATING,
-                           L"Rating", 100);
+                           L"Rating before", 100);
     }
 
     if (!record_add_team_options(state)) {
@@ -1540,6 +1616,7 @@ static bool record_build(App *app, RecordMatchState *state)
     GetClientRect(state->hwnd, &client);
     record_layout(state, client.right, client.bottom);
     record_rebuild_rows(state, NULL, 0, 0);
+    state->ready = true;
     InvalidateRect(state->hwnd, NULL, FALSE);
     return true;
 }

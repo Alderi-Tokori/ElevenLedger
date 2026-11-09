@@ -891,6 +891,139 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size)
     return true;
 }
 
+bool db_ratings_before_match(const Database *db, const char *date,
+                             uint64_t match_id, double *ratings,
+                             char *error, size_t error_size)
+{
+    if (db == NULL || date == NULL ||
+        (db->player_count > 0 && ratings == NULL)) {
+        set_error(error, error_size, "Invalid rating preview request.");
+        return false;
+    }
+    if (!util_date_valid(date)) {
+        set_error(error, error_size, "Use a valid date in YYYY-MM-DD format.");
+        return false;
+    }
+    for (size_t i = 0; i < db->player_count; ++i) {
+        ratings[i] = db->players[i].base_rating;
+    }
+
+    RatingPlayerInput *inputs = NULL;
+    if (db->appearance_count > 0) {
+        inputs = malloc(db->appearance_count * sizeof(*inputs));
+        if (inputs == NULL) {
+            set_error(error, error_size,
+                      "Not enough memory to preview ratings.");
+            return false;
+        }
+    }
+
+    bool ok = true;
+    for (size_t match_index = 0; match_index < db->match_count; ++match_index) {
+        const Match *match = &db->matches[match_index];
+        int date_compare = strcmp(match->date, date);
+        if (date_compare > 0 ||
+            (date_compare == 0 && match->id >= match_id)) {
+            break;
+        }
+
+        size_t start = appearance_lower_bound(db, match->id);
+        size_t end = start;
+        while (end < db->appearance_count &&
+               db->appearances[end].match_id == match->id) {
+            end++;
+        }
+        if (start == end) {
+            set_error(error, error_size, "Match has no line-up.");
+            ok = false;
+            break;
+        }
+
+        size_t home_count = 0;
+        size_t away_count = 0;
+        for (size_t i = start; i < end; ++i) {
+            if (db->appearances[i].team_id == match->home_team_id) {
+                home_count++;
+            } else if (db->appearances[i].team_id == match->away_team_id) {
+                away_count++;
+            } else {
+                set_error(error, error_size,
+                          "Line-up references a team outside this match.");
+                ok = false;
+                break;
+            }
+        }
+        if (!ok) {
+            break;
+        }
+
+        size_t home_index = 0;
+        size_t away_index = home_count;
+        for (size_t i = start; i < end; ++i) {
+            const Appearance *appearance = &db->appearances[i];
+            const Player *player = db_find_player(db, appearance->player_id);
+            if (player == NULL) {
+                set_error(error, error_size,
+                          "Line-up references a missing player.");
+                ok = false;
+                break;
+            }
+            size_t player_index = (size_t)(player - db->players);
+            RatingPlayerInput *input =
+                appearance->team_id == match->home_team_id
+                    ? &inputs[home_index++]
+                    : &inputs[away_index++];
+            input->rating = ratings[player_index];
+            input->minutes = appearance->minutes;
+            input->performance = appearance->performance;
+        }
+        if (!ok) {
+            break;
+        }
+
+        RatingMatchSummary summary;
+        if (!rating_compute_match(&summary, inputs, home_count,
+                                  inputs + home_count, away_count,
+                                  match->home_goals, match->away_goals,
+                                  match->neutral_venue, error, error_size)) {
+            ok = false;
+            break;
+        }
+
+        for (size_t i = start; i < end; ++i) {
+            const Appearance *appearance = &db->appearances[i];
+            const Player *player = db_find_player(db, appearance->player_id);
+            if (player == NULL) {
+                set_error(error, error_size,
+                          "Line-up references a missing player.");
+                ok = false;
+                break;
+            }
+            size_t player_index = (size_t)(player - db->players);
+            bool home_team = appearance->team_id == match->home_team_id;
+            double delta = 0.0;
+            double after = 0.0;
+            if (!rating_player_change(&summary, home_team,
+                                      ratings[player_index],
+                                      appearance->minutes,
+                                      appearance->performance,
+                                      &delta, &after)) {
+                set_error(error, error_size,
+                          "Could not calculate a player rating.");
+                ok = false;
+                break;
+            }
+            ratings[player_index] = after;
+        }
+        if (!ok) {
+            break;
+        }
+    }
+
+    free(inputs);
+    return ok;
+}
+
 static bool prepare_match_input(const Database *db, const MatchInput *input,
                                 char *clean_date, size_t clean_date_size,
                                 char *error, size_t error_size)
