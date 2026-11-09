@@ -9,15 +9,15 @@
 #include <windowsx.h>
 #include <string.h>
 
-#define MAIN_WINDOW_CLASS L"PitchRateMainWindow"
+#define MAIN_WINDOW_CLASS L"ElevenLedgerMainWindow"
 #define SIDEBAR_BASE_WIDTH 232
 #define NAV_TOP 152
 #define NAV_HEIGHT 44
 #define NAV_GAP 5
 #define NAV_COUNT 5
 
-#ifndef PITCHRATE_VERSION
-#define PITCHRATE_VERSION "1.18.2"
+#ifndef ELEVENLEDGER_VERSION
+#define ELEVENLEDGER_VERSION "2.0.0"
 #endif
 
 static const wchar_t *g_navigation_labels[NAV_COUNT] = {
@@ -191,7 +191,7 @@ void main_window_draw_navigation(struct App *app, HDC dc)
 
     RECT title = { ui_scale(theme, 76), ui_scale(theme, 23),
                    width - ui_scale(theme, 14), ui_scale(theme, 54) };
-    ui_draw_text(dc, theme->font_h2, UI_COLOR_SIDEBAR_TEXT, title, L"PitchRate",
+    ui_draw_text(dc, theme->font_h2, UI_COLOR_SIDEBAR_TEXT, title, L"ElevenLedger",
                  DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     RECT tagline = { ui_scale(theme, 77), ui_scale(theme, 51),
                      width - ui_scale(theme, 12), ui_scale(theme, 68) };
@@ -270,7 +270,7 @@ void main_window_draw_navigation(struct App *app, HDC dc)
                      footer_y + ui_scale(theme, 74) };
     wchar_t version_text[64];
     ui_format_wide(version_text, sizeof(version_text) / sizeof(version_text[0]),
-                   L"PitchRate v%hs", PITCHRATE_VERSION);
+                   L"ElevenLedger v%hs", ELEVENLEDGER_VERSION);
     ui_draw_text(dc, theme->font_small, RGB(98, 120, 136), version,
                  version_text, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 }
@@ -450,7 +450,7 @@ HWND main_window_create(struct App *app)
     AdjustWindowRectEx(&desired, style, FALSE, 0);
     HWND hwnd = CreateWindowExW(
         WS_EX_CONTROLPARENT, MAIN_WINDOW_CLASS,
-        L"PitchRate - Football Rating Calculator",
+        L"ElevenLedger - Football Rating Calculator",
         style | WS_CLIPSIBLINGS,
         CW_USEDEFAULT, CW_USEDEFAULT,
         desired.right - desired.left, desired.bottom - desired.top,
@@ -458,7 +458,7 @@ HWND main_window_create(struct App *app)
     if (hwnd == NULL) {
         return NULL;
     }
-    SetWindowTextW(hwnd, L"PitchRate - Football Rating Calculator");
+    SetWindowTextW(hwnd, L"ElevenLedger - Football Rating Calculator");
     ui_center_window(hwnd, NULL);
     return hwnd;
 }

@@ -1,8 +1,8 @@
-# PitchRate
+# ElevenLedger
 
-PitchRate is a local-first Windows desktop application for calculating and tracking football player ratings. It pairs a transparent, team-aware rating model with a fast native interface for managing teams, squads and match history.
+ElevenLedger is a local-first Windows desktop application for calculating and tracking football player ratings. It pairs a transparent, team-aware rating model with a fast native interface for managing teams, squads and match history.
 
-The application is a dependency-free C17 Win32 program. It does not use a browser runtime, .NET, Python, or an online service. Match data stays on the computer and is saved atomically with a checksummed backup. PitchRate makes no network requests; WhoScored imports use page source copied from the user's browser.
+The application is a dependency-free C17 Win32 program. It does not use a browser runtime, .NET, Python, or an online service. Match data stays on the computer and is saved atomically with a checksummed backup. ElevenLedger makes no network requests; WhoScored imports use page source copied from the user's browser.
 
 ## Highlights
 
@@ -36,12 +36,12 @@ cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-The application is produced at `build\pitchrate.exe`. It is built as a GUI subsystem executable with static GCC runtime support.
+The application is produced at `build\elevenledger.exe`. It is built as a GUI subsystem executable with static GCC runtime support.
 
 ## Run
 
 ```powershell
-.\build\pitchrate.exe
+.\build\elevenledger.exe
 ```
 
 Optional arguments:
@@ -55,18 +55,22 @@ Optional arguments:
 By default, data is stored at:
 
 ```text
-%LOCALAPPDATA%\PitchRate\data.frc
+%LOCALAPPDATA%\ElevenLedger\data.frc
 ```
 
-Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, PitchRate preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported PitchRate format version is never overwritten or silently downgraded. Legacy v1-v3 files are loaded safely and upgraded to v4 on the next save.
+Every save writes and verifies a temporary file, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file. If the primary file is damaged, ElevenLedger preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported ElevenLedger format version is never overwritten or silently downgraded. Legacy v1-v3 files are loaded safely and upgraded to v4 on the next save.
+
+### Upgrading from PitchRate
+
+If `%LOCALAPPDATA%\ElevenLedger` has no primary or backup yet, the first launch copies `data.frc` and `data.frc.bak` from `%LOCALAPPDATA%\PitchRate` into the new folder. The old files, including any `data.frc.corrupt`, are left untouched. The data format and `.frc` extension are unchanged, so an existing data file also works directly with `--data <path>`.
 
 ## Import a match
 
 Open the WhoScored match in your browser, press **Ctrl+U** to view the page
-source, then **Ctrl+A** and **Ctrl+C**. In PitchRate, open **Matches** and choose
+source, then **Ctrl+A** and **Ctrl+C**. In ElevenLedger, open **Matches** and choose
 **Import from WhoScored**, then choose **Paste page source**.
 
-PitchRate parses the source locally and opens an editable preview. Nothing is
+ElevenLedger parses the source locally and opens an editable preview. Nothing is
 written until **Import match** is confirmed. The preview shows each player's
 minutes and a live cue for new players, existing squad members, players linked
 to another club, and archived players. Existing players can be reused or moved,
@@ -74,7 +78,7 @@ or a separate player can be created. It also shows the same rating summary as
 the match form, using each reused player's pre-match rating and the default 50.0
 for new players.
 
-PitchRate makes no network requests and does not try to bypass WhoScored's
+ElevenLedger makes no network requests and does not try to bypass WhoScored's
 Cloudflare protection. Details and limitations are in
 [docs/whoscored-import.md](docs/whoscored-import.md).
 
@@ -87,8 +91,8 @@ Cloudflare protection. Details and limitations are in
 To explore the application with a populated example:
 
 ```powershell
-.\build\pitchrate_demo_seed.exe .\build\demo.frc
-.\build\pitchrate.exe --data .\build\demo.frc
+.\build\elevenledger_demo_seed.exe .\build\demo.frc
+.\build\elevenledger.exe --data .\build\demo.frc
 ```
 
 The seed tool refuses to replace an existing file. Add `--force` if you intentionally want to regenerate the demo at that path.
@@ -104,10 +108,10 @@ ctest --test-dir build --output-on-failure
 Or run the executable directly for a per-test report:
 
 ```powershell
-.\build\pitchrate_tests.exe
+.\build\elevenledger_tests.exe
 ```
 
-The suite covers date and UTF-8 validation, rating invariants, random-model fuzzing, database history replay, minutes and performance behaviour, storage round-trips, checksum failures, backup recovery, malformed data, relative paths, WhoScored HTML parsing and transactional match import.
+The suite covers date and UTF-8 validation, rating invariants, random-model fuzzing, database history replay, minutes and performance behaviour, storage round-trips, checksum failures, backup recovery, legacy data migration, malformed data, relative paths, WhoScored HTML parsing and transactional match import.
 
 An interactive GUI smoke test is also included. It exercises all pages, modal ownership, dialog teardown, side-by-side match line-ups, the final-whistle and sent-off controls, inline minutes/performance/sent-off editing, player creation and duplicate detection from the match dialog, the WhoScored import source dialog, and the complete record-and-save flow against a temporary data file:
 
@@ -153,4 +157,4 @@ docs/           Rating and data-format documentation
 
 ## License
 
-PitchRate is released under the [MIT License](LICENSE). Copyright (c) 2026 Vincent Bragard.
+ElevenLedger is released under the [MIT License](LICENSE). Copyright (c) 2026 Vincent Bragard.

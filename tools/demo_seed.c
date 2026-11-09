@@ -74,7 +74,7 @@ int main(int argc, char **argv)
         force = true;
     } else if (argc != 2) {
         fprintf(stderr,
-                "Usage: pitchrate_demo_seed <output.frc> [--force]\n");
+                "Usage: elevenledger_demo_seed <output.frc> [--force]\n");
         return 2;
     }
     wchar_t output_path[1024];

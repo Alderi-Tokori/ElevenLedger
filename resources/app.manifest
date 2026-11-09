@@ -3,9 +3,9 @@
   <assemblyIdentity
       version="1.0.0.0"
       processorArchitecture="*"
-      name="PitchRate.FootballRating"
+      name="ElevenLedger.FootballRating"
       type="win32"/>
-  <description>PitchRate Football Rating Calculator</description>
+  <description>ElevenLedger Football Rating Calculator</description>
   <dependency>
     <dependentAssembly>
       <assemblyIdentity

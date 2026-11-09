@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_UI_PAGE_H
-#define PITCHRATE_UI_PAGE_H
+#ifndef ELEVENLEDGER_UI_PAGE_H
+#define ELEVENLEDGER_UI_PAGE_H
 
 #include "app.h"
 

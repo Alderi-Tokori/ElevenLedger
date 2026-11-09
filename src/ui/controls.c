@@ -23,12 +23,12 @@ static int control_scale(HWND hwnd, int value)
 #define BUTTON_HOVER_FLAG 0x0100
 #define BUTTON_PRESSED_FLAG 0x0200
 #define BUTTON_TRACK_FLAG 0x0400
-#define BUTTON_CLASS_NAME L"PitchRateButton"
+#define BUTTON_CLASS_NAME L"ElevenLedgerButton"
 
 #define CHECKBOX_CHECKED_FLAG 0x01
 #define CHECKBOX_HOVER_FLAG 0x02
 #define CHECKBOX_TRACK_FLAG 0x04
-#define CHECKBOX_CLASS_NAME L"PitchRateCheckbox"
+#define CHECKBOX_CLASS_NAME L"ElevenLedgerCheckbox"
 
 static LRESULT CALLBACK button_window_proc(HWND hwnd, UINT message,
                                            WPARAM wparam, LPARAM lparam);
@@ -918,7 +918,7 @@ void ui_run_modal(HWND dialog, HWND owner, int default_command_id)
         }
         if (message.message == WM_KEYDOWN) {
             bool cell_editor =
-                GetPropW(message.hwnd, L"PitchRate.CellEditor") != NULL;
+                GetPropW(message.hwnd, L"ElevenLedger.CellEditor") != NULL;
             if (cell_editor &&
                 (message.wParam == VK_RETURN || message.wParam == VK_ESCAPE)) {
                 DispatchMessageW(&message);

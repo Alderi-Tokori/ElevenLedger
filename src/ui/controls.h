@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_UI_CONTROLS_H
-#define PITCHRATE_UI_CONTROLS_H
+#ifndef ELEVENLEDGER_UI_CONTROLS_H
+#define ELEVENLEDGER_UI_CONTROLS_H
 
 #include "ui/theme.h"
 

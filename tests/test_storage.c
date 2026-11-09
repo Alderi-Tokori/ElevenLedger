@@ -26,7 +26,7 @@ static bool make_test_paths(TestPaths *paths)
     }
     if (swprintf(paths->directory,
                  sizeof(paths->directory) / sizeof(paths->directory[0]),
-                 L"%lsPitchRateTests-%lu-%u", base,
+                 L"%lsElevenLedgerTests-%lu-%u", base,
                  (unsigned long)GetCurrentProcessId(), ++g_temp_counter) < 0) {
         return false;
     }
@@ -916,6 +916,93 @@ static bool test_nested_directory_created(void)
     return true;
 }
 
+static bool test_migrate_legacy_data(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+
+    wchar_t legacy_dir[MAX_PATH];
+    wchar_t new_dir[MAX_PATH];
+    wchar_t legacy_path[MAX_PATH];
+    wchar_t new_path[MAX_PATH];
+    CHECK(swprintf(legacy_dir, sizeof(legacy_dir) / sizeof(legacy_dir[0]),
+                   L"%ls\\legacy", paths.directory) >= 0);
+    CHECK(swprintf(new_dir, sizeof(new_dir) / sizeof(new_dir[0]),
+                   L"%ls\\new", paths.directory) >= 0);
+    CHECK(CreateDirectoryW(legacy_dir, NULL) ||
+          GetLastError() == ERROR_ALREADY_EXISTS);
+    CHECK(CreateDirectoryW(new_dir, NULL) ||
+          GetLastError() == ERROR_ALREADY_EXISTS);
+    CHECK(swprintf(legacy_path, sizeof(legacy_path) / sizeof(legacy_path[0]),
+                   L"%ls\\data.frc", legacy_dir) >= 0);
+    CHECK(swprintf(new_path, sizeof(new_path) / sizeof(new_path[0]),
+                   L"%ls\\data.frc", new_dir) >= 0);
+
+    Database legacy_db;
+    CHECK(populate_sample(&legacy_db));
+    char error[768];
+    CHECK(storage_save(legacy_path, &legacy_db, error, sizeof(error)));
+    CHECK(storage_save(legacy_path, &legacy_db, error, sizeof(error)));
+
+    wchar_t legacy_backup[MAX_PATH];
+    wchar_t legacy_corrupt[MAX_PATH];
+    wchar_t new_backup[MAX_PATH];
+    wchar_t new_corrupt[MAX_PATH];
+    CHECK(swprintf(legacy_backup,
+                   sizeof(legacy_backup) / sizeof(legacy_backup[0]),
+                   L"%ls.bak", legacy_path) >= 0);
+    CHECK(swprintf(legacy_corrupt,
+                   sizeof(legacy_corrupt) / sizeof(legacy_corrupt[0]),
+                   L"%ls.corrupt", legacy_path) >= 0);
+    CHECK(swprintf(new_backup, sizeof(new_backup) / sizeof(new_backup[0]),
+                   L"%ls.bak", new_path) >= 0);
+    CHECK(swprintf(new_corrupt, sizeof(new_corrupt) / sizeof(new_corrupt[0]),
+                   L"%ls.corrupt", new_path) >= 0);
+    CHECK(write_raw_data_file(legacy_corrupt, "damaged legacy data"));
+
+    CHECK(storage_migrate_legacy_data(legacy_path, new_path,
+                                      error, sizeof(error)));
+    CHECK(GetFileAttributesW(new_path) != INVALID_FILE_ATTRIBUTES);
+    CHECK(GetFileAttributesW(new_backup) != INVALID_FILE_ATTRIBUTES);
+    CHECK(GetFileAttributesW(new_corrupt) == INVALID_FILE_ATTRIBUTES);
+    CHECK(GetFileAttributesW(legacy_corrupt) != INVALID_FILE_ATTRIBUTES);
+
+    Database migrated;
+    CHECK(storage_load(new_path, &migrated, error, sizeof(error)) ==
+          STORAGE_OK);
+    CHECK(same_database(&legacy_db, &migrated));
+    db_free(&migrated);
+
+    Database replacement;
+    db_init(&replacement);
+    uint64_t team = 0;
+    CHECK(db_add_team(&replacement, "New Data", "NEW", "New",
+                      &team, error, sizeof(error)));
+    CHECK(storage_save(new_path, &replacement, error, sizeof(error)));
+    CHECK(storage_migrate_legacy_data(legacy_path, new_path,
+                                      error, sizeof(error)));
+
+    Database current;
+    CHECK(storage_load(new_path, &current, error, sizeof(error)) ==
+          STORAGE_OK);
+    CHECK(current.team_count == 1);
+    CHECK(same_database(&replacement, &current));
+    db_free(&current);
+    db_free(&replacement);
+    db_free(&legacy_db);
+
+    DeleteFileW(new_corrupt);
+    DeleteFileW(new_backup);
+    DeleteFileW(new_path);
+    DeleteFileW(legacy_corrupt);
+    DeleteFileW(legacy_backup);
+    DeleteFileW(legacy_path);
+    RemoveDirectoryW(new_dir);
+    RemoveDirectoryW(legacy_dir);
+    cleanup_test_paths(&paths);
+    return true;
+}
+
 const TestCase g_storage_tests[] = {
     TEST_CASE(test_roundtrip_and_recompute),
     TEST_CASE(test_neutral_venue_roundtrip),
@@ -939,6 +1026,7 @@ const TestCase g_storage_tests[] = {
     TEST_CASE(test_unknown_record_rejected),
     TEST_CASE(test_relative_data_path),
     TEST_CASE(test_nested_directory_created),
+    TEST_CASE(test_migrate_legacy_data),
 };
 
 const size_t g_storage_test_count =

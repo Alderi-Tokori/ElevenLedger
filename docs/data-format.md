@@ -5,10 +5,14 @@
 Default:
 
 ```text
-%LOCALAPPDATA%\PitchRate\data.frc
+%LOCALAPPDATA%\ElevenLedger\data.frc
 ```
 
-A different file can be selected with `--data <path>`. The parent folder is created on demand. Data remains local. PitchRate makes no network requests; WhoScored imports use page source pasted from the browser; see [whoscored-import.md](whoscored-import.md).
+A different file can be selected with `--data <path>`. The parent folder is created on demand. Data remains local. ElevenLedger makes no network requests; WhoScored imports use page source pasted from the browser; see [whoscored-import.md](whoscored-import.md).
+
+## Migration from PitchRate
+
+On first launch, when `%LOCALAPPDATA%\ElevenLedger` contains no primary or backup, the application copies `data.frc` and `data.frc.bak` from `%LOCALAPPDATA%\PitchRate` into the new folder. The legacy files, including any `data.frc.corrupt`, are left untouched. If the new folder already contains a primary or backup, or the legacy folder has no active data, migration does nothing; an existing damaged copy in the new folder is left in place. A path selected with `--data` is never migrated.
 
 ## Integrity model
 
@@ -38,6 +42,8 @@ END
 CRC32|<8 uppercase hex digits>
 ```
 
+The `PITCHRATE|` token is retained from the application's former name so existing files remain readable. It identifies the format, not the current product name.
+
 `neutral_venue` is `0` or `1`. `active` is `0` or `1`. `length` is the final-whistle minute, 1-120. `sent_off` is `0` when there was no removal without replacement, otherwise the sending-off minute; a non-zero value must be between that appearance's `minutes` and `length`. Performance is stored with two-decimal quantization. `starting_rating` accepts any finite number, including negative values or values above `99.0`, and is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored. Actual `minutes` are stored; the sent-off result weighting is derived during replay.
 
 ### Format v1-v3 compatibility
@@ -63,7 +69,7 @@ The checksum line has no trailing newline. A UTF-8 byte-order mark is accepted w
 
 ## Compatibility
 
-The `PITCHRATE|4` header identifies schema version 4. Versions 1, 2 and 3 are still accepted for loading; any other version is rejected with a clear message rather than partially parsed, and neither the primary nor its backup is replaced. Any future format change must:
+The `PITCHRATE|4` header identifies schema version 4 and keeps the legacy product token for compatibility. Versions 1, 2 and 3 are still accepted for loading; any other version is rejected with a clear message rather than partially parsed, and neither the primary nor its backup is replaced. Any future format change must:
 
 - increment the version,
 - keep old files readable or provide an explicit tested migration,

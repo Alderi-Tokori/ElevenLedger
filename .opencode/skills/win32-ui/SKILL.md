@@ -1,11 +1,11 @@
 ---
 name: win32-ui
-description: Use when adding or changing PitchRate pages, dialogs, custom controls, DPI layout, list views or Win32 resources. Covers native GDI patterns, modal behaviour and visual verification.
+description: Use when adding or changing ElevenLedger pages, dialogs, custom controls, DPI layout, list views or Win32 resources. Covers native GDI patterns, modal behaviour and visual verification.
 ---
 
 # Win32 UI workflow
 
-PitchRate uses native Win32 with GDI drawing. There is no web runtime or third-party UI framework. Favour stable, inspectable controls over fragile custom interaction code.
+ElevenLedger uses native Win32 with GDI drawing. There is no web runtime or third-party UI framework. Favour stable, inspectable controls over fragile custom interaction code.
 
 ## Read first
 
@@ -32,7 +32,7 @@ PitchRate uses native Win32 with GDI drawing. There is no web runtime or third-p
 - Use control IDs in the dialog's enum range and handle them in `WM_COMMAND`.
 - Track modal ownership: `ui_run_modal` disables the owner and re-enables it on exit. `dialog_close` must re-enable and activate the owner before hiding the dialog, otherwise Windows activates the next application and the main window briefly disappears.
 - Support Escape (modal loop) and Tab (IsDialogMessage/WS_EX_CONTROLPARENT).
-- Inline cell editors must set the `PitchRate.CellEditor` property so the modal loop dispatches Enter/Escape to them.
+- Inline cell editors must set the `ElevenLedger.CellEditor` property so the modal loop dispatches Enter/Escape to them.
 - Never mutate the database directly from a dialog. Clone with `app_tx_begin`, mutate, then `app_tx_commit` or `app_tx_abort`.
 - Save buttons should keep the dialog open on validation or disk failure.
 - Import-style previews must stay read-only until the user confirms. Recompute per-row cues when editable names or clubs change, and apply the whole plan through one transaction. `src/ui/dialog_import.c` shows custom-draw cues and per-player duplicate decisions.

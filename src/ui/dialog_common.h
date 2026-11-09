@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_UI_DIALOG_COMMON_H
-#define PITCHRATE_UI_DIALOG_COMMON_H
+#ifndef ELEVENLEDGER_UI_DIALOG_COMMON_H
+#define ELEVENLEDGER_UI_DIALOG_COMMON_H
 
 #include "app.h"
 #include "core/rating.h"
@@ -8,8 +8,8 @@
 #include <stddef.h>
 #include <windows.h>
 
-#define PITCHRATE_IMPORT_SOURCE_DIALOG_CLASS L"PitchRateImportSourceDialog"
-#define PITCHRATE_IMPORT_MATCH_DIALOG_CLASS L"PitchRateImportMatchDialog"
+#define ELEVENLEDGER_IMPORT_SOURCE_DIALOG_CLASS L"ElevenLedgerImportSourceDialog"
+#define ELEVENLEDGER_IMPORT_MATCH_DIALOG_CLASS L"ElevenLedgerImportMatchDialog"
 
 typedef struct {
     bool home_valid;

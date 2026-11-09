@@ -12,10 +12,10 @@
 #include <string.h>
 #include <wchar.h>
 
-#define TEAM_DIALOG_CLASS L"PitchRateTeamDialog"
-#define PLAYER_DIALOG_CLASS L"PitchRatePlayerDialog"
-#define MATCH_DIALOG_CLASS L"PitchRateMatchDialog"
-#define MATCH_DETAILS_DIALOG_CLASS L"PitchRateMatchDetailsDialog"
+#define TEAM_DIALOG_CLASS L"ElevenLedgerTeamDialog"
+#define PLAYER_DIALOG_CLASS L"ElevenLedgerPlayerDialog"
+#define MATCH_DIALOG_CLASS L"ElevenLedgerMatchDialog"
+#define MATCH_DETAILS_DIALOG_CLASS L"ElevenLedgerMatchDetailsDialog"
 
 enum {
     TEAM_DIALOG_NAME_ID = 2000,
@@ -112,9 +112,9 @@ void dialogs_register_classes(HINSTANCE instance)
                           record_match_dialog_proc);
     dialog_register_class(instance, MATCH_DETAILS_DIALOG_CLASS,
                           match_details_dialog_proc);
-    dialog_register_class(instance, PITCHRATE_IMPORT_SOURCE_DIALOG_CLASS,
+    dialog_register_class(instance, ELEVENLEDGER_IMPORT_SOURCE_DIALOG_CLASS,
                           import_source_dialog_proc);
-    dialog_register_class(instance, PITCHRATE_IMPORT_MATCH_DIALOG_CLASS,
+    dialog_register_class(instance, ELEVENLEDGER_IMPORT_MATCH_DIALOG_CLASS,
                           import_match_dialog_proc);
 }
 
@@ -182,8 +182,8 @@ void dialog_close(HWND dialog)
      * another top-level window when it was active, and the disabled owner
      * cannot take that activation. Windows would then briefly raise whichever
      * window is next in the z-order, exposing another application above
-     * PitchRate until the modal loop re-enables and activates the owner.
-     * Activating the owner first keeps the transition inside PitchRate.
+     * ElevenLedger until the modal loop re-enables and activates the owner.
+     * Activating the owner first keeps the transition inside ElevenLedger.
      */
     if (owner != NULL && IsWindow(owner) && !IsWindowEnabled(owner)) {
         EnableWindow(owner, TRUE);
@@ -568,7 +568,7 @@ uint64_t dialog_edit_team(App *app, uint64_t team_id)
 
     HWND hwnd = dialog_create_shell(
         app, app->main_hwnd, TEAM_DIALOG_CLASS,
-        team_id == 0 ? L"Add team - PitchRate" : L"Edit team - PitchRate",
+        team_id == 0 ? L"Add team - ElevenLedger" : L"Edit team - ElevenLedger",
         500, 390, &state);
     if (hwnd == NULL) {
         return 0;
@@ -712,7 +712,7 @@ static PlayerDuplicateChoice player_duplicate_prompt(
     config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION |
                      TDF_POSITION_RELATIVE_TO_WINDOW;
     config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
-    config.pszWindowTitle = L"Duplicate player - PitchRate";
+    config.pszWindowTitle = L"Duplicate player - ElevenLedger";
     config.pszMainIcon = TD_WARNING_ICON;
     config.pszMainInstruction = L"A player with this name already exists";
     config.pszContent = content;
@@ -1044,8 +1044,8 @@ static uint64_t player_dialog_run(App *app, HWND owner, uint64_t player_id,
 
     HWND hwnd = dialog_create_shell(
         app, state.owner, PLAYER_DIALOG_CLASS,
-        player_id == 0 ? L"Add player - PitchRate"
-                       : L"Edit player - PitchRate",
+        player_id == 0 ? L"Add player - ElevenLedger"
+                       : L"Edit player - ElevenLedger",
         560, 470, &state);
     if (hwnd == NULL) {
         return 0;

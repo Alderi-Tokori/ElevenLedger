@@ -1,6 +1,6 @@
 ---
 name: release-quality
-description: Use before committing or packaging a PitchRate change. Covers release builds, tests, GUI smoke verification, static imports, data safety review and local git hygiene.
+description: Use before committing or packaging an ElevenLedger change. Covers release builds, tests, GUI smoke verification, static imports, data safety review and local git hygiene.
 ---
 
 # Release quality checklist
@@ -29,7 +29,7 @@ The build must be warning-free.
 
 ```powershell
 ctest --test-dir build --output-on-failure
-.\build\pitchrate_tests.exe
+.\build\elevenledger_tests.exe
 ```
 
 All tests must pass. For UI changes also run:
@@ -48,10 +48,10 @@ The smoke test must report:
 
 ## 4. Binary
 
-- Confirm `build\pitchrate.exe` exists.
+- Confirm `build\elevenledger.exe` exists.
 - Confirm it is a GUI subsystem executable.
 - Inspect imports and ensure no MinGW runtime DLL is required:
-  `objdump -p build\pitchrate.exe` should list only Windows system DLLs/API sets.
+  `objdump -p build\elevenledger.exe` should list only Windows system DLLs/API sets.
 - The optional demo seed tool and test binary are not deployment artifacts.
 
 ## 5. Data compatibility

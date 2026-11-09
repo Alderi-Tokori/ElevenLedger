@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_APP_H
-#define PITCHRATE_APP_H
+#ifndef ELEVENLEDGER_APP_H
+#define ELEVENLEDGER_APP_H
 
 #include "core/database.h"
 #include "ui/theme.h"

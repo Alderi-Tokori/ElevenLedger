@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_UI_THEME_H
-#define PITCHRATE_UI_THEME_H
+#ifndef ELEVENLEDGER_UI_THEME_H
+#define ELEVENLEDGER_UI_THEME_H
 
 #include <windows.h>
 #include <commctrl.h>

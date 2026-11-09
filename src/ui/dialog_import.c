@@ -18,7 +18,7 @@
 #include <wchar.h>
 
 #define WM_IMPORT_COMMIT_CELL (WM_APP + 62)
-#define IMPORT_CELL_EDITOR_PROPERTY L"PitchRate.CellEditor"
+#define IMPORT_CELL_EDITOR_PROPERTY L"ElevenLedger.CellEditor"
 
 enum {
     IMPORT_SOURCE_PASTE_ID = 2500,
@@ -386,7 +386,7 @@ static LRESULT import_source_paint(ImportSourceState *state, HWND hwnd)
             canvas.dc, theme->font_small, UI_COLOR_MUTED,
             state->note_rect,
             L"Copying the normal page gives visible text, not HTML. Use View "
-            L"Source. PitchRate does not request the URL itself.",
+            L"Source. ElevenLedger does not request the URL itself.",
             DT_LEFT | DT_TOP | DT_WORDBREAK);
         ui_draw_text(canvas.dc, theme->font_small, UI_COLOR_DANGER,
                      state->error_rect, state->error,
@@ -455,8 +455,8 @@ static bool import_source_dialog_run(App *app, ImportedMatch *out_match)
     memset(&state, 0, sizeof(state));
     state.app = app;
     HWND hwnd = dialog_create_shell(
-        app, app->main_hwnd, PITCHRATE_IMPORT_SOURCE_DIALOG_CLASS,
-        L"Import match - PitchRate", 720, 430, &state);
+        app, app->main_hwnd, ELEVENLEDGER_IMPORT_SOURCE_DIALOG_CLASS,
+        L"Import match - ElevenLedger", 720, 430, &state);
     if (hwnd == NULL) {
         return false;
     }
@@ -1339,7 +1339,7 @@ static void import_change_action(ImportMatchState *state)
     config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION |
                      TDF_POSITION_RELATIVE_TO_WINDOW;
     config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
-    config.pszWindowTitle = L"Player import action - PitchRate";
+    config.pszWindowTitle = L"Player import action - ElevenLedger";
     config.pszMainIcon = TD_WARNING_ICON;
     config.pszMainInstruction =
         same_club
@@ -2114,8 +2114,8 @@ static uint64_t import_preview_run(App *app, const ImportedMatch *match)
     memset(&state, 0, sizeof(state));
     state.app = app;
     HWND hwnd = dialog_create_shell(
-        app, app->main_hwnd, PITCHRATE_IMPORT_MATCH_DIALOG_CLASS,
-        L"Import match - PitchRate", 1200, 700, &state);
+        app, app->main_hwnd, ELEVENLEDGER_IMPORT_MATCH_DIALOG_CLASS,
+        L"Import match - ElevenLedger", 1200, 700, &state);
     if (hwnd == NULL) {
         return 0;
     }

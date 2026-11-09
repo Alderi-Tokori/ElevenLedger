@@ -19,11 +19,11 @@
 #include <string.h>
 #include <wchar.h>
 
-#ifndef PITCHRATE_VERSION
-#define PITCHRATE_VERSION "1.18.2"
+#ifndef ELEVENLEDGER_VERSION
+#define ELEVENLEDGER_VERSION "2.0.0"
 #endif
 
-#define MAIN_WINDOW_CLASS_NAME L"PitchRateMainWindow"
+#define MAIN_WINDOW_CLASS_NAME L"ElevenLedgerMainWindow"
 
 static int system_dpi(void)
 {
@@ -122,7 +122,7 @@ static bool resolve_data_path(App *app, const wchar_t *override,
         }
         wchar_t folder[1024];
         if (swprintf(folder, sizeof(folder) / sizeof(folder[0]),
-                     L"%ls\\PitchRate", base) < 0) {
+                     L"%ls\\ElevenLedger", base) < 0) {
             snprintf(error, error_size, "The data folder path is too long.");
             return false;
         }
@@ -133,6 +133,22 @@ static bool resolve_data_path(App *app, const wchar_t *override,
                      sizeof(app->data_path) / sizeof(app->data_path[0]),
                      L"%ls\\data.frc", folder) < 0) {
             snprintf(error, error_size, "The data file path is too long.");
+            return false;
+        }
+
+        wchar_t legacy_folder[1024];
+        wchar_t legacy_path[1024];
+        if (swprintf(legacy_folder,
+                     sizeof(legacy_folder) / sizeof(legacy_folder[0]),
+                     L"%ls\\PitchRate", base) < 0 ||
+            swprintf(legacy_path,
+                     sizeof(legacy_path) / sizeof(legacy_path[0]),
+                     L"%ls\\data.frc", legacy_folder) < 0) {
+            snprintf(error, error_size, "The legacy data file path is too long.");
+            return false;
+        }
+        if (!storage_migrate_legacy_data(legacy_path, app->data_path,
+                                         error, error_size)) {
             return false;
         }
     }
@@ -270,7 +286,7 @@ bool app_tx_begin(App *app, Database *backup)
     }
     memset(backup, 0, sizeof(*backup));
     if (!db_clone(backup, &app->db)) {
-        app_show_error(app, L"PitchRate",
+        app_show_error(app, L"ElevenLedger",
                        L"Not enough memory to save this change.");
         return false;
     }
@@ -324,7 +340,7 @@ void app_open_data_folder(App *app)
 static bool single_instance_guard(App *app)
 {
     app->instance_mutex = CreateMutexW(NULL, FALSE,
-                                       L"Local\\PitchRate.SingleInstance");
+                                       L"Local\\ElevenLedger.SingleInstance");
     if (app->instance_mutex == NULL) {
         return true;
     }
@@ -336,8 +352,8 @@ static bool single_instance_guard(App *app)
         }
         CloseHandle(app->instance_mutex);
         app->instance_mutex = NULL;
-        MessageBoxW(NULL, L"PitchRate is already running.",
-                    L"PitchRate", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(NULL, L"ElevenLedger is already running.",
+                    L"ElevenLedger", MB_OK | MB_ICONINFORMATION);
         return false;
     }
     return true;
@@ -354,7 +370,7 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
     app->active_page = PAGE_DASHBOARD;
     app->hovered_nav = -1;
 
-    SetCurrentProcessExplicitAppUserModelID(L"PitchRate.FootballRating");
+    SetCurrentProcessExplicitAppUserModelID(L"ElevenLedger.FootballRating");
 
     if (!single_instance_guard(app)) {
         return false;
@@ -362,7 +378,7 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
 
     char error[1024];
     if (!resolve_data_path(app, data_path, error, sizeof(error))) {
-        show_error_utf8(NULL, L"PitchRate", error);
+        show_error_utf8(NULL, L"ElevenLedger", error);
         return false;
     }
 
@@ -375,7 +391,7 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
                         sizeof(detail) / sizeof(detail[0]));
         ui_format_wide(warning, sizeof(warning) / sizeof(warning[0]),
                        L"The data file was damaged or missing.\n\n%ls\n\n"
-                       L"PitchRate will restore the last good backup now.",
+                       L"ElevenLedger will restore the last good backup now.",
                        detail);
         MessageBoxW(NULL, warning, L"Recovered backup",
                     MB_OK | MB_ICONWARNING);
@@ -386,7 +402,7 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
             ui_utf8_to_wide(error, detail2,
                             sizeof(detail2) / sizeof(detail2[0]));
             ui_format_wide(failure, sizeof(failure) / sizeof(failure[0]),
-                           L"PitchRate could not restore the backup, so it "
+                           L"ElevenLedger could not restore the backup, so it "
                            L"has stopped to protect your data.\n\n%ls",
                            detail2);
             MessageBoxW(NULL, failure, L"Could not restore data",
@@ -397,8 +413,8 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
         wchar_t message[2048];
         ui_format_wide(
             message, sizeof(message) / sizeof(message[0]),
-            L"The data file uses a different PitchRate data format.\n\n%ls\n\n"
-            L"Open it with a compatible PitchRate version. The file has not been changed.",
+            L"The data file uses a different ElevenLedger data format.\n\n%ls\n\n"
+            L"Open it with a compatible ElevenLedger version. The file has not been changed.",
             app->data_path);
         MessageBoxW(NULL, message, L"Incompatible data version",
                     MB_OK | MB_ICONERROR);
@@ -410,9 +426,9 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
         ui_utf8_to_wide(error, detail,
                         sizeof(detail) / sizeof(detail[0]));
         ui_format_wide(title, sizeof(title) / sizeof(title[0]),
-                       L"Could not load PitchRate data");
+                       L"Could not load ElevenLedger data");
         ui_format_wide(message, sizeof(message) / sizeof(message[0]),
-                       L"PitchRate could not load:\n%ls\n\n%ls\n\n"
+                       L"ElevenLedger could not load:\n%ls\n\n%ls\n\n"
                        L"Your file has not been changed.",
                        app->data_path, detail);
         MessageBoxW(NULL, message, title, MB_OK | MB_ICONERROR);
@@ -429,7 +445,7 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
     int dpi = system_dpi();
     if (!ui_theme_init(&app->ui, dpi)) {
         MessageBoxW(NULL, L"Could not initialise the interface resources.",
-                    L"PitchRate", MB_OK | MB_ICONERROR);
+                    L"ElevenLedger", MB_OK | MB_ICONERROR);
         return false;
     }
     app->icon_large = (HICON)LoadImageW(instance, MAKEINTRESOURCEW(IDI_APP),
@@ -442,7 +458,7 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
     if (!page_register_class(instance) ||
         !main_window_register_class(instance)) {
         MessageBoxW(NULL, L"Could not register the application window.",
-                    L"PitchRate", MB_OK | MB_ICONERROR);
+                    L"ElevenLedger", MB_OK | MB_ICONERROR);
         return false;
     }
     dialogs_register_classes(instance);
@@ -450,17 +466,17 @@ bool app_initialize(App *app, HINSTANCE instance, const wchar_t *data_path,
     app->main_hwnd = main_window_create(app);
     if (app->main_hwnd == NULL) {
         MessageBoxW(NULL, L"Could not create the application window.",
-                    L"PitchRate", MB_OK | MB_ICONERROR);
+                    L"ElevenLedger", MB_OK | MB_ICONERROR);
         return false;
     }
     if (!create_pages(app)) {
         MessageBoxW(NULL, L"Could not create one of the application pages.",
-                    L"PitchRate", MB_OK | MB_ICONERROR);
+                    L"ElevenLedger", MB_OK | MB_ICONERROR);
         return false;
     }
     if (!create_accelerators(app)) {
         MessageBoxW(NULL, L"Could not create keyboard shortcuts.",
-                    L"PitchRate", MB_OK | MB_ICONERROR);
+                    L"ElevenLedger", MB_OK | MB_ICONERROR);
         return false;
     }
     app_layout_pages(app);

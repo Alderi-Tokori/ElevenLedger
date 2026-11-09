@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_CORE_IMPORT_H
-#define PITCHRATE_CORE_IMPORT_H
+#ifndef ELEVENLEDGER_CORE_IMPORT_H
+#define ELEVENLEDGER_CORE_IMPORT_H
 
 #include "core/database.h"
 

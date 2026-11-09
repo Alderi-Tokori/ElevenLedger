@@ -1,10 +1,10 @@
-# PitchRate Development Guide
+# ElevenLedger Development Guide
 
-This document is the working contract for anyone modifying PitchRate. It is intentionally concrete. Keep it up to date when architecture, commands or invariants change.
+This document is the working contract for anyone modifying ElevenLedger. It is intentionally concrete. Keep it up to date when architecture, commands or invariants change.
 
 ## Mission
 
-PitchRate is a production-grade, local-first Windows desktop application for football player ratings. It must remain stable, understandable, fully tested and deployable as a static GUI executable.
+ElevenLedger is a production-grade, local-first Windows desktop application for football player ratings. It must remain stable, understandable, fully tested and deployable as a static GUI executable.
 
 Non-negotiables:
 
@@ -15,7 +15,7 @@ Non-negotiables:
 - Every persisted mutation goes through the transactional app layer.
 - Unit tests must pass before a commit.
 - Git is local only. Never add a remote or push.
-- PitchRate must make no network requests. WhoScored imports use page source pasted from the user's browser; never add URL fetching, embedded browsers, or anti-bot bypasses.
+- ElevenLedger must make no network requests. WhoScored imports use page source pasted from the user's browser; never add URL fetching, embedded browsers, or anti-bot bypasses.
 
 Do not inspect or reuse code outside this working directory. Work from this repository and its documentation.
 
@@ -39,7 +39,7 @@ Tests:
 
 ```powershell
 ctest --test-dir build --output-on-failure
-.\build\pitchrate_tests.exe
+.\build\elevenledger_tests.exe
 ```
 
 Interactive GUI smoke test:
@@ -66,7 +66,7 @@ src/core/rating.c         Pure rating calculations
 src/core/database.c       In-memory domain model, validation, chronological replay
 src/core/import.c         WhoScored HTML parsing
 src/core/import_apply.c   Transactional club/player/match import engine
-src/core/storage.c        Versioned checksummed file format, atomic save, recovery
+src/core/storage.c        Versioned checksummed file format, atomic save, recovery, legacy migration
 src/ui/theme.c            DPI-scaled fonts, colours, double-buffered paint helpers
 src/ui/controls.c         Custom buttons and checkbox, edits, combos, lists, modal loop
 src/ui/page.c             Shared page window and card/header/empty-state painting
@@ -82,7 +82,7 @@ Layering rules:
 1. `src/core` must not depend on Win32 UI or the `App` type. The import parser and apply engine must stay testable without a display; only `dialog_import.c` may use the clipboard and the preview controls.
 2. UI code must not write the data file directly. Use `app_tx_begin`, `app_tx_commit` and `app_tx_abort`.
 3. Derived values (current ratings, appearance before/delta/after, match summaries, player totals) are recomputed. Only source data belongs in the file.
-4. The data format is versioned. Format v3 removes player position; format v4 adds the match final-whistle minute and each appearance's sending-off minute. v1-v3 files must keep loading with their legacy position discarded, missing neutral values defaulting to false, final whistle defaulting to 90 and sending-off defaulting to none. Add migration tests before changing it again.
+4. The data format is versioned. Format v3 removes player position; format v4 adds the match final-whistle minute and each appearance's sending-off minute. v1-v3 files must keep loading with their legacy position discarded, missing neutral values defaulting to false, final whistle defaulting to 90 and sending-off defaulting to none. The header remains `PITCHRATE|` after the ElevenLedger rename; keep it readable unless a format-version migration is added. Add migration tests before changing it again.
 
 ## Rating model rules
 
@@ -123,6 +123,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - A primary that cannot be read or uses an unsupported format version must never be silently replaced.
 - Recovery must preserve a damaged primary as `.corrupt` before restoring the backup.
 - No silent reset. If both primary and backup fail validation, stop and report the error.
+- The default data folder is `%LOCALAPPDATA%\ElevenLedger`. When it has no primary or backup, first launch must copy the legacy `%LOCALAPPDATA%\PitchRate` primary and backup files into it without deleting or modifying the originals. The old folder, including any `.corrupt` file, is left untouched. A `--data` path is never migrated.
 - All new file validation must reject duplicates, dangling IDs, invalid ranges, invalid UTF-8 and malformed records.
 - WhoScored imports must validate the complete plan before mutation, then create clubs, move/create players and add the match inside one app transaction. Imported actual minutes and sending-off minutes must reflect starting, substitution and sending-off times, and the final whistle must use the real elapsed match length. Cancelling or failing the preview must leave the database unchanged.
 - Update `docs/data-format.md` and storage tests for format changes. Import behaviour belongs in `docs/whoscored-import.md`.
@@ -162,7 +163,7 @@ Minimum coverage areas for changes:
 - database CRUD, references, replay, deletion and transfer behaviour,
 - WhoScored HTML parsing, match length, minutes, sending-offs and player-name splitting,
 - clipboard source validation, transactional import planning, club creation, player creation/moves, archived players and duplicate validation,
-- storage round-trip, corruption, recovery and compatibility,
+- storage round-trip, corruption, recovery, compatibility and legacy data migration,
 - GUI starts, pages render, modal ownership and complete save flows.
 
 Do not weaken a test to make a failing change pass. Explain and test the intended behaviour instead.

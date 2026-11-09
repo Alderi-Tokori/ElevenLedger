@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_TEST_FRAMEWORK_H
-#define PITCHRATE_TEST_FRAMEWORK_H
+#ifndef ELEVENLEDGER_TEST_FRAMEWORK_H
+#define ELEVENLEDGER_TEST_FRAMEWORK_H
 
 #include <math.h>
 #include <stdbool.h>

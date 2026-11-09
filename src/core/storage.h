@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_CORE_STORAGE_H
-#define PITCHRATE_CORE_STORAGE_H
+#ifndef ELEVENLEDGER_CORE_STORAGE_H
+#define ELEVENLEDGER_CORE_STORAGE_H
 
 #include "core/database.h"
 
@@ -30,5 +30,16 @@ bool storage_save(const wchar_t *path, const Database *db,
                   char *error, size_t error_size);
 bool storage_repair_from_backup(const wchar_t *path,
                                 char *error, size_t error_size);
+
+/*
+ * Copies a legacy PitchRate data file and its backup into the new
+ * ElevenLedger location when that location has no primary or backup yet.
+ * The old files, including any damaged copy, are left untouched. Returns
+ * true when migration is unnecessary or when every active legacy file was
+ * copied.
+ */
+bool storage_migrate_legacy_data(const wchar_t *legacy_path,
+                                 const wchar_t *new_path,
+                                 char *error, size_t error_size);
 
 #endif

@@ -37,7 +37,7 @@ int main(void)
 {
     size_t passed = 0;
     size_t failed = 0;
-    printf("PitchRate automated test suite\n");
+    printf("ElevenLedger automated test suite\n");
     printf("==============================\n");
     run_group("util", g_util_tests, g_util_test_count, &passed, &failed);
     run_group("rating", g_rating_tests, g_rating_test_count, &passed, &failed);

@@ -1,4 +1,4 @@
-# PitchRate Rating Model
+# ElevenLedger Rating Model
 
 ## Purpose
 

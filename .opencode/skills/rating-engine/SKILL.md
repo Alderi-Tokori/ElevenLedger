@@ -1,11 +1,11 @@
 ---
 name: rating-engine
-description: Use when changing PitchRate rating formulas, match calculation, chronological replay, player statistics or rating tests. Covers the team-aware model, invariants and required numeric fixtures.
+description: Use when changing ElevenLedger rating formulas, match calculation, chronological replay, player statistics or rating tests. Covers the team-aware model, invariants and required numeric fixtures.
 ---
 
 # Rating engine workflow
 
-PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/database.c`. It must stay deterministic, testable without a GUI and consistent with `docs/rating-model.md`.
+ElevenLedger's rating engine is pure C in `src/core/rating.c` and `src/core/database.c`. It must stay deterministic, testable without a GUI and consistent with `docs/rating-model.md`.
 
 ## Read first
 
@@ -40,7 +40,7 @@ PitchRate's rating engine is pure C in `src/core/rating.c` and `src/core/databas
 6. Run:
    `cmake --build build`
    `ctest --test-dir build --output-on-failure`
-   `.\build\pitchrate_tests.exe`
+   `.\build\elevenledger_tests.exe`
 7. Run `scripts/gui-smoke.ps1` if the in-app explanation changed.
 
 ## Invariants that must never regress

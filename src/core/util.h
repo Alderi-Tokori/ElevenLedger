@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_CORE_UTIL_H
-#define PITCHRATE_CORE_UTIL_H
+#ifndef ELEVENLEDGER_CORE_UTIL_H
+#define ELEVENLEDGER_CORE_UTIL_H
 
 #include <stdbool.h>
 #include <stddef.h>

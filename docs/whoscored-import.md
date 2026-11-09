@@ -1,8 +1,8 @@
 # WhoScored Match Import
 
-PitchRate imports a match from the HTML source of a WhoScored match page. The
+ElevenLedger imports a match from the HTML source of a WhoScored match page. The
 import is always explicit: source is pasted from the clipboard, parsed locally,
-shown in a preview, and nothing is written until the user confirms. PitchRate
+shown in a preview, and nothing is written until the user confirms. ElevenLedger
 does not make network requests.
 
 ## User flow
@@ -10,13 +10,13 @@ does not make network requests.
 1. Open the WhoScored match page in your browser.
 2. Press **Ctrl+U** to view the page source.
 3. Press **Ctrl+A**, then **Ctrl+C**.
-4. In PitchRate, open **Matches** and choose **Import from WhoScored**.
+4. In ElevenLedger, open **Matches** and choose **Import from WhoScored**.
 5. Choose **Paste page source**.
 6. Review and edit the date, clubs, score, player names, minutes and performance
    values. The neutral-venue option defaults to off. The live rating summary
    updates with these fields.
 7. Choose what to do for players who already exist in another club.
-8. Choose **Import match**. PitchRate creates any missing clubs and players and
+8. Choose **Import match**. ElevenLedger creates any missing clubs and players and
    records the match in one transaction.
 
 Cancelling the preview leaves the database unchanged.
@@ -28,7 +28,7 @@ it produces visible text rather than HTML source. Use **View Source** (Ctrl+U)
 instead. If Ctrl+U is unavailable, save the page with **Ctrl+S**, open the saved
 `.html` file in a text editor, and copy all of it.
 
-Direct HTTP requests to WhoScored are blocked by Cloudflare. PitchRate therefore
+Direct HTTP requests to WhoScored are blocked by Cloudflare. ElevenLedger therefore
 has no URL downloader and does not try to bypass the block. The browser-assisted
 source paste is the supported import path. If your browser also shows a
 Cloudflare block page, the block is coming from your network or IP address; use
@@ -37,7 +37,7 @@ page.
 
 ## What is imported
 
-The page must contain WhoScored's embedded `matchCentreData`. PitchRate reads:
+The page must contain WhoScored's embedded `matchCentreData`. ElevenLedger reads:
 
 - the fixture date from `startDate` (or `startTime`);
 - the full home and away club names from the match header when it provides a
@@ -48,7 +48,7 @@ The page must contain WhoScored's embedded `matchCentreData`. PitchRate reads:
   when applicable. Unused substitutes are omitted.
 - the final whistle minute from the real elapsed match length.
 
-PitchRate uses the real elapsed match length. It reads `maxMinute` (for example
+ElevenLedger uses the real elapsed match length. It reads `maxMinute` (for example
 94 for a match that ended at 90+4), falls back to the last recorded
 `periodEndMinutes` entry, and finally falls back to 90 or 120 minutes when the
 page has no timing data. `minuteExpanded` and `expandedMaxMinute` are not used
@@ -65,7 +65,7 @@ stop that player's actual minutes at the sending-off minute. The preview also
 records that minute separately, so a sent-off player on a losing team can use
 the entry-to-final-whistle result share described in the rating model. Wins and
 draws use the actual minutes. Minutes are clamped to the 1-120 range accepted by
-PitchRate. The imported performance defaults to 6.00 and can be edited before
+ElevenLedger. The imported performance defaults to 6.00 and can be edited before
 import.
 
 Player names are split at the first space: the first token becomes the first
@@ -135,6 +135,6 @@ source is only rendered page text, uses an unsupported page layout, or has no
 usable date, teams, score or player minutes.
 
 The clipboard text is read only when the user chooses **Paste page source**. It
-is parsed in memory, then discarded. PitchRate makes no network requests and
+is parsed in memory, then discarded. ElevenLedger makes no network requests and
 stores nothing from the source except the confirmed match, clubs and players in
 the local data file.

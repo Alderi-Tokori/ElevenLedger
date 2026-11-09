@@ -19,6 +19,14 @@
 #define STORAGE_MAX_FIELDS 12
 #define STORAGE_READ_BUFFER 8192
 
+/*
+ * The header keeps the original product token so files written before the
+ * ElevenLedger rename remain readable. Changing it requires a format-version
+ * migration.
+ */
+#define STORAGE_MAGIC "PITCHRATE|"
+#define STORAGE_MAGIC_LENGTH 10
+
 static StorageStatus load_file(const wchar_t *path, Database *db,
                                char *error, size_t error_size);
 static StorageStatus validate_data_file(const wchar_t *path,
@@ -158,6 +166,88 @@ static bool ensure_parent_directory(const wchar_t *path,
     return true;
 }
 
+static bool local_file_exists(const wchar_t *path)
+{
+    return path != NULL &&
+           GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES;
+}
+
+static bool copy_legacy_file(const wchar_t *source,
+                             const wchar_t *destination, bool *copied,
+                             char *error, size_t error_size)
+{
+    *copied = false;
+    if (!local_file_exists(source) || local_file_exists(destination)) {
+        return true;
+    }
+    if (!CopyFileW(source, destination, TRUE)) {
+        DWORD code = GetLastError();
+        if (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) {
+            return true;
+        }
+        set_windows_error(error, error_size,
+                          L"Copying the existing data file", code);
+        DeleteFileW(destination);
+        return false;
+    }
+    *copied = true;
+    return true;
+}
+
+bool storage_migrate_legacy_data(const wchar_t *legacy_path,
+                                 const wchar_t *new_path,
+                                 char *error, size_t error_size)
+{
+    if (legacy_path == NULL || new_path == NULL) {
+        set_error(error, error_size, "Invalid data migration path.");
+        return false;
+    }
+    if (_wcsicmp(legacy_path, new_path) == 0) {
+        return true;
+    }
+
+    wchar_t *legacy_backup = build_sibling_path(legacy_path, L".bak",
+                                                error, error_size);
+    wchar_t *new_backup = build_sibling_path(new_path, L".bak",
+                                             error, error_size);
+    if (legacy_backup == NULL || new_backup == NULL) {
+        free(legacy_backup);
+        free(new_backup);
+        return false;
+    }
+
+    bool destination_has_data = local_file_exists(new_path) ||
+                                local_file_exists(new_backup);
+    bool source_has_data = local_file_exists(legacy_path) ||
+                           local_file_exists(legacy_backup);
+    bool ok = true;
+    if (!destination_has_data && source_has_data) {
+        ok = ensure_parent_directory(new_path, error, error_size);
+        bool copied_primary = false;
+        bool copied_backup = false;
+        if (ok) {
+            ok = copy_legacy_file(legacy_path, new_path, &copied_primary,
+                                  error, error_size);
+        }
+        if (ok) {
+            ok = copy_legacy_file(legacy_backup, new_backup, &copied_backup,
+                                  error, error_size);
+        }
+        if (!ok) {
+            if (copied_backup) {
+                DeleteFileW(new_backup);
+            }
+            if (copied_primary) {
+                DeleteFileW(new_path);
+            }
+        }
+    }
+
+    free(legacy_backup);
+    free(new_backup);
+    return ok;
+}
+
 static bool write_field(FILE *file, const char *value)
 {
     if (fputc('|', file) == EOF) {
@@ -247,7 +337,7 @@ static bool write_appearance(FILE *file, const Appearance *appearance)
 
 static bool write_records(FILE *file, const Database *db)
 {
-    if (fprintf(file, "PITCHRATE|%d\n", STORAGE_FORMAT_VERSION) < 0) {
+    if (fprintf(file, STORAGE_MAGIC "%d\n", STORAGE_FORMAT_VERSION) < 0) {
         return false;
     }
     for (size_t i = 0; i < db->team_count; ++i) {
@@ -858,12 +948,13 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
     }
     cursor[line_length] = '\0';
     line_number++;
-    if (strncmp(cursor, "PITCHRATE|", 10) != 0) {
-        set_error(error, error_size, "This is not a PitchRate data file.");
+    if (strncmp(cursor, STORAGE_MAGIC, STORAGE_MAGIC_LENGTH) != 0) {
+        set_error(error, error_size, "This is not an ElevenLedger data file.");
         return false;
     }
     int parsed_file_version = 0;
-    if (!util_parse_int(cursor + 10, 0, 9999, &parsed_file_version)) {
+    if (!util_parse_int(cursor + STORAGE_MAGIC_LENGTH, 0, 9999,
+                        &parsed_file_version)) {
         set_error(error, error_size, "Data file has an invalid format version.");
         return false;
     }
@@ -874,10 +965,10 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
         }
         if (parsed_file_version > STORAGE_FORMAT_VERSION) {
             set_error(error, error_size,
-                      "This data file was created by a newer PitchRate version.");
+                      "This data file was created by a newer ElevenLedger version.");
         } else {
             set_error(error, error_size,
-                      "This data file uses an unsupported older PitchRate format.");
+                      "This data file uses an unsupported older ElevenLedger format.");
         }
         return false;
     }

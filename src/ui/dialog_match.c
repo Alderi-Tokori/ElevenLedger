@@ -14,9 +14,9 @@
 #include <string.h>
 #include <wchar.h>
 
-#define RECORD_DIALOG_CLASS L"PitchRateMatchDialog"
-#define DETAILS_DIALOG_CLASS L"PitchRateMatchDetailsDialog"
-#define CELL_EDITOR_PROPERTY L"PitchRate.CellEditor"
+#define RECORD_DIALOG_CLASS L"ElevenLedgerMatchDialog"
+#define DETAILS_DIALOG_CLASS L"ElevenLedgerMatchDetailsDialog"
+#define CELL_EDITOR_PROPERTY L"ElevenLedger.CellEditor"
 #define WM_RECORD_COMMIT_CELL (WM_APP + 51)
 
 enum {
@@ -1614,8 +1614,8 @@ static uint64_t match_dialog_run(App *app, HWND owner, uint64_t match_id)
     HWND dialog_owner = owner != NULL ? owner : app->main_hwnd;
     HWND hwnd = dialog_create_shell(
         app, dialog_owner, RECORD_DIALOG_CLASS,
-        state.editing ? L"Edit match - PitchRate"
-                      : L"Record match - PitchRate",
+        state.editing ? L"Edit match - ElevenLedger"
+                      : L"Record match - ElevenLedger",
         1120, 650, &state);
     if (hwnd == NULL) {
         return 0;
@@ -1637,7 +1637,7 @@ uint64_t dialog_record_match(App *app)
     if (!has_match_teams(&app->db)) {
         MessageBoxW(app->main_hwnd,
                     L"At least two clubs are needed to record a match.",
-                    L"PitchRate", MB_OK | MB_ICONINFORMATION);
+                    L"ElevenLedger", MB_OK | MB_ICONINFORMATION);
         return 0;
     }
     return match_dialog_run(app, app->main_hwnd, 0);
@@ -2004,7 +2004,7 @@ void dialog_match_details(App *app, uint64_t match_id)
     state.match_id = match_id;
     HWND hwnd = dialog_create_shell(
         app, app->main_hwnd, DETAILS_DIALOG_CLASS,
-        L"Match details - PitchRate", 940, 660, &state);
+        L"Match details - ElevenLedger", 940, 660, &state);
     if (hwnd == NULL) {
         return;
     }

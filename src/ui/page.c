@@ -4,7 +4,7 @@
 
 #include <string.h>
 
-#define PAGE_CLASS_NAME L"PitchRatePage"
+#define PAGE_CLASS_NAME L"ElevenLedgerPage"
 
 static LRESULT CALLBACK page_window_proc(HWND hwnd, UINT message,
                                          WPARAM wparam, LPARAM lparam);

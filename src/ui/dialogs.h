@@ -1,5 +1,5 @@
-#ifndef PITCHRATE_UI_DIALOGS_H
-#define PITCHRATE_UI_DIALOGS_H
+#ifndef ELEVENLEDGER_UI_DIALOGS_H
+#define ELEVENLEDGER_UI_DIALOGS_H
 
 #include "app.h"
 

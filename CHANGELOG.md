@@ -1,6 +1,14 @@
 # Changelog
 
-All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
+All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
+
+## 2.0.0 - 2026-11-09
+
+### Changed
+
+- Renamed the application from PitchRate to ElevenLedger. The executable is now `elevenledger.exe`, and the window, dialog, resource and test names use ElevenLedger.
+- The default data folder is now `%LOCALAPPDATA%\ElevenLedger`. On first launch, the existing primary and backup files in `%LOCALAPPDATA%\PitchRate` are copied to the new folder; the old folder, including any `.corrupt` file, is left untouched.
+- The data format and `.frc` extension are unchanged. Files with the legacy `PITCHRATE|` header remain readable.
 
 ## 1.18.2 - 2026-11-09
 

@@ -35,15 +35,15 @@ static void show_usage(HWND owner)
 {
     MessageBoxW(
         owner,
-        L"PitchRate - Football Rating Calculator\n\n"
+        L"ElevenLedger - Football Rating Calculator\n\n"
         L"Usage:\n"
-        L"  PitchRate.exe [--data <path-to-data-file>]\n\n"
+        L"  ElevenLedger.exe [--data <path-to-data-file>]\n\n"
         L"Options:\n"
         L"  --data <path>   Use a specific local data file.\n"
         L"  --help          Show this help.\n"
         L"  --version       Show the version.\n\n"
         L"Data is stored locally. Use Ctrl+1 through Ctrl+5 to switch pages.",
-        L"PitchRate", MB_OK | MB_ICONINFORMATION);
+        L"ElevenLedger", MB_OK | MB_ICONINFORMATION);
 }
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
@@ -57,7 +57,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
     int argc = 0;
     LPWSTR *arguments = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (arguments == NULL) {
-        MessageBoxW(NULL, L"Could not read the command line.", L"PitchRate",
+        MessageBoxW(NULL, L"Could not read the command line.", L"ElevenLedger",
                     MB_OK | MB_ICONERROR);
         return 1;
     }
@@ -69,7 +69,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
         if (wcscmp(arguments[i], L"--data") == 0) {
             if (i + 1 >= argc) {
                 MessageBoxW(NULL, L"--data requires a file path.",
-                            L"PitchRate", MB_OK | MB_ICONERROR);
+                            L"ElevenLedger", MB_OK | MB_ICONERROR);
                 LocalFree(arguments);
                 return 2;
             }
@@ -86,7 +86,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
             _snwprintf(message, sizeof(message) / sizeof(message[0]) - 1,
                        L"Unknown option: %ls", arguments[i]);
             message[sizeof(message) / sizeof(message[0]) - 1] = L'\0';
-            MessageBoxW(NULL, message, L"PitchRate",
+            MessageBoxW(NULL, message, L"ElevenLedger",
                         MB_OK | MB_ICONERROR);
             LocalFree(arguments);
             return 2;
@@ -99,7 +99,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
         return 0;
     }
     if (show_version) {
-        MessageBoxW(NULL, L"PitchRate v" PITCHRATE_VERSION, L"PitchRate",
+        MessageBoxW(NULL, L"ElevenLedger v" ELEVENLEDGER_VERSION, L"ElevenLedger",
                     MB_OK | MB_ICONINFORMATION);
         LocalFree(arguments);
         return 0;
