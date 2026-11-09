@@ -24,40 +24,6 @@ static void set_error(char *error, size_t error_size, const char *format, ...)
     error[error_size - 1] = '\0';
 }
 
-static int ascii_lower(int value)
-{
-    if (value >= 'A' && value <= 'Z') {
-        return value - 'A' + 'a';
-    }
-    return value;
-}
-
-static bool ascii_prefix_ci(const char *text, const char *prefix)
-{
-    if (text == NULL || prefix == NULL) {
-        return false;
-    }
-    while (*prefix != '\0') {
-        if (*text == '\0' || ascii_lower((unsigned char)*text) !=
-                                 ascii_lower((unsigned char)*prefix)) {
-            return false;
-        }
-        ++text;
-        ++prefix;
-    }
-    return true;
-}
-
-static bool ascii_suffix_ci(const char *text, size_t text_length,
-                            const char *suffix)
-{
-    size_t suffix_length = strlen(suffix);
-    if (text_length < suffix_length) {
-        return false;
-    }
-    return ascii_prefix_ci(text + text_length - suffix_length, suffix);
-}
-
 static const char *find_bytes(const char *haystack, size_t haystack_length,
                               const char *needle, size_t needle_length)
 {
@@ -1293,8 +1259,8 @@ bool imported_match_parse_html(const char *html, size_t length,
     JsonSpan root;
     if (!find_match_centre_data(html, length, &root)) {
         set_error(error, error_size,
-                  "The page does not contain match data. It may be an "
-                  "unsupported WhoScored page or a browser check page.");
+                  "The page does not contain match data. Use the WhoScored "
+                  "page source (Ctrl+U), not the rendered page.");
         return false;
     }
 
@@ -1369,110 +1335,4 @@ bool imported_match_parse_html(const char *html, size_t length,
         return false;
     }
     return true;
-}
-
-bool import_url_valid(const char *url)
-{
-    if (url == NULL || strlen(url) > IMPORT_URL_MAX) {
-        return false;
-    }
-    char buffer[IMPORT_URL_MAX + 1];
-    util_str_copy(buffer, sizeof(buffer), url);
-    char *trimmed = util_trim(buffer);
-    size_t length = strlen(trimmed);
-    if (length == 0 || length > IMPORT_URL_MAX) {
-        return false;
-    }
-    for (size_t i = 0; i < length; ++i) {
-        unsigned char value = (unsigned char)trimmed[i];
-        if (value < 0x20 || value == 0x7F) {
-            return false;
-        }
-    }
-
-    const char *path = NULL;
-    if (ascii_prefix_ci(trimmed, "https://")) {
-        path = trimmed + 8;
-    } else if (ascii_prefix_ci(trimmed, "http://")) {
-        path = trimmed + 7;
-    } else {
-        return false;
-    }
-
-    const char *authority_end = path;
-    while (*authority_end != '\0' && *authority_end != '/' &&
-           *authority_end != '?' && *authority_end != '#') {
-        ++authority_end;
-    }
-    if (authority_end == path || *authority_end != '/') {
-        return false;
-    }
-    if (memchr(path, '@', (size_t)(authority_end - path)) != NULL) {
-        return false;
-    }
-
-    const char *host_end = authority_end;
-    const char *colon = NULL;
-    for (const char *cursor = path; cursor < authority_end; ++cursor) {
-        if (*cursor == ':') {
-            if (colon != NULL) {
-                return false;
-            }
-            colon = cursor;
-        }
-    }
-    if (colon != NULL) {
-        if (colon == path || colon + 1 >= authority_end) {
-            return false;
-        }
-        for (const char *cursor = colon + 1; cursor < authority_end;
-             ++cursor) {
-            if (*cursor < '0' || *cursor > '9') {
-                return false;
-            }
-        }
-        host_end = colon;
-    }
-    if (host_end > path && host_end[-1] == '.') {
-        --host_end;
-    }
-    size_t host_length = (size_t)(host_end - path);
-    if (host_length == 0 || host_length > 253) {
-        return false;
-    }
-    static const char suffix[] = ".whoscored.com";
-    bool host_valid = false;
-    if (host_length == 13 &&
-        ascii_prefix_ci(path, "whoscored.com")) {
-        host_valid = true;
-    } else if (host_length > sizeof(suffix) - 1 &&
-               ascii_suffix_ci(path, host_length, suffix)) {
-        host_valid = true;
-    }
-    if (!host_valid) {
-        return false;
-    }
-
-    const char *cursor = authority_end;
-    if (*cursor != '/') {
-        return false;
-    }
-    ++cursor;
-    if (!ascii_prefix_ci(cursor, "matches/")) {
-        return false;
-    }
-    cursor += 8;
-    int digits = 0;
-    while (*cursor >= '0' && *cursor <= '9') {
-        ++cursor;
-        ++digits;
-        if (digits > 20) {
-            return false;
-        }
-    }
-    if (digits == 0) {
-        return false;
-    }
-    return *cursor == '\0' || *cursor == '/' || *cursor == '?' ||
-           *cursor == '#';
 }

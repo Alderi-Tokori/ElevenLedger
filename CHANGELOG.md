@@ -2,6 +2,16 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.15.0 - 2026-11-09
+
+### Changed
+
+- WhoScored import now accepts only page source pasted from the user's browser. The import dialog shows the source-copy steps and validates/parses the clipboard before opening the existing editable preview.
+
+### Removed
+
+- URL entry, direct HTTP downloading, the WinHTTP worker thread, the Open in browser action and URL validation. WhoScored blocks direct requests through Cloudflare; changing the User-Agent or headers does not fix that. PitchRate now makes no network requests.
+
 ## 1.14.1 - 2026-11-09
 
 ### Changed

@@ -610,44 +610,29 @@ try {
     }
     [PitchRateSmoke]::PostMessage(
         $matchesPage, 0x0111, [IntPtr]1304, [IntPtr]::Zero) | Out-Null
-    Wait-Until -Description "the WhoScored import URL dialog" -Condition {
+    Wait-Until -Description "the WhoScored import source dialog" -Condition {
         $candidate = [PitchRateSmoke]::FindTopLevel(
-            [uint32]$process.Id, "PitchRateImportUrlDialog")
+            [uint32]$process.Id, "PitchRateImportSourceDialog")
         return ($candidate -ne [IntPtr]::Zero -and
             [PitchRateSmoke]::IsWindowVisible($candidate) -and
             -not [PitchRateSmoke]::IsWindowEnabled($main))
     }
     $importDialog = [PitchRateSmoke]::FindTopLevel(
-        [uint32]$process.Id, "PitchRateImportUrlDialog")
-    $importUrlEdit = [PitchRateSmoke]::FindChildById($importDialog, 2500)
-    $importFetch = [PitchRateSmoke]::FindChildById($importDialog, 2501)
-    $importCancel = [PitchRateSmoke]::FindChildById($importDialog, 2502)
-    $importOpen = [PitchRateSmoke]::FindChildById($importDialog, 2503)
-    $importPaste = [PitchRateSmoke]::FindChildById($importDialog, 2504)
-    if ($importUrlEdit -eq [IntPtr]::Zero -or
-        $importFetch -eq [IntPtr]::Zero -or
-        $importCancel -eq [IntPtr]::Zero -or
-        $importOpen -eq [IntPtr]::Zero -or
-        $importPaste -eq [IntPtr]::Zero) {
-        throw "The WhoScored import dialog is missing its URL or action controls."
+        [uint32]$process.Id, "PitchRateImportSourceDialog")
+    $importPaste = [PitchRateSmoke]::FindChildById($importDialog, 2500)
+    $importCancel = [PitchRateSmoke]::FindChildById($importDialog, 2501)
+    if ($importPaste -eq [IntPtr]::Zero -or
+        $importCancel -eq [IntPtr]::Zero) {
+        throw "The WhoScored import source dialog is missing its action controls."
     }
-    [PitchRateSmoke]::SendMessageText(
-        $importUrlEdit, 0x000C, [IntPtr]::Zero,
-        "https://example.com/matches/1/live/not-whoscored") | Out-Null
     [PitchRateSmoke]::PostMessage(
         $importDialog, 0x0111, [IntPtr]2501, [IntPtr]::Zero) | Out-Null
-    Start-Sleep -Milliseconds 150
-    if (-not [PitchRateSmoke]::IsWindowVisible($importDialog)) {
-        throw "An invalid WhoScored URL closed the import dialog."
-    }
-    [PitchRateSmoke]::PostMessage(
-        $importDialog, 0x0111, [IntPtr]2502, [IntPtr]::Zero) | Out-Null
-    Wait-Until -Description "the import URL dialog to close" -Condition {
+    Wait-Until -Description "the import source dialog to close" -Condition {
         return ([PitchRateSmoke]::FindTopLevel(
-            [uint32]$process.Id, "PitchRateImportUrlDialog") -eq [IntPtr]::Zero -and
+            [uint32]$process.Id, "PitchRateImportSourceDialog") -eq [IntPtr]::Zero -and
             [PitchRateSmoke]::IsWindowEnabled($main))
     }
-    Write-Host "WhoScored import URL dialog OK"
+    Write-Host "WhoScored import source dialog OK"
     $matchesBefore = [PitchRateSmoke]::SendMessage($matchesList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
     [PitchRateSmoke]::PostMessage($main, 0x0111, [IntPtr]40000, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the record-match dialog" -Condition {

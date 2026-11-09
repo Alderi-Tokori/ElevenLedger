@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(PitchRate
-    VERSION 1.14.1
+    VERSION 1.15.0
     DESCRIPTION "Football player rating calculator for Windows"
     LANGUAGES C RC
 )
@@ -82,7 +82,6 @@ target_link_libraries(pitchrate PRIVATE
     user32
     shell32
     uxtheme
-    winhttp
 )
 target_compile_definitions(pitchrate PRIVATE
     PITCHRATE_VERSION="${PROJECT_VERSION}"

@@ -1,51 +1,38 @@
 # WhoScored Match Import
 
-PitchRate can create a match from a WhoScored match page. The import is always
-explicit: PitchRate obtains the page source, parses the embedded match data,
-shows a preview, and writes nothing until the user confirms.
+PitchRate imports a match from the HTML source of a WhoScored match page. The
+import is always explicit: source is pasted from the clipboard, parsed locally,
+shown in a preview, and nothing is written until the user confirms. PitchRate
+does not make network requests.
 
 ## User flow
 
-1. Open **Matches** and choose **Import from WhoScored**.
-2. Paste a match URL such as
-   `https://fr.whoscored.com/matches/1984066/live/france-ligue-1-2026-2027-rennes-paris-saint-germain`.
-3. Choose **Download match**. If WhoScored blocks the direct download, use the
-   browser-assisted path below. PitchRate opens the import preview once it has
-   a page source.
-4. Review and edit the date, clubs, score, player names, minutes and
-   performance values. The neutral-venue option defaults to off.
-5. Choose what to do for players who already exist in another club.
-6. Choose **Import match**. PitchRate creates any missing clubs and players and
+1. Open the WhoScored match page in your browser.
+2. Press **Ctrl+U** to view the page source.
+3. Press **Ctrl+A**, then **Ctrl+C**.
+4. In PitchRate, open **Matches** and choose **Import from WhoScored**.
+5. Choose **Paste page source**.
+6. Review and edit the date, clubs, score, player names, minutes and performance
+   values. The neutral-venue option defaults to off.
+7. Choose what to do for players who already exist in another club.
+8. Choose **Import match**. PitchRate creates any missing clubs and players and
    records the match in one transaction.
 
 Cancelling the preview leaves the database unchanged.
 
-### If WhoScored blocks the download
+### Getting the source
 
-WhoScored may return HTTP 403 through Cloudflare. This can be an interactive
-browser check or a hard network block page ("Sorry, you have been blocked").
-PitchRate does not run JavaScript and cannot pass either one. It also does not
-try to evade the block by spoofing a browser or another network identity.
-Changing the User-Agent or adding browser headers does not reliably fix a
-Cloudflare block; PitchRate already sends a normal Chrome User-Agent.
+Copying the rendered page with Ctrl+A/C on the normal page is not enough because
+it produces visible text rather than HTML source. Use **View Source** (Ctrl+U)
+instead. If Ctrl+U is unavailable, save the page with **Ctrl+S**, open the saved
+`.html` file in a text editor, and copy all of it.
 
-If the match page opens in your browser, use the browser-assisted path:
-
-1. Paste the match URL and choose **Open in browser**.
-2. Complete any check in the browser and wait for the match page to load.
-3. Press **Ctrl+U** to view the page source.
-4. Press **Ctrl+A** and then **Ctrl+C** to copy the source.
-5. Return to PitchRate and choose **Paste page source**.
-
-The source is parsed locally and the normal preview opens. Copying the rendered
-page with Ctrl+A/C on the normal page is not enough because it produces visible
-text rather than HTML source. If Ctrl+U is unavailable, save the page with
-**Ctrl+S**, open the saved `.html` file in a text editor, and copy all of it.
-
-If your browser also shows the Cloudflare block page, the block is coming from
-your network or IP address. Use a different network, or contact WhoScored with
-the Cloudflare Ray ID shown on their block page. No local User-Agent change can
-solve that.
+Direct HTTP requests to WhoScored are blocked by Cloudflare. PitchRate therefore
+has no URL downloader and does not try to bypass the block. The browser-assisted
+source paste is the supported import path. If your browser also shows a
+Cloudflare block page, the block is coming from your network or IP address; use
+a different network or contact WhoScored with the Ray ID shown on their block
+page.
 
 ## What is imported
 
@@ -108,32 +95,14 @@ cannot be used in a new match.
 If the same existing player would be used twice in the imported line-up, the
 import is rejected with a validation error.
 
-## Network behaviour and limits
+## Source requirements and privacy
 
-PitchRate uses the Windows WinHTTP library to download the exact URL entered.
-The URL must use HTTP or HTTPS and point at a `whoscored.com` match path.
-PitchRate adds no cookies, credentials or proxy credentials, does not run
-JavaScript, and does not intentionally contact any other site. No local data is
-uploaded.
+The pasted source must contain WhoScored's embedded `matchCentreData`, be valid
+UTF-8, and be no larger than 16 MiB. The import fails with a clear message if the
+source is only rendered page text, uses an unsupported page layout, or has no
+usable date, teams, score or player minutes.
 
-WhoScored can protect its pages with a browser check or rate limiting. PitchRate
-does not run JavaScript and cannot complete a browser challenge. A blocked
-request keeps the URL dialog open and explains the HTTP status, for example:
-
-```text
-WhoScored's Cloudflare protection blocked the request (HTTP 403). If the match
-opens in your browser, choose Open in browser, press Ctrl+U, copy all, then
-choose Paste page source. If the browser is also blocked, use another network.
-```
-
-The browser-assisted path does not bypass the check: the user completes it in
-their own browser, then provides the resulting page source. The same parser and
-confirmation preview are used.
-
-The import also fails with a clear message if the page does not contain
-`matchCentreData`, is not UTF-8, is larger than 16 MiB, or has no usable date,
-teams, score or player minutes.
-
-Only the explicit download started by the user performs network access. Pasted
-page source is processed locally. Imported data is stored locally with the rest
-of the PitchRate data file.
+The clipboard text is read only when the user chooses **Paste page source**. It
+is parsed in memory, then discarded. PitchRate makes no network requests and
+stores nothing from the source except the confirmed match, clubs and players in
+the local data file.

@@ -7,7 +7,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define IMPORT_URL_MAX 2048
 #define IMPORT_HTML_MAX (16u * 1024u * 1024u)
 #define IMPORT_MAX_PLAYERS 40
 
@@ -30,9 +29,6 @@ typedef struct {
 } ImportedMatch;
 
 void imported_match_free(ImportedMatch *match);
-
-/* Accepts only http(s) WhoScored match URLs. */
-bool import_url_valid(const char *url);
 
 /*
  * Reads WhoScored match page HTML and extracts the fixture and the players

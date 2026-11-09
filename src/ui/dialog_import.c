@@ -11,25 +11,18 @@
 #include <commctrl.h>
 #include <limits.h>
 #include <math.h>
-#include <process.h>
-#include <shellapi.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
-#include <winhttp.h>
 
-#define WM_IMPORT_FETCH_DONE (WM_APP + 61)
 #define WM_IMPORT_COMMIT_CELL (WM_APP + 62)
 #define IMPORT_CELL_EDITOR_PROPERTY L"PitchRate.CellEditor"
 
 enum {
-    IMPORT_URL_EDIT_ID = 2500,
-    IMPORT_URL_FETCH_ID,
-    IMPORT_URL_CANCEL_ID,
-    IMPORT_URL_OPEN_ID,
-    IMPORT_URL_PASTE_ID,
+    IMPORT_SOURCE_PASTE_ID = 2500,
+    IMPORT_SOURCE_CANCEL_ID,
 };
 
 enum {
@@ -63,35 +56,17 @@ enum {
 };
 
 typedef struct {
-    wchar_t url[IMPORT_URL_MAX + 1];
-    HWND notify;
-    char *body;
-    size_t length;
-    wchar_t error[512];
-    bool ok;
-} ImportFetchJob;
-
-typedef struct {
     App *app;
     HWND hwnd;
-    HWND url;
-    HWND fetch;
-    HWND cancel;
-    HWND open_browser;
     HWND paste;
-    HANDLE thread;
-    ImportFetchJob *job;
-    bool fetching;
-    bool cancel_requested;
-    char *html;
-    size_t html_length;
-    wchar_t status[256];
+    HWND cancel;
+    ImportedMatch match;
+    bool has_match;
     wchar_t error[512];
-    RECT label_url;
-    RECT hint_rect;
-    RECT status_rect;
+    RECT instructions_rect;
+    RECT note_rect;
     RECT error_rect;
-} ImportUrlState;
+} ImportSourceState;
 
 typedef enum {
     IMPORT_ROW_NEW = 0,
@@ -162,7 +137,7 @@ typedef struct {
 } ImportMatchState;
 
 static void import_format_wide(wchar_t *buffer, size_t count,
-                                  const wchar_t *format, ...)
+                               const wchar_t *format, ...)
 {
     if (buffer == NULL || count == 0) {
         return;
@@ -174,487 +149,21 @@ static void import_format_wide(wchar_t *buffer, size_t count,
     buffer[count - 1] = L'\0';
 }
 
-static void import_url_show_error(ImportUrlState *state,
-                                  const wchar_t *message)
+static void import_source_show_error_wide(ImportSourceState *state,
+                                          const wchar_t *message)
 {
     import_format_wide(state->error,
-                          sizeof(state->error) / sizeof(state->error[0]),
-                          L"%ls", message);
+                       sizeof(state->error) / sizeof(state->error[0]),
+                       L"%ls", message);
     InvalidateRect(state->hwnd, NULL, FALSE);
 }
 
-static void import_url_set_status(ImportUrlState *state,
-                                  const wchar_t *status)
+static void import_source_show_error_utf8(ImportSourceState *state,
+                                          const char *message)
 {
-    import_format_wide(state->status,
-                          sizeof(state->status) / sizeof(state->status[0]),
-                          L"%ls", status != NULL ? status : L"");
+    ui_utf8_to_wide(message, state->error,
+                    sizeof(state->error) / sizeof(state->error[0]));
     InvalidateRect(state->hwnd, NULL, FALSE);
-}
-
-static bool import_http_get(const wchar_t *url, char **out_body,
-                            size_t *out_length, wchar_t *error,
-                            size_t error_count)
-{    *out_body = NULL;
-    *out_length = 0;
-
-    URL_COMPONENTS parts;
-    memset(&parts, 0, sizeof(parts));
-    parts.dwStructSize = sizeof(parts);
-    parts.dwSchemeLength = (DWORD)-1;
-    parts.dwHostNameLength = (DWORD)-1;
-    parts.dwUrlPathLength = (DWORD)-1;
-    parts.dwExtraInfoLength = (DWORD)-1;
-    if (!WinHttpCrackUrl(url, 0, 0, &parts)) {
-        import_format_wide(error, error_count,
-                              L"The URL could not be parsed (Windows error %lu).",
-                              (unsigned long)GetLastError());
-        return false;
-    }
-    if (parts.lpszHostName == NULL || parts.dwHostNameLength == 0 ||
-        parts.dwHostNameLength >= 256 || parts.lpszUrlPath == NULL ||
-        parts.dwUrlPathLength == 0) {
-        import_format_wide(error, error_count,
-                              L"The URL is missing its host or match path.");
-        return false;
-    }
-
-    wchar_t host[256];
-    wcsncpy(host, parts.lpszHostName, parts.dwHostNameLength);
-    host[parts.dwHostNameLength] = L'\0';
-    size_t path_length = (size_t)parts.dwUrlPathLength +
-                         (size_t)parts.dwExtraInfoLength;
-    wchar_t *path = malloc((path_length + 1) * sizeof(*path));
-    if (path == NULL) {
-        import_format_wide(error, error_count,
-                              L"Not enough memory to prepare the request.");
-        return false;
-    }
-    wcsncpy(path, parts.lpszUrlPath, parts.dwUrlPathLength);
-    if (parts.lpszExtraInfo != NULL && parts.dwExtraInfoLength > 0) {
-        wcsncpy(path + parts.dwUrlPathLength, parts.lpszExtraInfo,
-                parts.dwExtraInfoLength);
-    }
-    path[path_length] = L'\0';
-
-    HINTERNET session = NULL;
-    HINTERNET connection = NULL;
-    HINTERNET request = NULL;
-    char *body = NULL;
-    size_t length = 0;
-    size_t capacity = 0;
-    bool ok = false;
-
-    session = WinHttpOpen(
-        L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        L"AppleWebKit/537.36 (KHTML, like Gecko) "
-        L"Chrome/131.0.0.0 Safari/537.36",
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME,
-        WINHTTP_NO_PROXY_BYPASS, 0);
-    if (session == NULL) {
-        import_format_wide(error, error_count,
-                              L"Could not start an HTTP session (Windows "
-                              L"error %lu).", (unsigned long)GetLastError());
-        goto cleanup;
-    }
-    WinHttpSetTimeouts(session, 6000, 6000, 12000, 15000);
-
-    connection = WinHttpConnect(session, host, parts.nPort, 0);
-    if (connection == NULL) {
-        import_format_wide(error, error_count,
-                              L"Could not reach %ls (Windows error %lu).",
-                              host, (unsigned long)GetLastError());
-        goto cleanup;
-    }
-    DWORD flags = parts.nScheme == INTERNET_SCHEME_HTTPS
-                      ? WINHTTP_FLAG_SECURE
-                      : 0;
-    request = WinHttpOpenRequest(connection, L"GET", path, NULL,
-                                 WINHTTP_NO_REFERER,
-                                 WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
-    if (request == NULL) {
-        import_format_wide(error, error_count,
-                              L"Could not create the HTTP request (Windows "
-                              L"error %lu).", (unsigned long)GetLastError());
-        goto cleanup;
-    }
-    DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_ALL;
-    (void)WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION,
-                           &decompression, sizeof(decompression));
-
-    static const wchar_t headers[] =
-        L"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,"
-        L"image/avif,image/webp,*/*;q=0.8\r\n"
-        L"Accept-Language: en-US,en;q=0.9,fr-FR;q=0.8,fr;q=0.7\r\n"
-        L"Cache-Control: no-cache\r\n"
-        L"Pragma: no-cache\r\n"
-        L"Upgrade-Insecure-Requests: 1\r\n"
-        L"Referer: https://www.whoscored.com/\r\n";
-    if (!WinHttpSendRequest(request, headers, (DWORD)-1L,
-                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
-        import_format_wide(error, error_count,
-                              L"Could not send the request (Windows error "
-                              L"%lu).", (unsigned long)GetLastError());
-        goto cleanup;
-    }
-    if (!WinHttpReceiveResponse(request, NULL)) {
-        import_format_wide(error, error_count,
-                              L"WhoScored did not respond (Windows error "
-                              L"%lu).", (unsigned long)GetLastError());
-        goto cleanup;
-    }
-
-    DWORD status = 0;
-    DWORD status_size = sizeof(status);
-    if (!WinHttpQueryHeaders(request,
-                             WINHTTP_QUERY_STATUS_CODE |
-                                 WINHTTP_QUERY_FLAG_NUMBER,
-                             WINHTTP_HEADER_NAME_BY_INDEX, &status,
-                             &status_size, WINHTTP_NO_HEADER_INDEX)) {
-        import_format_wide(error, error_count,
-                              L"Could not read the HTTP status (Windows "
-                              L"error %lu).", (unsigned long)GetLastError());
-        goto cleanup;
-    }
-    if (status != 200) {
-        if (status == 403) {
-            import_format_wide(
-                error, error_count,
-                L"WhoScored's Cloudflare protection blocked the request "
-                L"(HTTP 403). If the match opens in your browser, choose "
-                L"Open in browser, press Ctrl+U, copy all, then choose "
-                L"Paste page source. If the browser is also blocked, use "
-                L"another network.");
-        } else if (status == 404) {
-            import_format_wide(error, error_count,
-                                  L"WhoScored could not find that match "
-                                  L"(HTTP 404). Check the URL.");
-        } else if (status == 429) {
-            import_format_wide(error, error_count,
-                                  L"WhoScored is rate-limiting requests "
-                                  L"(HTTP 429). Wait a moment and try again.");
-        } else {
-            import_format_wide(error, error_count,
-                                  L"WhoScored returned HTTP %lu.",
-                                  (unsigned long)status);
-        }
-        goto cleanup;
-    }
-
-    for (;;) {
-        DWORD available = 0;
-        if (!WinHttpQueryDataAvailable(request, &available)) {
-            import_format_wide(error, error_count,
-                                  L"Could not read the page (Windows error "
-                                  L"%lu).", (unsigned long)GetLastError());
-            goto cleanup;
-        }
-        if (available == 0) {
-            break;
-        }
-        if ((size_t)available > IMPORT_HTML_MAX - length) {
-            import_format_wide(error, error_count,
-                                  L"The match page is too large to import.");
-            goto cleanup;
-        }
-        size_t needed = length + (size_t)available + 1;
-        if (needed > capacity) {
-            size_t next = capacity == 0 ? 65536 : capacity;
-            while (next < needed) {
-                next *= 2;
-            }
-            if (next > (size_t)IMPORT_HTML_MAX + 1) {
-                next = (size_t)IMPORT_HTML_MAX + 1;
-            }
-            char *grown = realloc(body, next);
-            if (grown == NULL) {
-                import_format_wide(
-                    error, error_count,
-                    L"Not enough memory to download the match page.");
-                goto cleanup;
-            }
-            body = grown;
-            capacity = next;
-        }
-        DWORD read = 0;
-        if (!WinHttpReadData(request, body + length, available, &read)) {
-            import_format_wide(error, error_count,
-                                  L"Could not finish reading the page "
-                                  L"(Windows error %lu).",
-                                  (unsigned long)GetLastError());
-            goto cleanup;
-        }
-        if (read == 0) {
-            break;
-        }
-        length += read;
-    }
-
-    if (length == 0) {
-        import_format_wide(error, error_count,
-                              L"WhoScored returned an empty page.");
-        goto cleanup;
-    }
-    body[length] = '\0';
-    if (!util_utf8_valid_n(body, length)) {
-        import_format_wide(error, error_count,
-                              L"The WhoScored page is not valid UTF-8 text.");
-        goto cleanup;
-    }
-    *out_body = body;
-    *out_length = length;
-    body = NULL;
-    ok = true;
-
-cleanup:
-    free(body);
-    free(path);
-    if (request != NULL) {
-        WinHttpCloseHandle(request);
-    }
-    if (connection != NULL) {
-        WinHttpCloseHandle(connection);
-    }
-    if (session != NULL) {
-        WinHttpCloseHandle(session);
-    }
-    return ok;
-}
-
-static unsigned __stdcall import_fetch_thread(void *parameter)
-{
-    ImportFetchJob *job = (ImportFetchJob *)parameter;
-    job->ok = import_http_get(job->url, &job->body, &job->length,
-                              job->error,
-                              sizeof(job->error) / sizeof(job->error[0]));
-    PostMessageW(job->notify, WM_IMPORT_FETCH_DONE, 0, 0);
-    return 0;
-}
-
-static void import_url_layout(ImportUrlState *state, int width, int height)
-{
-    UiTheme *theme = &state->app->ui;
-    int margin = ui_scale(theme, 28);
-    int label_height = ui_scale(theme, 18);
-    int field_height = ui_scale(theme, 34);
-    int y = ui_scale(theme, 96);
-    state->label_url = (RECT){ margin, y, width - margin,
-                               y + label_height };
-    MoveWindow(state->url, margin, y + label_height + ui_scale(theme, 5),
-               width - margin * 2, field_height, TRUE);
-    y += label_height + field_height + ui_scale(theme, 12);
-    state->hint_rect = (RECT){ margin, y, width - margin,
-                               y + ui_scale(theme, 36) };
-    y += ui_scale(theme, 44);
-    state->status_rect = (RECT){ margin, y, width - margin,
-                                 y + ui_scale(theme, 24) };
-    int error_top = y + ui_scale(theme, 26);
-    int button_height = ui_scale(theme, 36);
-    int button_y = height - ui_scale(theme, 58);
-    int error_bottom = error_top + ui_scale(theme, 66);
-    if (error_bottom > button_y - ui_scale(theme, 6)) {
-        error_bottom = button_y - ui_scale(theme, 6);
-    }
-    if (error_bottom < error_top) {
-        error_bottom = error_top;
-    }
-    state->error_rect = (RECT){ margin, error_top, width - margin,
-                                error_bottom };
-    int fetch_width = ui_scale(theme, 168);
-    int cancel_width = ui_scale(theme, 92);
-    int paste_width = ui_scale(theme, 168);
-    int open_width = ui_scale(theme, 132);
-    int right = width - margin;
-    int fetch_x = right - fetch_width;
-    int cancel_x = fetch_x - ui_scale(theme, 10) - cancel_width;
-    int paste_x = cancel_x - ui_scale(theme, 10) - paste_width;
-    int open_x = paste_x - ui_scale(theme, 10) - open_width;
-    MoveWindow(state->fetch, fetch_x, button_y,
-               fetch_width, button_height, TRUE);
-    MoveWindow(state->cancel, cancel_x, button_y, cancel_width,
-               button_height, TRUE);
-    MoveWindow(state->paste, paste_x, button_y, paste_width,
-               button_height, TRUE);
-    MoveWindow(state->open_browser, open_x, button_y, open_width,
-               button_height, TRUE);
-}
-
-static LRESULT import_url_paint(ImportUrlState *state, HWND hwnd)
-{
-    PAINTSTRUCT paint;
-    HDC target = BeginPaint(hwnd, &paint);
-    RECT client;
-    GetClientRect(hwnd, &client);
-    UiCanvas canvas;
-    if (ui_canvas_begin(&canvas, hwnd, target, &state->app->ui,
-                        UI_COLOR_BG)) {
-        dialog_draw_chrome(
-            state->app, canvas.dc, client.right,
-            L"Import a match from WhoScored",
-            L"Download one match page, review it, then confirm the import.");
-        dialog_draw_label(state->app, canvas.dc, state->label_url.left,
-                          state->label_url.top, L"WhoScored match URL");
-        ui_draw_text(
-            canvas.dc, state->app->ui.font_small, UI_COLOR_FAINT,
-            state->hint_rect,
-            L"Paste a WhoScored match URL, or use Open in browser when "
-            L"WhoScored blocks the download.\n"
-            L"After the browser shows the page, press Ctrl+U, copy all, then "
-            L"choose Paste page source.",
-            DT_LEFT | DT_TOP | DT_WORDBREAK);
-        ui_draw_text(canvas.dc, state->app->ui.font_small,
-                     state->fetching ? UI_COLOR_ACCENT : UI_COLOR_MUTED,
-                     state->status_rect, state->status,
-                     DT_LEFT | DT_VCENTER | DT_SINGLELINE |
-                         DT_END_ELLIPSIS);
-        ui_draw_text(canvas.dc, state->app->ui.font_small, UI_COLOR_DANGER,
-                     state->error_rect, state->error,
-                     DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
-        ui_canvas_end(&canvas);
-    }
-    EndPaint(hwnd, &paint);
-    return 0;
-}
-
-static void import_url_finish_fetch(ImportUrlState *state)
-{
-    if (state->thread == NULL) {
-        return;
-    }
-    WaitForSingleObject(state->thread, INFINITE);
-    CloseHandle(state->thread);
-    state->thread = NULL;
-    ImportFetchJob *job = state->job;
-    state->job = NULL;
-    state->fetching = false;
-    if (job == NULL) {
-        return;
-    }
-    if (state->cancel_requested) {
-        free(job->body);
-        free(job);
-        dialog_close(state->hwnd);
-        return;
-    }
-    if (!job->ok) {
-        import_format_wide(
-            state->error,
-            sizeof(state->error) / sizeof(state->error[0]),
-            L"%ls", job->error[0] != L'\0' ? job->error
-                                            : L"The download failed.");
-        free(job->body);
-        free(job);
-        EnableWindow(state->url, TRUE);
-        EnableWindow(state->fetch, TRUE);
-        EnableWindow(state->open_browser, TRUE);
-        EnableWindow(state->paste, TRUE);
-        EnableWindow(state->cancel, TRUE);
-        import_url_set_status(state,
-                              L"Direct download failed. See the details below.");
-        SetFocus(state->fetch);
-        return;
-    }
-    state->html = job->body;
-    state->html_length = job->length;
-    job->body = NULL;
-    free(job);
-    dialog_close(state->hwnd);
-}
-
-static void import_trim_wide_in_place(wchar_t *text)
-{
-    if (text == NULL) {
-        return;
-    }
-    wchar_t *start = text;
-    while (*start == L' ' || *start == L'\t' || *start == L'\r' ||
-           *start == L'\n') {
-        ++start;
-    }
-    if (start != text) {
-        memmove(text, start, (wcslen(start) + 1) * sizeof(*text));
-    }
-    size_t length = wcslen(text);
-    while (length > 0) {
-        wchar_t value = text[length - 1];
-        if (value != L' ' && value != L'\t' && value != L'\r' &&
-            value != L'\n') {
-            break;
-        }
-        text[--length] = L'\0';
-    }
-}
-
-static void import_url_start_fetch(ImportUrlState *state)
-{
-    if (state->fetching) {
-        return;
-    }
-    wchar_t wide_url[IMPORT_URL_MAX + 1];
-    ui_edit_get_wide(state->url, wide_url,
-                     sizeof(wide_url) / sizeof(wide_url[0]));
-    import_trim_wide_in_place(wide_url);
-    SetWindowTextW(state->url, wide_url);
-    char utf8_url[IMPORT_URL_MAX * 4 + 1];
-    ui_wide_to_utf8(wide_url, utf8_url, sizeof(utf8_url));
-    if (!import_url_valid(utf8_url)) {
-        import_url_show_error(
-            state,
-            L"Enter a full WhoScored match URL, for example "
-            L"https://fr.whoscored.com/matches/1984066/live/...");
-        SetFocus(state->url);
-        return;
-    }
-
-    ImportFetchJob *job = calloc(1, sizeof(*job));
-    if (job == NULL) {
-        import_url_show_error(state,
-                              L"Not enough memory to start the download.");
-        return;
-    }
-    wcsncpy(job->url, wide_url,
-            sizeof(job->url) / sizeof(job->url[0]) - 1);
-    job->url[sizeof(job->url) / sizeof(job->url[0]) - 1] = L'\0';
-    job->notify = state->hwnd;
-
-    state->error[0] = L'\0';
-    state->status[0] = L'\0';
-    state->job = job;
-    state->fetching = true;
-    state->cancel_requested = false;
-    EnableWindow(state->url, FALSE);
-    EnableWindow(state->fetch, FALSE);
-    EnableWindow(state->open_browser, FALSE);
-    EnableWindow(state->paste, FALSE);
-    EnableWindow(state->cancel, TRUE);
-    import_url_set_status(state, L"Downloading the match page...");
-    state->thread = (HANDLE)_beginthreadex(
-        NULL, 0, import_fetch_thread, job, 0, NULL);
-    if (state->thread == NULL) {
-        state->fetching = false;
-        state->job = NULL;
-        free(job);
-        EnableWindow(state->url, TRUE);
-        EnableWindow(state->fetch, TRUE);
-        EnableWindow(state->open_browser, TRUE);
-        EnableWindow(state->paste, TRUE);
-        import_url_show_error(state,
-                              L"Could not start the download thread.");
-        import_url_set_status(state, L"Try again.");
-        return;
-    }
-    SetFocus(state->cancel);
-}
-
-static void import_url_cancel(ImportUrlState *state)
-{
-    if (state->fetching) {
-        state->cancel_requested = true;
-        import_url_set_status(state, L"Cancelling the download...");
-        EnableWindow(state->cancel, FALSE);
-        return;
-    }
-    dialog_close(state->hwnd);
 }
 
 static bool import_clipboard_read(HWND owner, char **out_text,
@@ -749,78 +258,141 @@ static bool import_clipboard_read(HWND owner, char **out_text,
     return true;
 }
 
-static void import_url_open_browser(ImportUrlState *state)
+static void import_source_paste(ImportSourceState *state)
 {
-    if (state->fetching) {
-        return;
-    }
-    wchar_t wide_url[IMPORT_URL_MAX + 1];
-    ui_edit_get_wide(state->url, wide_url,
-                     sizeof(wide_url) / sizeof(wide_url[0]));
-    import_trim_wide_in_place(wide_url);
-    SetWindowTextW(state->url, wide_url);
-    char utf8_url[IMPORT_URL_MAX * 4 + 1];
-    ui_wide_to_utf8(wide_url, utf8_url, sizeof(utf8_url));
-    if (!import_url_valid(utf8_url)) {
-        import_url_show_error(
-            state,
-            L"Enter a full WhoScored match URL before opening the browser.");
-        SetFocus(state->url);
-        return;
-    }
-    HINSTANCE result = ShellExecuteW(state->hwnd, L"open", wide_url, NULL,
-                                     NULL, SW_SHOWNORMAL);
-    if ((INT_PTR)result <= 32) {
-        import_url_show_error(
-            state, L"Windows could not open the URL in the default browser.");
-        return;
-    }
-    state->error[0] = L'\0';
-    import_url_set_status(
-        state,
-        L"Complete the browser check, press Ctrl+U to view the source, "
-        L"copy all, then choose Paste page source.");
-}
-
-static void import_url_paste_source(ImportUrlState *state)
-{
-    if (state->fetching) {
-        return;
-    }
     char *text = NULL;
     size_t length = 0;
-    wchar_t error[512];
-    if (!import_clipboard_read(state->hwnd, &text, &length, error,
-                               sizeof(error) / sizeof(error[0]))) {
-        import_url_show_error(state, error);
+    wchar_t clipboard_error[512];
+    if (!import_clipboard_read(state->hwnd, &text, &length, clipboard_error,
+                               sizeof(clipboard_error) /
+                                   sizeof(clipboard_error[0]))) {
+        import_source_show_error_wide(state, clipboard_error);
         return;
     }
-    if (!util_utf8_valid_n(text, length)) {
-        free(text);
-        import_url_show_error(state,
-                              L"The clipboard text is not valid UTF-8.");
+
+    ImportedMatch match;
+    char parse_error[512];
+    bool ok = imported_match_parse_html(text, length, &match, parse_error,
+                                        sizeof(parse_error));
+    free(text);
+    if (!ok) {
+        import_source_show_error_utf8(state, parse_error);
         return;
     }
-    if (strstr(text, "matchCentreData") == NULL) {
-        free(text);
-        import_url_show_error(
-            state,
-            L"The clipboard does not contain WhoScored page source. Open "
-            L"the match in your browser, press Ctrl+U, select all and copy, "
-            L"then try again.");
-        return;
-    }
+
+    imported_match_free(&state->match);
+    state->match = match;
+    state->has_match = true;
     state->error[0] = L'\0';
-    state->html = text;
-    state->html_length = length;
     dialog_close(state->hwnd);
 }
 
-LRESULT CALLBACK import_url_dialog_proc(HWND hwnd, UINT message,
-                                        WPARAM wparam, LPARAM lparam)
+static void import_source_layout(ImportSourceState *state, int width,
+                                 int height)
 {
-    ImportUrlState *state =
-        (ImportUrlState *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    UiTheme *theme = &state->app->ui;
+    int margin = ui_scale(theme, 28);
+    int content_width = width - margin * 2;
+    if (content_width < 0) {
+        content_width = 0;
+    }
+    state->instructions_rect = (RECT){ margin, ui_scale(theme, 94),
+                                       margin + content_width,
+                                       ui_scale(theme, 94) +
+                                           ui_scale(theme, 164) };
+    state->note_rect = (RECT){ margin,
+                               state->instructions_rect.bottom +
+                                   ui_scale(theme, 10),
+                               margin + content_width,
+                               state->instructions_rect.bottom +
+                                   ui_scale(theme, 44) };
+    int button_height = ui_scale(theme, 36);
+    int button_y = height - ui_scale(theme, 58);
+    int error_top = state->note_rect.bottom + ui_scale(theme, 8);
+    int error_bottom = button_y - ui_scale(theme, 8);
+    if (error_bottom < error_top) {
+        error_bottom = error_top;
+    }
+    state->error_rect = (RECT){ margin, error_top, margin + content_width,
+                                error_bottom };
+
+    int paste_width = ui_scale(theme, 190);
+    int cancel_width = ui_scale(theme, 92);
+    int right = width - margin;
+    int paste_x = right - paste_width;
+    int cancel_x = paste_x - ui_scale(theme, 10) - cancel_width;
+    MoveWindow(state->paste, paste_x, button_y, paste_width,
+               button_height, TRUE);
+    MoveWindow(state->cancel, cancel_x, button_y, cancel_width,
+               button_height, TRUE);
+}
+
+static LRESULT import_source_paint(ImportSourceState *state, HWND hwnd)
+{
+    PAINTSTRUCT paint;
+    HDC target = BeginPaint(hwnd, &paint);
+    RECT client;
+    GetClientRect(hwnd, &client);
+    UiCanvas canvas;
+    if (ui_canvas_begin(&canvas, hwnd, target, &state->app->ui,
+                        UI_COLOR_BG)) {
+        dialog_draw_chrome(
+            state->app, canvas.dc, client.right,
+            L"Import match from WhoScored",
+            L"Paste the match page source copied from your browser.");
+        ui_fill_round_rect(canvas.dc, state->instructions_rect,
+                           ui_scale(&state->app->ui, 10), UI_COLOR_CARD);
+        ui_stroke_round_rect(canvas.dc, state->instructions_rect,
+                             ui_scale(&state->app->ui, 10), UI_COLOR_CARD,
+                             UI_COLOR_BORDER);
+
+        UiTheme *theme = &state->app->ui;
+        int text_left = state->instructions_rect.left +
+                        ui_scale(theme, 18);
+        int text_right = state->instructions_rect.right -
+                         ui_scale(theme, 18);
+        int line_y = state->instructions_rect.top + ui_scale(theme, 16);
+        RECT title = { text_left, line_y, text_right,
+                       line_y + ui_scale(theme, 24) };
+        ui_draw_text(canvas.dc, theme->font_body_bold, UI_COLOR_TEXT, title,
+                     L"Get the page source",
+                     DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        line_y += ui_scale(theme, 28);
+        static const wchar_t *steps[4] = {
+            L"1. Open the WhoScored match page in your browser.",
+            L"2. Press Ctrl+U to view the page source.",
+            L"3. Press Ctrl+A, then Ctrl+C.",
+            L"4. Return here and choose Paste page source.",
+        };
+        for (int i = 0; i < 4; ++i) {
+            RECT line = { text_left, line_y, text_right,
+                          line_y + ui_scale(theme, 24) };
+            ui_draw_text(canvas.dc, theme->font_body, UI_COLOR_TEXT, line,
+                         steps[i], DT_LEFT | DT_VCENTER | DT_SINGLELINE |
+                                       DT_END_ELLIPSIS);
+            line_y += ui_scale(theme, 24);
+        }
+
+        ui_draw_text(
+            canvas.dc, theme->font_small, UI_COLOR_MUTED,
+            state->note_rect,
+            L"Copying the normal page gives visible text, not HTML. Use View "
+            L"Source. PitchRate does not request the URL itself.",
+            DT_LEFT | DT_TOP | DT_WORDBREAK);
+        ui_draw_text(canvas.dc, theme->font_small, UI_COLOR_DANGER,
+                     state->error_rect, state->error,
+                     DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
+        ui_canvas_end(&canvas);
+    }
+    EndPaint(hwnd, &paint);
+    return 0;
+}
+
+LRESULT CALLBACK import_source_dialog_proc(HWND hwnd, UINT message,
+                                           WPARAM wparam, LPARAM lparam)
+{
+    ImportSourceState *state =
+        (ImportSourceState *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     switch (message) {
     case WM_NCCREATE: {
         CREATESTRUCTW *create = (CREATESTRUCTW *)lparam;
@@ -829,8 +401,8 @@ LRESULT CALLBACK import_url_dialog_proc(HWND hwnd, UINT message,
         return TRUE;
     }
     case WM_SIZE:
-        if (state != NULL && state->fetch != NULL) {
-            import_url_layout(state, LOWORD(lparam), HIWORD(lparam));
+        if (state != NULL && state->paste != NULL) {
+            import_source_layout(state, LOWORD(lparam), HIWORD(lparam));
             InvalidateRect(hwnd, NULL, FALSE);
         }
         return 0;
@@ -838,7 +410,7 @@ LRESULT CALLBACK import_url_dialog_proc(HWND hwnd, UINT message,
         return 1;
     case WM_PAINT:
         if (state != NULL) {
-            return import_url_paint(state, hwnd);
+            return import_source_paint(state, hwnd);
         }
         break;
     case WM_CTLCOLOREDIT:
@@ -849,40 +421,17 @@ LRESULT CALLBACK import_url_dialog_proc(HWND hwnd, UINT message,
         if (state == NULL) {
             break;
         }
-        if (LOWORD(wparam) == IMPORT_URL_EDIT_ID &&
-            HIWORD(wparam) == EN_CHANGE) {
-            if (!state->fetching && state->error[0] != L'\0') {
-                state->error[0] = L'\0';
-                InvalidateRect(hwnd, NULL, FALSE);
-            }
+        if (LOWORD(wparam) == IMPORT_SOURCE_PASTE_ID) {
+            import_source_paste(state);
             return 0;
         }
-        if (LOWORD(wparam) == IMPORT_URL_OPEN_ID) {
-            import_url_open_browser(state);
-            return 0;
-        }
-        if (LOWORD(wparam) == IMPORT_URL_PASTE_ID) {
-            import_url_paste_source(state);
-            return 0;
-        }
-        if (LOWORD(wparam) == IMPORT_URL_FETCH_ID) {
-            import_url_start_fetch(state);
-            return 0;
-        }
-        if (LOWORD(wparam) == IMPORT_URL_CANCEL_ID) {
-            import_url_cancel(state);
+        if (LOWORD(wparam) == IMPORT_SOURCE_CANCEL_ID) {
+            dialog_close(hwnd);
             return 0;
         }
         break;
-    case WM_IMPORT_FETCH_DONE:
-        if (state != NULL) {
-            import_url_finish_fetch(state);
-        }
-        return 0;
     case WM_CLOSE:
-        if (state != NULL) {
-            import_url_cancel(state);
-        }
+        dialog_close(hwnd);
         return 0;
     default:
         break;
@@ -890,69 +439,44 @@ LRESULT CALLBACK import_url_dialog_proc(HWND hwnd, UINT message,
     return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
-static bool import_url_dialog_run(App *app, char **out_html,
-                                  size_t *out_length)
+static bool import_source_dialog_run(App *app, ImportedMatch *out_match)
 {
-    *out_html = NULL;
-    *out_length = 0;
-    ImportUrlState state;
+    memset(out_match, 0, sizeof(*out_match));
+    ImportSourceState state;
     memset(&state, 0, sizeof(state));
     state.app = app;
     HWND hwnd = dialog_create_shell(
-        app, app->main_hwnd, PITCHRATE_IMPORT_URL_DIALOG_CLASS,
-        L"Import match - PitchRate", 720, 350, &state);
+        app, app->main_hwnd, PITCHRATE_IMPORT_SOURCE_DIALOG_CLASS,
+        L"Import match - PitchRate", 720, 430, &state);
     if (hwnd == NULL) {
         return false;
     }
     state.hwnd = hwnd;
     UiTheme *theme = &app->ui;
-    state.url = ui_edit_create(hwnd, IMPORT_URL_EDIT_ID, L"",
-                               0, 0, 10, 10, theme->font_body,
-                               IMPORT_URL_MAX);
-    state.open_browser = ui_button_create(
-        hwnd, IMPORT_URL_OPEN_ID, L"Open in browser",
-        0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
     state.paste = ui_button_create(
-        hwnd, IMPORT_URL_PASTE_ID, L"Paste page source",
-        0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
-    state.cancel = ui_button_create(
-        hwnd, IMPORT_URL_CANCEL_ID, L"Cancel",
-        0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
-    state.fetch = ui_button_create(
-        hwnd, IMPORT_URL_FETCH_ID, L"Download match",
+        hwnd, IMPORT_SOURCE_PASTE_ID, L"Paste page source",
         0, 0, 10, 10, UI_BUTTON_PRIMARY, theme->font_button);
-    if (state.url == NULL || state.fetch == NULL || state.cancel == NULL ||
-        state.open_browser == NULL || state.paste == NULL) {
+    state.cancel = ui_button_create(
+        hwnd, IMPORT_SOURCE_CANCEL_ID, L"Cancel",
+        0, 0, 10, 10, UI_BUTTON_SECONDARY, theme->font_button);
+    if (state.paste == NULL || state.cancel == NULL) {
         dialog_close(hwnd);
         return false;
     }
-    ui_edit_set_cue(state.url,
-                    L"https://fr.whoscored.com/matches/1984066/live/...");
     RECT client;
     GetClientRect(hwnd, &client);
-    import_url_layout(&state, client.right, client.bottom);
+    import_source_layout(&state, client.right, client.bottom);
     InvalidateRect(hwnd, NULL, FALSE);
-    ui_run_modal(hwnd, app->main_hwnd, IMPORT_URL_FETCH_ID);
+    ui_run_modal(hwnd, app->main_hwnd, IMPORT_SOURCE_PASTE_ID);
 
-    if (state.thread != NULL) {
-        WaitForSingleObject(state.thread, INFINITE);
-        CloseHandle(state.thread);
-        state.thread = NULL;
+    bool selected = state.has_match;
+    if (selected) {
+        *out_match = state.match;
+        memset(&state.match, 0, sizeof(state.match));
     }
-    if (state.job != NULL) {
-        free(state.job->body);
-        free(state.job);
-        state.job = NULL;
-    }
-    if (state.html != NULL) {
-        *out_html = state.html;
-        *out_length = state.html_length;
-        state.html = NULL;
-        state.html_length = 0;
-    }
-    return *out_html != NULL;
+    imported_match_free(&state.match);
+    return selected;
 }
-
 static uint64_t import_team_id_from_edit(App *app, HWND edit)
 {
     char name[256];
@@ -2371,20 +1895,13 @@ static uint64_t import_preview_run(App *app, const ImportedMatch *match)
 
 uint64_t dialog_import_match(App *app)
 {
-    char *html = NULL;
-    size_t length = 0;
-    if (!import_url_dialog_run(app, &html, &length)) {
+    if (app == NULL) {
         return 0;
     }
     ImportedMatch match;
-    char error[512];
-    if (!imported_match_parse_html(html, length, &match, error,
-                                   sizeof(error))) {
-        free(html);
-        app_show_error_utf8(app, L"Could not import the match", error);
+    if (!import_source_dialog_run(app, &match)) {
         return 0;
     }
-    free(html);
     uint64_t match_id = import_preview_run(app, &match);
     imported_match_free(&match);
     return match_id;

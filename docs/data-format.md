@@ -8,7 +8,7 @@ Default:
 %LOCALAPPDATA%\PitchRate\data.frc
 ```
 
-A different file can be selected with `--data <path>`. The parent folder is created on demand. Data remains local. The only network access is a user-started WhoScored match page download; see [whoscored-import.md](whoscored-import.md).
+A different file can be selected with `--data <path>`. The parent folder is created on demand. Data remains local. PitchRate makes no network requests; WhoScored imports use page source pasted from the browser; see [whoscored-import.md](whoscored-import.md).
 
 ## Integrity model
 

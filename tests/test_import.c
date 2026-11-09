@@ -41,31 +41,6 @@ static const char *HTML_FIXTURE =
     "};\n"
     "</script></body></html>\n";
 
-static bool test_url_validation(void)
-{
-    CHECK(import_url_valid(
-        "https://fr.whoscored.com/matches/1984066/live/"
-        "france-ligue-1-2026-2027-rennes-paris-saint-germain"));
-    CHECK(import_url_valid("http://www.whoscored.com/Matches/123/Show/foo"));
-    CHECK(import_url_valid("https://whoscored.com/matches/1"));
-    CHECK(import_url_valid(
-        "https://fr.whoscored.com:443/matches/1/live/x"));
-    CHECK(import_url_valid("  https://fr.whoscored.com/matches/42/live/a  "));
-
-    CHECK(!import_url_valid(NULL));
-    CHECK(!import_url_valid(""));
-    CHECK(!import_url_valid("ftp://fr.whoscored.com/matches/1"));
-    CHECK(!import_url_valid("https://example.com/matches/1"));
-    CHECK(!import_url_valid("https://fr.whoscored.com/regions/1"));
-    CHECK(!import_url_valid("https://fr.whoscored.com/matches/abc/live"));
-    CHECK(!import_url_valid("https://whoscored.com.evil.com/matches/1"));
-    CHECK(!import_url_valid("https://user@fr.whoscored.com/matches/1"));
-    CHECK(!import_url_valid("https://fr.whoscored.com:abc/matches/1"));
-    CHECK(!import_url_valid("https://fr.whoscored.com/matches/1\r\nHost: evil"));
-    CHECK(import_url_valid("https://fr.whoscored.com/matches/1/"));
-    return true;
-}
-
 static bool test_parse_match_page(void)
 {
     ImportedMatch match;
@@ -717,7 +692,6 @@ static bool test_import_rejects_mismatched_existing_name(void)
 }
 
 const TestCase g_import_tests[] = {
-    TEST_CASE(test_url_validation),
     TEST_CASE(test_parse_match_page),
     TEST_CASE(test_parse_score_fallback_and_extra_time),
     TEST_CASE(test_parse_escaped_names),

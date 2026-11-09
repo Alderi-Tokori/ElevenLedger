@@ -15,7 +15,7 @@ Non-negotiables:
 - Every persisted mutation goes through the transactional app layer.
 - Unit tests must pass before a commit.
 - Git is local only. Never add a remote or push.
-- Network access is limited to the explicit, user-started WhoScored match page download. Never send local data, use credentials, or add background network activity.
+- PitchRate must make no network requests. WhoScored imports use page source pasted from the user's browser; never add URL fetching, embedded browsers, or anti-bot bypasses.
 
 Do not inspect or reuse code outside this working directory. Work from this repository and its documentation.
 
@@ -64,7 +64,7 @@ src/main.c                WinMain, command line, DPI awareness
 src/core/util.c           UTF-8, dates, parsing, CRC-32
 src/core/rating.c         Pure rating calculations
 src/core/database.c       In-memory domain model, validation, chronological replay
-src/core/import.c         WhoScored URL validation and HTML/JSON parsing
+src/core/import.c         WhoScored HTML parsing
 src/core/import_apply.c   Transactional club/player/match import engine
 src/core/storage.c        Versioned checksummed file format, atomic save, recovery
 src/ui/theme.c            DPI-scaled fonts, colours, double-buffered paint helpers
@@ -73,13 +73,13 @@ src/ui/page.c             Shared page window and card/header/empty-state paintin
 src/ui/page_*.c           Five application pages
 src/ui/dialogs.c          Shared modal shell and team/player dialogs
 src/ui/dialog_match.c     Record/edit-match and match-details dialogs
-src/ui/dialog_import.c    WinHTTP download, import preview and duplicate cues
+src/ui/dialog_import.c    Page-source clipboard import and preview cues
 src/ui/main_window.c      Shell, sidebar navigation, keyboard accelerators
 ```
 
 Layering rules:
 
-1. `src/core` must not depend on Win32 UI or the `App` type. The import parser and apply engine must stay testable without a display; only `dialog_import.c` may use WinHTTP and the preview controls.
+1. `src/core` must not depend on Win32 UI or the `App` type. The import parser and apply engine must stay testable without a display; only `dialog_import.c` may use the clipboard and the preview controls.
 2. UI code must not write the data file directly. Use `app_tx_begin`, `app_tx_commit` and `app_tx_abort`.
 3. Derived values (current ratings, appearance before/delta/after, match summaries, player totals) are recomputed. Only source data belongs in the file.
 4. The data format is versioned. Format v3 removes player position; v1/v2 files must keep loading with their legacy position discarded and missing neutral values defaulting to false. Add migration tests before changing it again.
@@ -123,7 +123,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - No silent reset. If both primary and backup fail validation, stop and report the error.
 - All new file validation must reject duplicates, dangling IDs, invalid ranges, invalid UTF-8 and malformed records.
 - WhoScored imports must validate the complete plan before mutation, then create clubs, move/create players and add the match inside one app transaction. Cancelling or failing the preview must leave the database unchanged.
-- Update `docs/data-format.md` and storage tests for format changes. Network and import behaviour belongs in `docs/whoscored-import.md`.
+- Update `docs/data-format.md` and storage tests for format changes. Import behaviour belongs in `docs/whoscored-import.md`.
 
 ## UI rules
 
@@ -140,8 +140,8 @@ Never patch ratings in a page or dialog. Fix the engine.
 - When adding a player, default the team to the most recently created player's team; use `db_last_added_player` rather than array order guesses.
 - Match dialogs show each team's squad in its own list. Add player actions from those lists must use `dialog_add_player_for_team` so the fixed team, validation and duplicate-name flow stay identical to the Players page. Team selectors include every club, even those without players; saving still requires at least one selected player per side.
 - Adding a player whose full name matches an existing player must show the existing player's details and offer to add a duplicate, move the existing player to the selected club, or cancel. Use `db_find_player_by_name`; never add the duplicate silently.
-- The WhoScored import preview must not mutate data before confirmation. It must show the scraped date, clubs, score, players and minutes, and recompute each player's new/same-club/other-club/archived cue whenever a name or club changes. Per-player duplicate decisions must be explicit; never move an existing player silently.
-- Downloading a match page must run off the UI thread, keep the URL dialog open on failure, and report the HTTP status. Never bypass or embed a browser challenge. When a direct download is blocked, offer the browser-assisted path: open the URL in the default browser, let the user complete the check, and parse page source pasted from the clipboard locally.
+- The WhoScored import source dialog must accept page source from the clipboard, keep itself open and show the parser error when the source is invalid, and never fetch a URL. The preview must not mutate data before confirmation. It must show the scraped date, clubs, score, players and minutes, and recompute each player's new/same-club/other-club/archived cue whenever a name or club changes. Per-player duplicate decisions must be explicit; never move an existing player silently.
+- Do not add URL fetching, embedded browsers, User-Agent spoofing or anti-bot bypasses. WhoScored's browser-assisted page-source paste is the supported path.
 - Pages and dialogs must tolerate DPI settings and available work-area clamping down to the documented minimum display. Do not assume the screen size; clamp all dimensions to non-negative values.
 - Text must be valid UTF-8 internally. Convert only at the Win32 boundary.
 - Lists must preserve selected IDs across refresh when possible.
@@ -158,8 +158,8 @@ Minimum coverage areas for changes:
 - rating maths and invariants,
 - date and UTF-8 validation,
 - database CRUD, references, replay, deletion and transfer behaviour,
-- WhoScored URL validation, HTML/JSON parsing, minutes and player-name splitting,
-- transactional import planning, club creation, player creation/moves, archived players and duplicate validation,
+- WhoScored HTML parsing, minutes and player-name splitting,
+- clipboard source validation, transactional import planning, club creation, player creation/moves, archived players and duplicate validation,
 - storage round-trip, corruption, recovery and compatibility,
 - GUI starts, pages render, modal ownership and complete save flows.
 
