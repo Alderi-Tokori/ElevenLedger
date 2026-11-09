@@ -114,6 +114,9 @@ typedef struct {
     size_t row_count;
     size_t home_row_count;
     int match_length;
+    double *preview_ratings;
+    size_t preview_rating_count;
+    DialogRatingPreview preview;
     bool building;
     bool ready;
     HWND cell_edit;
@@ -130,6 +133,7 @@ typedef struct {
     RECT label_away_score;
     RECT label_away_team;
     RECT neutral_rect;
+    RECT preview_rect;
     RECT legend_rect;
     RECT info_rect;
     RECT section_rect;
@@ -559,6 +563,110 @@ static void import_show_error_wide(ImportMatchState *state,
                           sizeof(state->error) / sizeof(state->error[0]),
                           L"%ls", error);
     InvalidateRect(state->hwnd, NULL, FALSE);
+}
+
+static void import_refresh_preview_ratings(ImportMatchState *state)
+{
+    free(state->preview_ratings);
+    state->preview_ratings = NULL;
+    state->preview_rating_count = 0;
+    if (state->date == NULL) {
+        return;
+    }
+    char date[MATCH_DATE_MAX + 1];
+    ui_edit_get_utf8(state->date, date, sizeof(date));
+    if (!util_date_valid(date)) {
+        return;
+    }
+    Database *db = &state->app->db;
+    if (db->player_count == 0) {
+        return;
+    }
+    double *ratings = malloc(db->player_count * sizeof(*ratings));
+    if (ratings == NULL) {
+        return;
+    }
+    char error[256];
+    if (!db_ratings_before_match(db, date, db->next_match_id, ratings,
+                                 error, sizeof(error))) {
+        free(ratings);
+        return;
+    }
+    state->preview_ratings = ratings;
+    state->preview_rating_count = db->player_count;
+}
+
+static double import_pre_match_rating(const ImportMatchState *state,
+                                      const Player *player)
+{
+    if (player == NULL) {
+        return RATING_DEFAULT;
+    }
+    Database *db = &state->app->db;
+    if (state->preview_ratings == NULL ||
+        state->preview_rating_count != db->player_count) {
+        return player->current_rating;
+    }
+    size_t index = (size_t)(player - db->players);
+    if (index >= state->preview_rating_count) {
+        return player->current_rating;
+    }
+    return state->preview_ratings[index];
+}
+
+static double import_row_preview_rating(ImportMatchState *state,
+                                        const ImportRow *row)
+{
+    if (row->action == IMPORT_PLAYER_CREATE) {
+        return RATING_DEFAULT;
+    }
+    const Player *existing = db_find_player(&state->app->db,
+                                            row->existing_player_id);
+    if (existing == NULL) {
+        return RATING_DEFAULT;
+    }
+    return import_pre_match_rating(state, existing);
+}
+
+static void import_update_preview(ImportMatchState *state)
+{
+    memset(&state->preview, 0, sizeof(state->preview));
+    size_t home_count = 0;
+    size_t away_count = 0;
+    for (size_t i = 0; i < state->row_count; ++i) {
+        if (state->rows[i].home) {
+            home_count++;
+        } else {
+            away_count++;
+        }
+    }
+
+    size_t total = home_count + away_count;
+    RatingPlayerInput *players = NULL;
+    if (total > 0) {
+        players = calloc(total, sizeof(*players));
+        if (players == NULL) {
+            return;
+        }
+    }
+    size_t home_index = 0;
+    size_t away_index = home_count;
+    for (size_t i = 0; i < state->row_count; ++i) {
+        ImportRow *row = &state->rows[i];
+        RatingPlayerInput *input =
+            row->home ? &players[home_index++] : &players[away_index++];
+        input->rating = import_row_preview_rating(state, row);
+        input->minutes = row->minutes;
+        input->performance = row->performance;
+        input->result_minutes = 0;
+    }
+
+    const RatingPlayerInput *away_players =
+        players != NULL ? players + home_count : NULL;
+    dialog_rating_preview_update(
+        &state->preview, players, home_count, away_players, away_count,
+        ui_checkbox_get_checked(state->neutral_venue));
+    free(players);
 }
 
 static void import_row_status_text(ImportRow *row)
@@ -1102,6 +1210,7 @@ static bool import_commit_cell_edit(ImportMatchState *state, bool accept)
                               LVIS_SELECTED | LVIS_FOCUSED);
     }
     import_update_action_button(state);
+    import_update_preview(state);
     InvalidateRect(state->hwnd, NULL, FALSE);
     return true;
 }
@@ -1284,7 +1393,14 @@ static void import_change_action(ImportMatchState *state)
     import_row_status_text(row);
     import_row_update_list(state, row_index);
     import_update_action_button(state);
+    import_update_preview(state);
     InvalidateRect(state->hwnd, NULL, FALSE);
+}
+
+static void import_draw_preview(ImportMatchState *state, HDC dc)
+{
+    dialog_rating_preview_draw(state->app, dc, state->preview_rect,
+                               &state->preview);
 }
 
 static void import_draw_legend(ImportMatchState *state, HDC dc)
@@ -1400,18 +1516,23 @@ static void import_layout(ImportMatchState *state, int width, int height)
         margin, info_top, margin + ui_scale(theme, 290),
         info_top + ui_scale(theme, 26),
     };
-    state->legend_rect = (RECT){
-        state->neutral_rect.right + ui_scale(theme, 14), info_top,
+    state->preview_rect = (RECT){
+        state->neutral_rect.right + ui_scale(theme, 18), info_top,
         width - margin, info_top + ui_scale(theme, 26),
     };
-    if (state->legend_rect.right < state->legend_rect.left) {
-        state->legend_rect.right = state->legend_rect.left;
+    if (state->preview_rect.right < state->preview_rect.left) {
+        state->preview_rect.right = state->preview_rect.left;
     }
+    int legend_top = state->neutral_rect.bottom + ui_scale(theme, 6);
+    state->legend_rect = (RECT){
+        margin, legend_top, width - margin,
+        legend_top + ui_scale(theme, 26),
+    };
     state->info_rect = (RECT){ margin,
-                               state->neutral_rect.bottom +
+                               state->legend_rect.bottom +
                                    ui_scale(theme, 1),
                                width - margin,
-                               state->neutral_rect.bottom +
+                               state->legend_rect.bottom +
                                    ui_scale(theme, 21) };
     MoveWindow(state->neutral_venue, state->neutral_rect.left,
                state->neutral_rect.top,
@@ -1527,6 +1648,7 @@ static void import_paint(ImportMatchState *state, HWND hwnd)
                              state->label_away_score.left,
                              state->label_home_score.bottom },
                      L"-", DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        import_draw_preview(state, canvas.dc);
         import_draw_legend(state, canvas.dc);
         wchar_t info[512];
         import_format_wide(
@@ -1703,6 +1825,8 @@ static bool import_build(ImportMatchState *state, const ImportedMatch *match)
     }
     state->building = false;
 
+    import_refresh_preview_ratings(state);
+    import_update_preview(state);
     RECT client;
     GetClientRect(state->hwnd, &client);
     import_layout(state, client.right, client.bottom);
@@ -1862,6 +1986,13 @@ LRESULT CALLBACK import_match_dialog_proc(HWND hwnd, UINT message,
         }
         switch (LOWORD(wparam)) {
         case IMPORT_DATE_ID:
+            if (state->ready && HIWORD(wparam) == EN_CHANGE) {
+                state->error[0] = L'\0';
+                import_refresh_preview_ratings(state);
+                import_update_preview(state);
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+            return 0;
         case IMPORT_HOME_SCORE_ID:
         case IMPORT_AWAY_SCORE_ID:
             if (state->ready && HIWORD(wparam) == EN_CHANGE) {
@@ -1874,6 +2005,7 @@ LRESULT CALLBACK import_match_dialog_proc(HWND hwnd, UINT message,
                 state->error[0] = L'\0';
                 import_recompute_side(state, true, true);
                 import_update_action_button(state);
+                import_update_preview(state);
                 InvalidateRect(hwnd, NULL, FALSE);
             }
             return 0;
@@ -1882,7 +2014,14 @@ LRESULT CALLBACK import_match_dialog_proc(HWND hwnd, UINT message,
                 state->error[0] = L'\0';
                 import_recompute_side(state, false, true);
                 import_update_action_button(state);
+                import_update_preview(state);
                 InvalidateRect(hwnd, NULL, FALSE);
+            }
+            return 0;
+        case IMPORT_NEUTRAL_VENUE_ID:
+            if (HIWORD(wparam) == BN_CLICKED) {
+                import_update_preview(state);
+                InvalidateRect(hwnd, &state->preview_rect, FALSE);
             }
             return 0;
         case IMPORT_CHANGE_ACTION_ID:
@@ -1984,12 +2123,14 @@ static uint64_t import_preview_run(App *app, const ImportedMatch *match)
     if (!import_build(&state, match)) {
         dialog_close(hwnd);
         free(state.rows);
+        free(state.preview_ratings);
         return 0;
     }
     ui_run_modal(hwnd, app->main_hwnd, IMPORT_SAVE_ID);
     uint64_t saved = state.saved_match_id;
     import_cancel_cell_edit(&state);
     free(state.rows);
+    free(state.preview_ratings);
     return saved;
 }
 

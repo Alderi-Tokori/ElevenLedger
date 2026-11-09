@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.18.0 - 2026-11-09
+
+### Added
+
+- The WhoScored import preview now shows the same live rating summary as the Record match and Edit match dialogs: both line-up scores, team performance averages, the expected home result and the home team's projected change for a one-goal win or defeat. Reused players use their rating before the imported fixture, new players start at 50.0, and the summary updates as names, clubs, minutes, performances, player actions and the neutral-venue option change.
+
 ## 1.17.2 - 2026-11-09
 
 ### Fixed

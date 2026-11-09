@@ -2,12 +2,35 @@
 #define PITCHRATE_UI_DIALOG_COMMON_H
 
 #include "app.h"
+#include "core/rating.h"
 #include "ui/theme.h"
 
+#include <stddef.h>
 #include <windows.h>
 
 #define PITCHRATE_IMPORT_SOURCE_DIALOG_CLASS L"PitchRateImportSourceDialog"
 #define PITCHRATE_IMPORT_MATCH_DIALOG_CLASS L"PitchRateImportMatchDialog"
+
+typedef struct {
+    bool home_valid;
+    bool away_valid;
+    bool summary_valid;
+    double home_strength;
+    double away_strength;
+    double home_performance;
+    double away_performance;
+    double home_expected;
+    double home_win_delta;
+    double home_loss_delta;
+} DialogRatingPreview;
+
+void dialog_rating_preview_update(DialogRatingPreview *preview,
+                                  const RatingPlayerInput *home,
+                                  size_t home_count,
+                                  const RatingPlayerInput *away,
+                                  size_t away_count, bool neutral_venue);
+void dialog_rating_preview_draw(App *app, HDC dc, RECT rect,
+                                const DialogRatingPreview *preview);
 
 LRESULT CALLBACK team_dialog_proc(HWND hwnd, UINT message,
                                   WPARAM wparam, LPARAM lparam);

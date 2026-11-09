@@ -254,6 +254,117 @@ HBRUSH dialog_control_color(UINT message, WPARAM wparam, App *app)
     return NULL;
 }
 
+void dialog_rating_preview_update(DialogRatingPreview *preview,
+                                  const RatingPlayerInput *home,
+                                  size_t home_count,
+                                  const RatingPlayerInput *away,
+                                  size_t away_count, bool neutral_venue)
+{
+    if (preview == NULL) {
+        return;
+    }
+    memset(preview, 0, sizeof(*preview));
+
+    double home_strength = 0.0;
+    double away_strength = 0.0;
+    RatingTeamContext home_context = { 0 };
+    RatingTeamContext away_context = { 0 };
+    bool home_valid = home_count > 0 &&
+        rating_team_profile(home, home_count, &home_strength, &home_context);
+    bool away_valid = away_count > 0 &&
+        rating_team_profile(away, away_count, &away_strength, &away_context);
+    if (home_valid) {
+        preview->home_valid = true;
+        preview->home_strength = home_strength;
+        preview->home_performance =
+            home_context.weighted_performance / home_context.total_participation;
+    }
+    if (away_valid) {
+        preview->away_valid = true;
+        preview->away_strength = away_strength;
+        preview->away_performance =
+            away_context.weighted_performance / away_context.total_participation;
+    }
+
+    if (home_valid && away_valid) {
+        char error[128];
+        RatingMatchSummary win_summary;
+        RatingMatchSummary loss_summary;
+        if (rating_match_summary(&win_summary, home_strength, away_strength,
+                                 &home_context, &away_context, 1, 0,
+                                 neutral_venue, error, sizeof(error)) &&
+            rating_match_summary(&loss_summary, home_strength, away_strength,
+                                 &home_context, &away_context, 0, 1,
+                                 neutral_venue, error, sizeof(error))) {
+            preview->summary_valid = true;
+            preview->home_expected = win_summary.home_expected;
+            preview->home_win_delta = win_summary.home_team_delta;
+            preview->home_loss_delta = loss_summary.home_team_delta;
+        }
+    }
+}
+
+void dialog_rating_preview_draw(App *app, HDC dc, RECT rect,
+                                const DialogRatingPreview *preview)
+{
+    if (app == NULL || preview == NULL || rect.right <= rect.left ||
+        rect.bottom <= rect.top) {
+        return;
+    }
+    int line_height = (rect.bottom - rect.top) / 2;
+    RECT score_line = { rect.left, rect.top, rect.right,
+                        rect.top + line_height };
+    RECT change_line = { rect.left, score_line.bottom, rect.right,
+                         rect.bottom };
+
+    wchar_t home_score[32] = L"-";
+    wchar_t away_score[32] = L"-";
+    wchar_t home_performance[32] = L"-";
+    wchar_t away_performance[32] = L"-";
+    if (preview->home_valid) {
+        ui_format_wide(home_score, sizeof(home_score) / sizeof(home_score[0]),
+                       L"%.1f", preview->home_strength);
+        ui_format_wide(home_performance,
+                       sizeof(home_performance) / sizeof(home_performance[0]),
+                       L"%.2f", preview->home_performance);
+    }
+    if (preview->away_valid) {
+        ui_format_wide(away_score, sizeof(away_score) / sizeof(away_score[0]),
+                       L"%.1f", preview->away_strength);
+        ui_format_wide(away_performance,
+                       sizeof(away_performance) / sizeof(away_performance[0]),
+                       L"%.2f", preview->away_performance);
+    }
+
+    wchar_t expected[64] = L"";
+    if (preview->summary_valid) {
+        ui_format_wide(expected, sizeof(expected) / sizeof(expected[0]),
+                       L"   |   Expected home result %.1f%%",
+                       preview->home_expected * 100.0);
+    }
+    wchar_t scores[256];
+    ui_format_wide(
+        scores, sizeof(scores) / sizeof(scores[0]),
+        L"Line-up scores   Home %ls (perf %ls)   |   Away %ls (perf %ls)%ls",
+        home_score, home_performance, away_score, away_performance, expected);
+
+    wchar_t changes[256];
+    if (preview->summary_valid) {
+        ui_format_wide(
+            changes, sizeof(changes) / sizeof(changes[0]),
+            L"Home team change   Win 1-0: %+.2f   |   Loss 0-1: %+.2f",
+            preview->home_win_delta, preview->home_loss_delta);
+    } else {
+        ui_format_wide(changes, sizeof(changes) / sizeof(changes[0]),
+                       L"Select players on both sides to preview rating changes.");
+    }
+
+    ui_draw_text(dc, app->ui.font_small, UI_COLOR_MUTED, score_line, scores,
+                 DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    ui_draw_text(dc, app->ui.font_small, UI_COLOR_MUTED, change_line, changes,
+                 DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+}
+
 static LRESULT team_dialog_paint(TeamDialogState *state, HWND hwnd)
 {
     PAINTSTRUCT paint;

@@ -13,7 +13,8 @@ does not make network requests.
 4. In PitchRate, open **Matches** and choose **Import from WhoScored**.
 5. Choose **Paste page source**.
 6. Review and edit the date, clubs, score, player names, minutes and performance
-   values. The neutral-venue option defaults to off.
+   values. The neutral-venue option defaults to off. The live rating summary
+   updates with these fields.
 7. Choose what to do for players who already exist in another club.
 8. Choose **Import match**. PitchRate creates any missing clubs and players and
    records the match in one transaction.
@@ -73,6 +74,14 @@ first name. Both fields are editable in the preview.
 
 New players start at the default rating of 50.0. Existing players keep their
 stored name, starting rating, status and history.
+
+The preview shows the same live rating summary as the Record match and Edit
+match dialogs: both line-up scores, team performance averages, the expected
+home result and the home team's projected change for a one-goal win or defeat.
+A reused existing player uses their rating immediately before the imported
+fixture's chronological position; a newly created player starts at 50.0. The
+summary updates when names, clubs, minutes, performances, per-player actions or
+the neutral-venue option change.
 
 ## Club matching
 

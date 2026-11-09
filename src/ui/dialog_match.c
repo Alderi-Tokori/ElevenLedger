@@ -105,16 +105,7 @@ typedef struct {
     bool editing;
     uint64_t match_id;
     uint64_t saved_match_id;
-    bool preview_home_valid;
-    bool preview_away_valid;
-    bool preview_summary_valid;
-    double preview_home_strength;
-    double preview_away_strength;
-    double preview_home_performance;
-    double preview_away_performance;
-    double preview_home_expected;
-    double preview_home_win_delta;
-    double preview_home_loss_delta;
+    DialogRatingPreview preview;
     RECT label_date;
     RECT label_home_team;
     RECT label_home_score;
@@ -402,17 +393,7 @@ static double record_pre_match_rating(const RecordMatchState *state,
 
 static void record_update_preview(RecordMatchState *state)
 {
-    state->preview_home_valid = false;
-    state->preview_away_valid = false;
-    state->preview_summary_valid = false;
-    state->preview_home_strength = 0.0;
-    state->preview_away_strength = 0.0;
-    state->preview_home_performance = 0.0;
-    state->preview_away_performance = 0.0;
-    state->preview_home_expected = 0.0;
-    state->preview_home_win_delta = 0.0;
-    state->preview_home_loss_delta = 0.0;
-
+    memset(&state->preview, 0, sizeof(state->preview));
     uint64_t home_id = current_home_team(state);
     uint64_t away_id = current_away_team(state);
     size_t home_count = 0;
@@ -457,46 +438,11 @@ static void record_update_preview(RecordMatchState *state)
         input->result_minutes = 0;
     }
 
-    double home_strength = 0.0;
-    double away_strength = 0.0;
-    RatingTeamContext home_context = { 0 };
-    RatingTeamContext away_context = { 0 };
-    bool home_valid = home_count > 0 &&
-        rating_team_profile(players, home_count, &home_strength,
-                            &home_context);
-    bool away_valid = away_count > 0 &&
-        rating_team_profile(players + home_count, away_count, &away_strength,
-                            &away_context);
-    if (home_valid) {
-        state->preview_home_valid = true;
-        state->preview_home_strength = home_strength;
-        state->preview_home_performance =
-            home_context.weighted_performance / home_context.total_participation;
-    }
-    if (away_valid) {
-        state->preview_away_valid = true;
-        state->preview_away_strength = away_strength;
-        state->preview_away_performance =
-            away_context.weighted_performance / away_context.total_participation;
-    }
-
-    if (home_valid && away_valid) {
-        char error[128];
-        RatingMatchSummary win_summary;
-        RatingMatchSummary loss_summary;
-        bool neutral = ui_checkbox_get_checked(state->neutral_venue);
-        if (rating_match_summary(&win_summary, home_strength, away_strength,
-                                 &home_context, &away_context, 1, 0, neutral,
-                                 error, sizeof(error)) &&
-            rating_match_summary(&loss_summary, home_strength, away_strength,
-                                 &home_context, &away_context, 0, 1, neutral,
-                                 error, sizeof(error))) {
-            state->preview_summary_valid = true;
-            state->preview_home_expected = win_summary.home_expected;
-            state->preview_home_win_delta = win_summary.home_team_delta;
-            state->preview_home_loss_delta = loss_summary.home_team_delta;
-        }
-    }
+    const RatingPlayerInput *away_players =
+        players != NULL ? players + home_count : NULL;
+    dialog_rating_preview_update(
+        &state->preview, players, home_count, away_players, away_count,
+        ui_checkbox_get_checked(state->neutral_venue));
     free(players);
 }
 
@@ -1195,64 +1141,8 @@ static void record_draw_team_heading(RecordMatchState *state, HDC dc,
 
 static void record_draw_preview(RecordMatchState *state, HDC dc)
 {
-    RECT rect = state->preview_rect;
-    if (rect.right <= rect.left || rect.bottom <= rect.top) {
-        return;
-    }
-    int line_height = (rect.bottom - rect.top) / 2;
-    RECT score_line = { rect.left, rect.top, rect.right,
-                        rect.top + line_height };
-    RECT change_line = { rect.left, score_line.bottom, rect.right,
-                         rect.bottom };
-
-    wchar_t home_score[32] = L"-";
-    wchar_t away_score[32] = L"-";
-    wchar_t home_performance[32] = L"-";
-    wchar_t away_performance[32] = L"-";
-    if (state->preview_home_valid) {
-        ui_format_wide(home_score, sizeof(home_score) / sizeof(home_score[0]),
-                       L"%.1f", state->preview_home_strength);
-        ui_format_wide(home_performance,
-                       sizeof(home_performance) / sizeof(home_performance[0]),
-                       L"%.2f", state->preview_home_performance);
-    }
-    if (state->preview_away_valid) {
-        ui_format_wide(away_score, sizeof(away_score) / sizeof(away_score[0]),
-                       L"%.1f", state->preview_away_strength);
-        ui_format_wide(away_performance,
-                       sizeof(away_performance) / sizeof(away_performance[0]),
-                       L"%.2f", state->preview_away_performance);
-    }
-
-    wchar_t expected[64] = L"";
-    if (state->preview_summary_valid) {
-        ui_format_wide(expected, sizeof(expected) / sizeof(expected[0]),
-                       L"   |   Expected home result %.1f%%",
-                       state->preview_home_expected * 100.0);
-    }
-    wchar_t scores[256];
-    ui_format_wide(
-        scores, sizeof(scores) / sizeof(scores[0]),
-        L"Line-up scores   Home %ls (perf %ls)   |   Away %ls (perf %ls)%ls",
-        home_score, home_performance, away_score, away_performance, expected);
-
-    wchar_t changes[256];
-    if (state->preview_summary_valid) {
-        ui_format_wide(
-            changes, sizeof(changes) / sizeof(changes[0]),
-            L"Home team change   Win 1-0: %+.2f   |   Loss 0-1: %+.2f",
-            state->preview_home_win_delta, state->preview_home_loss_delta);
-    } else {
-        ui_format_wide(changes, sizeof(changes) / sizeof(changes[0]),
-                       L"Select players on both sides to preview rating changes.");
-    }
-
-    ui_draw_text(dc, state->app->ui.font_small, UI_COLOR_MUTED, score_line,
-                 scores, DT_LEFT | DT_VCENTER | DT_SINGLELINE |
-                             DT_END_ELLIPSIS);
-    ui_draw_text(dc, state->app->ui.font_small, UI_COLOR_MUTED, change_line,
-                 changes, DT_LEFT | DT_VCENTER | DT_SINGLELINE |
-                              DT_END_ELLIPSIS);
+    dialog_rating_preview_draw(state->app, dc, state->preview_rect,
+                               &state->preview);
 }
 
 static void record_paint(RecordMatchState *state, HWND hwnd)

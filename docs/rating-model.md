@@ -203,7 +203,7 @@ The database stores each match's final-whistle minute and each appearance's actu
 
 This makes editing or deleting a match, changing a starting rating or transferring a player safe and consistent. Changing a player's current club does not rewrite their historical appearances; the appearance retains the team that played the match. When an existing match is edited, players already in its line-up keep the club they represented, even if they have since transferred or been archived. Saving the edit replays all subsequent history.
 
-The Record match and Edit match dialogs use the same chronological rule. Their Rating before column and live rating preview show each player's rating immediately before the fixture's position in the replay, including for old-match edits and backdated dates. Changing the fixture date recalculates the preview at the new position.
+The Record match, Edit match and WhoScored import previews use the same chronological rule. Their live rating preview shows each existing player's rating immediately before the fixture's position in the replay, including for old-match edits, backdated dates and imported fixtures. The match dialogs also show it in their Rating before column, and new players created by an import start at 50.0. Changing the fixture date recalculates the preview at the new position.
 
 ## Invariants covered by tests
 
