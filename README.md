@@ -153,4 +153,4 @@ docs/           Rating and data-format documentation
 
 ## License
 
-This repository is private, locally versioned software. No license is granted for redistribution unless one is added by the owner.
+PitchRate is released under the [MIT License](LICENSE). Copyright (c) 2026 Vincent Bragard.

@@ -2,6 +2,12 @@
 
 All notable changes to PitchRate are documented here. The project follows a simple versioned schema and local release process.
 
+## 1.18.2 - 2026-11-09
+
+### Changed
+
+- PitchRate is now released under the MIT License. Copyright (c) 2026 Vincent Bragard.
+
 ## 1.18.1 - 2026-11-09
 
 ### Fixed

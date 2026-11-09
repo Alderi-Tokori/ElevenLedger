@@ -21,7 +21,7 @@ BEGIN
             VALUE "FileDescription", "PitchRate Football Rating Calculator"
             VALUE "FileVersion", "@PROJECT_VERSION@"
             VALUE "InternalName", "PitchRate"
-            VALUE "LegalCopyright", "Copyright (c) 2026"
+            VALUE "LegalCopyright", "Copyright (c) 2026 Vincent Bragard"
             VALUE "OriginalFilename", "PitchRate.exe"
             VALUE "ProductName", "PitchRate"
             VALUE "ProductVersion", "@PROJECT_VERSION@"
