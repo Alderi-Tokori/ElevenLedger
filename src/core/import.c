@@ -320,18 +320,17 @@ static bool json_read_hex4(const char **cursor, const char *end,
     return true;
 }
 
-static bool utf8_append(char *output, size_t capacity, size_t *used,
-                        unsigned codepoint)
+static bool json_encode_utf8(unsigned codepoint, unsigned char bytes[4],
+                             size_t *length)
 {
-    unsigned char bytes[4];
-    size_t length = 0;
+    size_t count = 0;
     if (codepoint <= 0x7F) {
         bytes[0] = (unsigned char)codepoint;
-        length = 1;
+        count = 1;
     } else if (codepoint <= 0x7FF) {
         bytes[0] = (unsigned char)(0xC0 | (codepoint >> 6));
         bytes[1] = (unsigned char)(0x80 | (codepoint & 0x3F));
-        length = 2;
+        count = 2;
     } else if (codepoint <= 0xFFFF) {
         if (codepoint >= 0xD800 && codepoint <= 0xDFFF) {
             return false;
@@ -339,14 +338,26 @@ static bool utf8_append(char *output, size_t capacity, size_t *used,
         bytes[0] = (unsigned char)(0xE0 | (codepoint >> 12));
         bytes[1] = (unsigned char)(0x80 | ((codepoint >> 6) & 0x3F));
         bytes[2] = (unsigned char)(0x80 | (codepoint & 0x3F));
-        length = 3;
+        count = 3;
     } else if (codepoint <= 0x10FFFF) {
         bytes[0] = (unsigned char)(0xF0 | (codepoint >> 18));
         bytes[1] = (unsigned char)(0x80 | ((codepoint >> 12) & 0x3F));
         bytes[2] = (unsigned char)(0x80 | ((codepoint >> 6) & 0x3F));
         bytes[3] = (unsigned char)(0x80 | (codepoint & 0x3F));
-        length = 4;
+        count = 4;
     } else {
+        return false;
+    }
+    *length = count;
+    return true;
+}
+
+static bool utf8_append(char *output, size_t capacity, size_t *used,
+                        unsigned codepoint)
+{
+    unsigned char bytes[4];
+    size_t length = 0;
+    if (!json_encode_utf8(codepoint, bytes, &length)) {
         return false;
     }
     if (*used + length + 1 > capacity) {
@@ -354,6 +365,88 @@ static bool utf8_append(char *output, size_t capacity, size_t *used,
     }
     memcpy(output + *used, bytes, length);
     *used += length;
+    return true;
+}
+
+static bool json_decode_chunk(const char **cursor, const char *end,
+                              unsigned char bytes[4], size_t *length)
+{
+    const char *p = *cursor;
+    if (p >= end) {
+        return false;
+    }
+    unsigned char value = (unsigned char)*p++;
+    if (value != '\\') {
+        if (value < 0x20) {
+            return false;
+        }
+        bytes[0] = value;
+        *length = 1;
+        *cursor = p;
+        return true;
+    }
+    if (p >= end) {
+        return false;
+    }
+    char escaped = *p++;
+    switch (escaped) {
+    case '"':
+    case '\\':
+    case '/':
+        bytes[0] = (unsigned char)escaped;
+        *length = 1;
+        break;
+    case 'b':
+        bytes[0] = '\b';
+        *length = 1;
+        break;
+    case 'f':
+        bytes[0] = '\f';
+        *length = 1;
+        break;
+    case 'n':
+        bytes[0] = '\n';
+        *length = 1;
+        break;
+    case 'r':
+        bytes[0] = '\r';
+        *length = 1;
+        break;
+    case 't':
+        bytes[0] = '\t';
+        *length = 1;
+        break;
+    case 'u': {
+        unsigned codepoint = 0;
+        if (!json_read_hex4(&p, end, &codepoint)) {
+            return false;
+        }
+        if (codepoint >= 0xD800 && codepoint <= 0xDBFF) {
+            if ((size_t)(end - p) < 6 || p[0] != '\\' || p[1] != 'u') {
+                return false;
+            }
+            p += 2;
+            unsigned low = 0;
+            if (!json_read_hex4(&p, end, &low) ||
+                low < 0xDC00 || low > 0xDFFF) {
+                return false;
+            }
+            codepoint = 0x10000u +
+                        ((codepoint - 0xD800u) << 10) +
+                        (low - 0xDC00u);
+        } else if (codepoint >= 0xDC00 && codepoint <= 0xDFFF) {
+            return false;
+        }
+        if (codepoint == 0 ||
+            !json_encode_utf8(codepoint, bytes, length)) {
+            return false;
+        }
+        break;
+    }
+    default:
+        return false;
+    }
+    *cursor = p;
     return true;
 }
 
@@ -372,95 +465,47 @@ static bool json_decode_string(JsonSpan span, char *output,
     --end;
     size_t used = 0;
     while (p < end) {
-        unsigned char value = (unsigned char)*p++;
-        if (value == '\\') {
-            if (p >= end) {
-                return false;
-            }
-            char escaped = *p++;
-            switch (escaped) {
-            case '"':
-            case '\\':
-            case '/':
-                if (used + 2 > output_size) {
-                    return false;
-                }
-                output[used++] = escaped;
-                break;
-            case 'b':
-                if (used + 2 > output_size) {
-                    return false;
-                }
-                output[used++] = '\b';
-                break;
-            case 'f':
-                if (used + 2 > output_size) {
-                    return false;
-                }
-                output[used++] = '\f';
-                break;
-            case 'n':
-                if (used + 2 > output_size) {
-                    return false;
-                }
-                output[used++] = '\n';
-                break;
-            case 'r':
-                if (used + 2 > output_size) {
-                    return false;
-                }
-                output[used++] = '\r';
-                break;
-            case 't':
-                if (used + 2 > output_size) {
-                    return false;
-                }
-                output[used++] = '\t';
-                break;
-            case 'u': {
-                unsigned codepoint = 0;
-                if (!json_read_hex4(&p, end, &codepoint)) {
-                    return false;
-                }
-                if (codepoint >= 0xD800 && codepoint <= 0xDBFF) {
-                    if ((size_t)(end - p) < 6 || p[0] != '\\' || p[1] != 'u') {
-                        return false;
-                    }
-                    p += 2;
-                    unsigned low = 0;
-                    if (!json_read_hex4(&p, end, &low) ||
-                        low < 0xDC00 || low > 0xDFFF) {
-                        return false;
-                    }
-                    codepoint = 0x10000u +
-                                ((codepoint - 0xD800u) << 10) +
-                                (low - 0xDC00u);
-                } else if (codepoint >= 0xDC00 && codepoint <= 0xDFFF) {
-                    return false;
-                }
-                if (codepoint == 0) {
-                    return false;
-                }
-                if (!utf8_append(output, output_size, &used, codepoint)) {
-                    return false;
-                }
-                break;
-            }
-            default:
-                return false;
-            }
-        } else {
-            if (value < 0x20) {
-                return false;
-            }
-            if (used + 2 > output_size) {
-                return false;
-            }
-            output[used++] = (char)value;
+        unsigned char bytes[4];
+        size_t length = 0;
+        if (!json_decode_chunk(&p, end, bytes, &length)) {
+            return false;
         }
+        if (used + length + 1 > output_size) {
+            return false;
+        }
+        memcpy(output + used, bytes, length);
+        used += length;
     }
     output[used] = '\0';
     return true;
+}
+
+static bool json_key_equals(JsonSpan span, const char *key)
+{
+    if (span.start >= span.end || *span.start != '"') {
+        return false;
+    }
+    const char *p = span.start + 1;
+    const char *end = span.end;
+    if (end <= p || end[-1] != '"') {
+        return false;
+    }
+    --end;
+    size_t used = 0;
+    while (p < end) {
+        unsigned char bytes[4];
+        size_t length = 0;
+        if (!json_decode_chunk(&p, end, bytes, &length)) {
+            return false;
+        }
+        for (size_t i = 0; i < length; ++i) {
+            if (key[used] == '\0' || (unsigned char)key[used] != bytes[i]) {
+                return false;
+            }
+            ++used;
+        }
+    }
+    return key[used] == '\0';
 }
 
 static bool json_object_get(JsonSpan object, const char *key, JsonSpan *out)
@@ -480,11 +525,6 @@ static bool json_object_get(JsonSpan object, const char *key, JsonSpan *out)
             key_span.start >= key_span.end || *key_span.start != '"') {
             return false;
         }
-        char decoded_key[64];
-        if (!json_decode_string(key_span, decoded_key,
-                                sizeof(decoded_key))) {
-            return false;
-        }
         json_skip_ws(&p, end);
         if (p >= end || *p != ':') {
             return false;
@@ -494,7 +534,7 @@ static bool json_object_get(JsonSpan object, const char *key, JsonSpan *out)
         if (!json_next_value(&p, end, &value)) {
             return false;
         }
-        if (strcmp(decoded_key, key) == 0) {
+        if (json_key_equals(key_span, key)) {
             *out = value;
             return true;
         }

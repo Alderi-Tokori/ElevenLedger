@@ -984,6 +984,27 @@ static bool test_parse_minutes_capped_at_final_whistle(void)
     return true;
 }
 
+static bool test_parse_tolerates_long_unrelated_key(void)
+{
+    const char *html =
+        "<script>matchCentreData: {"
+        "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":1,"
+        "\"startDate\":\"2026-08-23\","
+        "\"score\":\"0 : 1\","
+        "\"home\":{\"name\":\"Rennes\",\"players\":["
+        "{\"name\":\"Home Full Match\",\"isFirstEleven\":true}]},"
+        "\"away\":{\"name\":\"PSG\",\"players\":["
+        "{\"name\":\"Away Full Match\",\"isFirstEleven\":true}]}"
+        "}</script>";
+    ImportedMatch match;
+    char error[512];
+    CHECK(imported_match_parse_html(html, strlen(html), &match,
+                                    error, sizeof(error)));
+    CHECK_STRING(match.date, "2026-08-23");
+    imported_match_free(&match);
+    return true;
+}
+
 const TestCase g_import_tests[] = {
     TEST_CASE(test_parse_match_page),
     TEST_CASE(test_parse_score_fallback_and_extra_time),
@@ -1006,7 +1027,8 @@ const TestCase g_import_tests[] = {
     TEST_CASE(test_parse_card_after_substitution_is_not_sending_off),
     TEST_CASE(test_parse_same_minute_substitution),
     TEST_CASE(test_parse_large_player_id_keeps_sending_off),
-    TEST_CASE(test_parse_minutes_capped_at_final_whistle)
+    TEST_CASE(test_parse_minutes_capped_at_final_whistle),
+    TEST_CASE(test_parse_tolerates_long_unrelated_key),
 };
 
 const size_t g_import_test_count =

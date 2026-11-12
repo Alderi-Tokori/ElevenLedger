@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.12 - 2026-11-12
+
+### Fixed
+
+- WhoScored imports now tolerate unrelated match-data fields with long names instead of failing with a missing-field error.
+
 ## 2.0.11 - 2026-11-12
 
 ### Fixed
