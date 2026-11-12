@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.6 - 2026-11-12
+
+### Fixed
+
+- Recording or editing a match now rejects an appearance whose minutes exceed the final whistle. WhoScored import plans apply the same check before creating clubs, moving players or recording the fixture.
+
 ## 2.0.5 - 2026-11-10
 
 ### Changed

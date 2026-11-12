@@ -811,6 +811,14 @@ static bool test_import_validates_before_mutation(void)
     CHECK(db.team_count == teams_before);
     CHECK(db.player_count == players_before);
     CHECK(db.match_count == matches_before);
+
+    home[0].minutes = 90;
+    plan.length = 45;
+    CHECK(!db_import_match(&db, &plan, &match_id, error, sizeof(error)));
+    CHECK(strstr(error, "final whistle") != NULL);
+    CHECK(db.team_count == teams_before);
+    CHECK(db.player_count == players_before);
+    CHECK(db.match_count == matches_before);
     db_free(&db);
     return true;
 }

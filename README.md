@@ -127,7 +127,7 @@ Ratings are long-term player ratings with no fixed upper or lower bound. New pla
 2. An Elo-style expectation is calculated with a 4.0-point home advantage, or no advantage when the match is marked as a neutral venue.
 3. A shared team result pool is calculated from the result, expectation and goal margin. The winning team gains exactly what the losing team loses.
 4. Each team's pool is shared across its line-up in proportion to result participation. A sent-off player on a losing team is counted from entry to the final whistle for that share; wins and draws use actual minutes. Individual performance is measured against the team's actual-minutes-weighted average, so it moves points between team-mates rather than creating them.
-5. Every match is zero-sum: the sum of all player rating changes is zero. There is no per-match movement cap and no final rating clamp. New match recording rejects a team line-up above 1,320 player-minutes; legacy data remains loadable.
+5. Every match is zero-sum: the sum of all player rating changes is zero. There is no per-match movement cap and no final rating clamp. New match recording rejects a team line-up above 1,320 player-minutes and an appearance longer than the final whistle; legacy data remains loadable.
 
 Matches are always replayed in date order from each player's starting rating. Deleting a match or changing a starting rating therefore updates the whole subsequent career, rather than leaving an inconsistent ledger.
 

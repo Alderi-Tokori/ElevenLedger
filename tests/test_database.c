@@ -638,7 +638,7 @@ static bool test_match_total_minutes_guard(void)
         .away_team_id = beta,
         .home_goals = 1,
         .away_goals = 0,
-        .length = 90,
+        .length = 120,
         .players = lineup,
         .player_count = 13,
     };
@@ -1688,6 +1688,54 @@ static bool test_incremental_replay_matches_full_recompute(void)
     return true;
 }
 
+static bool test_match_rejects_minutes_beyond_final_whistle(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    char error[256];
+    uint64_t players[2];
+    CHECK(db_add_player(&db, alpha, "Home", "Player", 50.0, true,
+                        &players[0], error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", 50.0, true,
+                        &players[1], error, sizeof(error)));
+    MatchPlayerInput lineup[] = {
+        { players[0], 120, 6.0, 0 },
+        { players[1], 45, 6.0, 0 },
+    };
+    MatchInput input = {
+        .date = "2026-01-10",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 1,
+        .away_goals = 0,
+        .length = 45,
+        .players = lineup,
+        .player_count = 2,
+    };
+    CHECK(!db_add_match(&db, &input, NULL, error, sizeof(error)));
+    CHECK(strstr(error, "final whistle") != NULL);
+    CHECK(db.match_count == 0);
+    CHECK(db.appearance_count == 0);
+
+    lineup[0].minutes = 45;
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+    CHECK(db.match_count == 1);
+
+    lineup[0].minutes = 46;
+    CHECK(!db_update_match(&db, match_id, &input, error, sizeof(error)));
+    CHECK(strstr(error, "final whistle") != NULL);
+    CHECK(db.match_count == 1);
+    CHECK(db.appearance_count == 2);
+    const Appearance *home = find_appearance(&db, match_id, players[0]);
+    CHECK(home != NULL);
+    CHECK(home->minutes == 45);
+    db_free(&db);
+    return true;
+}
+
 static bool test_validate_scales_to_several_seasons(void)
 {
     /* Five seasons of a 20-club league: 1,900 matches, 57,000 appearances. */
@@ -1797,6 +1845,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_find_player_by_name),
     TEST_CASE(test_find_active_player_by_name_in_team),
     TEST_CASE(test_team_stats_are_minutes_and_results_aware),
+    TEST_CASE(test_match_rejects_minutes_beyond_final_whistle),
     TEST_CASE(test_validate_scales_to_several_seasons),
 };
 

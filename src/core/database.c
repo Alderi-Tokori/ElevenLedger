@@ -1487,6 +1487,11 @@ static bool validate_lineup_entry(const Database *db, const MatchInput *input,
                   "Minutes played must be between 1 and 120.");
         return false;
     }
+    if (entry->minutes > input->length) {
+        set_error(error, error_size,
+                  "Minutes played cannot exceed the final whistle.");
+        return false;
+    }
     if (entry->sent_off < 0 || entry->sent_off > input->length ||
         (entry->sent_off > 0 && entry->sent_off < entry->minutes)) {
         set_error(error, error_size,

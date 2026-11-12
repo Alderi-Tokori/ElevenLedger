@@ -31,7 +31,7 @@ For the match:
 
 A player not in the line-up is unaffected by the match.
 
-New matches require at least one player from each team and reject a line-up whose player-minutes exceed 1,320 for either side (11 players x 120 minutes). The save/load validator does not apply this line-up plausibility rule to already-persisted data, so legacy files remain loadable.
+New matches require at least one player from each team, reject an appearance whose minutes exceed the final whistle, and reject a line-up whose player-minutes exceed 1,320 for either side (11 players x 120 minutes). The save/load validator does not apply these line-up plausibility rules to already-persisted data, so legacy files remain loadable.
 
 ## Constants
 

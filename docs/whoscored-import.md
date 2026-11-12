@@ -65,8 +65,9 @@ stop that player's actual minutes at the sending-off minute. The preview also
 records that minute separately, so a sent-off player on a losing team can use
 the entry-to-final-whistle result share described in the rating model. Wins and
 draws use the actual minutes. Minutes are clamped to the 1-120 range accepted by
-ElevenLedger. The imported performance defaults to 6.00 and can be edited before
-import.
+ElevenLedger, and an import plan whose minutes exceed the final whistle is
+rejected before any club or player is created. The imported performance defaults
+to 6.00 and can be edited before import.
 
 Player names are split at the first space: the first token becomes the first
 name and the remainder becomes the last name. A single-word name is stored as a

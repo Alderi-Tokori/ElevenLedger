@@ -164,6 +164,11 @@ static bool validate_side(const Database *db,
         if (!validate_player(db, player, &existing_id, error, error_size)) {
             return false;
         }
+        if (player->minutes > plan->length) {
+            set_error(error, error_size,
+                      "Minutes played cannot exceed the final whistle.");
+            return false;
+        }
         if (player->sent_off > plan->length) {
             set_error(error, error_size,
                       "A sending-off minute cannot be after the final whistle.");

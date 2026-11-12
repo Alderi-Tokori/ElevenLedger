@@ -239,7 +239,7 @@ static void guide_paint(Page *page, HDC dc)
     note_body.top += ui_scale(theme, 20);
     ui_draw_text(
         dc, theme->font_small, UI_COLOR_MUTED, note_body,
-        L"Every match is replayed in date order whenever history changes. Editing or deleting a match or changing a starting rating therefore recalculates every later appearance. Editing keeps each existing line-up player with the club they represented, even after a transfer. Archived players remain in the record. New line-ups are limited to 1,320 player-minutes per team, and neutral venues receive no home advantage.",
+        L"Every match is replayed in date order whenever history changes. Editing or deleting a match or changing a starting rating therefore recalculates every later appearance. Editing keeps each existing line-up player with the club they represented, even after a transfer. Archived players remain in the record. New line-ups are limited to 1,320 player-minutes per team, no player can exceed the final whistle, and neutral venues receive no home advantage.",
         DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
 
     int data_height = ui_scale(theme, 156);
