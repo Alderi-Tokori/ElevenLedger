@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.21 - 2026-11-12
+
+### Changed
+
+- The player dialog and both match-dialog team selectors now use the same custom-drawn club dropdown as the Players page filter, including club badges, player counts and hover highlighting.
+
 ## 2.0.20 - 2026-11-12
 
 ### Changed

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(ElevenLedger
-    VERSION 2.0.20
+    VERSION 2.0.21
     DESCRIPTION "Football player rating calculator for Windows"
     LANGUAGES C RC
 )
@@ -69,6 +69,7 @@ add_executable(elevenledger WIN32
     src/ui/dialog_match.c
     src/ui/dialog_import.c
     src/ui/main_window.c
+    src/ui/team_combo.c
     ${CMAKE_CURRENT_BINARY_DIR}/generated/app.rc
 )
 target_include_directories(elevenledger PRIVATE

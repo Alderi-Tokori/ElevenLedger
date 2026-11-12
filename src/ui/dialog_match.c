@@ -5,6 +5,7 @@
 #include "core/util.h"
 #include "ui/controls.h"
 #include "ui/dialog_common.h"
+#include "ui/team_combo.h"
 #include "ui/theme.h"
 
 #include <commctrl.h>
@@ -18,6 +19,7 @@
 #define DETAILS_DIALOG_CLASS L"ElevenLedgerMatchDetailsDialog"
 #define CELL_EDITOR_PROPERTY L"ElevenLedger.CellEditor"
 #define WM_RECORD_COMMIT_CELL (WM_APP + 51)
+#define RECORD_FIELD_HEIGHT 32
 
 enum {
     RECORD_DATE_ID = 2200,
@@ -77,7 +79,9 @@ typedef struct {
     HWND hwnd;
     HWND date;
     HWND home_team;
+    UiTeamCombo home_team_view;
     HWND away_team;
+    UiTeamCombo away_team_view;
     HWND home_score;
     HWND away_score;
     HWND length;
@@ -934,7 +938,7 @@ static void record_layout(RecordMatchState *state, int width, int height)
     UiTheme *theme = &state->app->ui;
     int margin = ui_scale(theme, 28);
     int gap = ui_scale(theme, 10);
-    int field_height = ui_scale(theme, 32);
+    int field_height = ui_scale(theme, RECORD_FIELD_HEIGHT);
     int label_height = ui_scale(theme, 18);
     int available = width - margin * 2;
 
@@ -1366,6 +1370,15 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
             record_paint(state, hwnd);
         }
         return 0;
+    case WM_DRAWITEM:
+        if (state != NULL) {
+            DRAWITEMSTRUCT *item = (DRAWITEMSTRUCT *)lparam;
+            if (ui_team_combo_draw_item(&state->home_team_view, item) ||
+                ui_team_combo_draw_item(&state->away_team_view, item)) {
+                return TRUE;
+            }
+        }
+        break;
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORLISTBOX:
     case WM_CTLCOLORBTN:
@@ -1409,6 +1422,10 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
                 record_rebuild_rows(state, NULL, 0, 0);
                 return 0;
             }
+            if (HIWORD(wparam) == CBN_DROPDOWN ||
+                HIWORD(wparam) == CBN_CLOSEUP) {
+                ui_team_combo_reset_hover(&state->home_team_view);
+            }
             break;
         case RECORD_AWAY_TEAM_ID:
             if (HIWORD(wparam) == CBN_SELCHANGE) {
@@ -1416,6 +1433,10 @@ LRESULT CALLBACK record_match_dialog_proc(HWND hwnd, UINT message,
                 state->error[0] = L'\0';
                 record_rebuild_rows(state, NULL, 0, 0);
                 return 0;
+            }
+            if (HIWORD(wparam) == CBN_DROPDOWN ||
+                HIWORD(wparam) == CBN_CLOSEUP) {
+                ui_team_combo_reset_hover(&state->away_team_view);
             }
             break;
         case RECORD_HOME_ADD_ID:
@@ -1501,10 +1522,12 @@ static bool record_build(App *app, RecordMatchState *state)
     UiTheme *theme = &app->ui;
     state->date = ui_edit_create(state->hwnd, RECORD_DATE_ID, L"",
                                  0, 0, 10, 10, theme->font_body, 10);
-    state->home_team = ui_combo_create(state->hwnd, RECORD_HOME_TEAM_ID,
-                                       0, 0, 10, 10, theme->font_body);
-    state->away_team = ui_combo_create(state->hwnd, RECORD_AWAY_TEAM_ID,
-                                       0, 0, 10, 10, theme->font_body);
+    state->home_team = ui_combo_create_owner_draw(
+        state->hwnd, RECORD_HOME_TEAM_ID, 0, 0, 10, 10, theme->font_body,
+        RECORD_FIELD_HEIGHT);
+    state->away_team = ui_combo_create_owner_draw(
+        state->hwnd, RECORD_AWAY_TEAM_ID, 0, 0, 10, 10, theme->font_body,
+        RECORD_FIELD_HEIGHT);
     state->home_score = ui_edit_create(state->hwnd, RECORD_HOME_SCORE_ID,
                                        L"0", 0, 0, 10, 10,
                                        theme->font_body, 2);
@@ -1552,6 +1575,10 @@ static bool record_build(App *app, RecordMatchState *state)
         state->save == NULL || state->cancel == NULL) {
         return false;
     }
+    ui_team_combo_init(&state->home_team_view, state->home_team, &app->db,
+                       theme);
+    ui_team_combo_init(&state->away_team_view, state->away_team, &app->db,
+                       theme);
     const HWND lists[2] = { state->home_list, state->away_list };
     for (int side = 0; side < 2; ++side) {
         SendMessageW(lists[side], LVM_SETEXTENDEDLISTVIEWSTYLE,

@@ -5,6 +5,7 @@
 #include "resource.h"
 #include "ui/controls.h"
 #include "ui/dialog_common.h"
+#include "ui/team_combo.h"
 #include "ui/theme.h"
 
 #include <stdio.h>
@@ -16,6 +17,8 @@
 #define PLAYER_DIALOG_CLASS L"ElevenLedgerPlayerDialog"
 #define MATCH_DIALOG_CLASS L"ElevenLedgerMatchDialog"
 #define MATCH_DETAILS_DIALOG_CLASS L"ElevenLedgerMatchDetailsDialog"
+
+#define PLAYER_DIALOG_FIELD_HEIGHT 32
 
 enum {
     TEAM_DIALOG_NAME_ID = 2000,
@@ -74,6 +77,7 @@ typedef struct {
     HWND first_name;
     HWND last_name;
     HWND team;
+    UiTeamCombo team_view;
     HWND rating;
     HWND active;
     HWND save;
@@ -817,7 +821,7 @@ static void player_dialog_layout(PlayerDialogState *state, int width,
     int content_width = width - margin * 2;
     int column_width = (content_width - gap) / 2;
     int label_height = ui_scale(theme, 18);
-    int field_height = ui_scale(theme, 32);
+    int field_height = ui_scale(theme, PLAYER_DIALOG_FIELD_HEIGHT);
 
     int y = ui_scale(theme, 96);
     state->label_first = (RECT){ margin, y, margin + column_width,
@@ -1004,6 +1008,13 @@ LRESULT CALLBACK player_dialog_proc(HWND hwnd, UINT message,
             return player_dialog_paint(state, hwnd);
         }
         break;
+    case WM_DRAWITEM:
+        if (state != NULL &&
+            ui_team_combo_draw_item(&state->team_view,
+                                    (DRAWITEMSTRUCT *)lparam)) {
+            return TRUE;
+        }
+        break;
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORLISTBOX:
     case WM_CTLCOLORBTN:
@@ -1019,6 +1030,12 @@ LRESULT CALLBACK player_dialog_proc(HWND hwnd, UINT message,
         case PLAYER_DIALOG_CANCEL_ID:
             dialog_close(hwnd);
             return 0;
+        case PLAYER_DIALOG_TEAM_ID:
+            if (HIWORD(wparam) == CBN_DROPDOWN ||
+                HIWORD(wparam) == CBN_CLOSEUP) {
+                ui_team_combo_reset_hover(&state->team_view);
+            }
+            break;
         default:
             break;
         }
@@ -1057,8 +1074,9 @@ static uint64_t player_dialog_run(App *app, HWND owner, uint64_t player_id,
                                       0, 0, 10, 10, theme->font_body, 48);
     state.last_name = ui_edit_create(hwnd, PLAYER_DIALOG_LAST_ID, L"",
                                      0, 0, 10, 10, theme->font_body, 48);
-    state.team = ui_combo_create(hwnd, PLAYER_DIALOG_TEAM_ID,
-                                 0, 0, 10, 10, theme->font_body);
+    state.team = ui_combo_create_owner_draw(
+        hwnd, PLAYER_DIALOG_TEAM_ID, 0, 0, 10, 10, theme->font_body,
+        PLAYER_DIALOG_FIELD_HEIGHT);
     wchar_t default_rating[32];
     ui_format_wide(default_rating,
                    sizeof(default_rating) / sizeof(default_rating[0]),
@@ -1083,6 +1101,7 @@ static uint64_t player_dialog_run(App *app, HWND owner, uint64_t player_id,
         dialog_close(hwnd);
         return 0;
     }
+    ui_team_combo_init(&state.team_view, state.team, &app->db, theme);
 
     for (size_t i = 0; i < app->db.team_count; ++i) {
         ui_combo_add_utf8(state.team, app->db.teams[i].name,

@@ -69,6 +69,7 @@ src/core/import_apply.c   Transactional club/player/match import engine
 src/core/storage.c        Versioned checksummed file format, atomic save, recovery, legacy migration
 src/ui/theme.c            DPI-scaled fonts, colours, double-buffered paint helpers
 src/ui/controls.c         Custom buttons and checkbox, edits, combos, lists, modal loop
+src/ui/team_combo.c       Shared owner-drawn club dropdown rendering
 src/ui/page.c             Shared page window and card/header/empty-state painting
 src/ui/page_*.c           Five application pages
 src/ui/dialogs.c          Shared modal shell and team/player dialogs
@@ -147,6 +148,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - All modal dialogs must disable their owner, support Tab and Escape, re-enable and repaint the owner before returning, and use `ui_run_modal`. Close dialog windows through `dialog_close` so the owner is re-enabled and activated before the dialog is hidden, then exposed and repainted before the dialog is destroyed.
 - Inline cell editors must stay above their list in the child z-order after creation so list repaints cannot cover them.
 - Custom-class windows should set their window text explicitly after creation. Do not rely on the class's `WM_NCCREATE` path to retain text.
+- All club dropdowns use `ui_combo_create_owner_draw` with `ui_team_combo_init`; route `WM_DRAWITEM` through `ui_team_combo_draw_item` so badges, player counts and hover states stay consistent.
 - When adding a player, default the team to the most recently created player's team; use `db_last_added_player` rather than array order guesses.
 - Match dialogs show each team's squad in its own list. They expose the final-whistle minute and a per-player sending-off minute. Double-click Minutes, Performance or Sent off to edit; a sending-off minute is blank/0 or between that player's actual minutes and the final whistle. Line-up lists use proportional column widths and must show every column at the default dialog size. Add player actions from those lists must use `dialog_add_player_for_team` so the fixed team, validation and duplicate-name flow stay identical to the Players page. Team selectors include every club, even those without players; saving still requires at least one selected player per side.
 - Adding a player whose full name matches an existing player must show the existing player's details and offer to add a duplicate, move the existing player to the selected club, or cancel. Use `db_find_player_by_name`; never add the duplicate silently.
