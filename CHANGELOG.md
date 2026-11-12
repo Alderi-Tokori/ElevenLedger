@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.9 - 2026-11-12
+
+### Fixed
+
+- WhoScored imports now keep a substitute who is recorded as entering and leaving in the same minute at the one-minute minimum instead of crediting them with the rest of the match.
+
 ## 2.0.8 - 2026-11-12
 
 ### Fixed

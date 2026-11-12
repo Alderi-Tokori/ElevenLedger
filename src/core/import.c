@@ -1414,8 +1414,14 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
 
         int minutes = 0;
         if (in_minute > 0) {
+            /*
+             * A substitute can be recorded as entering and leaving in the
+             * same minute. Honour any substitution-out time so that player
+             * falls back to the one-minute minimum instead of receiving the
+             * whole remaining match.
+             */
             int end_minute = timing->match_length;
-            if (out_minute > in_minute) {
+            if (out_minute > 0) {
                 end_minute = out_minute;
             }
             if (off_minute > 0 && off_minute < end_minute) {

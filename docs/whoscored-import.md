@@ -59,9 +59,10 @@ Starting players receive the full match length. Substitution times are converted
 from the expanded clock back to the real match clock before minutes are
 calculated. A substitute receives the time between their entry and the end of
 the match, or their own substitution-out time when they are replaced again.
-A substitute who enters during stoppage time is recorded with at least one
-minute. Straight red cards and second yellows are read from the match events and
-stop that player's actual minutes at the sending-off minute. A card recorded
+A substitute recorded as entering and leaving in the same minute, or who enters
+during stoppage time, is recorded with at least one minute. Straight red cards
+and second yellows are read from the match events and stop that player's actual
+minutes at the sending-off minute. A card recorded
 for a player who had already been substituted off, or who had not yet come on,
 is ignored because that player was not removed from the pitch. The preview also
 records the sending-off minute separately, so a sent-off player on a losing
