@@ -1814,7 +1814,7 @@ static bool import_build(ImportMatchState *state, const ImportedMatch *match)
                       source->last_name);
         row->minutes = source->minutes;
         row->sent_off = source->sent_off;
-        row->performance = RATING_NEUTRAL_PERFORMANCE;
+        row->performance = source->performance;
         row->action = IMPORT_PLAYER_CREATE;
     }
     import_recompute_all(state, false);

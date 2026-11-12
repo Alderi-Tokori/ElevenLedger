@@ -1029,6 +1029,52 @@ static bool test_parse_longest_player_name_is_not_truncated(void)
     return true;
 }
 
+static bool test_parse_performance_ratings(void)
+{
+    const char *html =
+        "<script>matchCentreData: {"
+        "\"startDate\":\"2026-08-23\","
+        "\"score\":\"1 : 0\","
+        "\"home\":{\"name\":\"Rennes\",\"players\":["
+        "{\"name\":\"Out Of Order\",\"isFirstEleven\":true,"
+        "\"stats\":{\"ratings\":{\"90\":7.14,\"12\":6.5,\"45\":6.93}}},"
+        "{\"name\":\"Missing Rating\",\"isFirstEleven\":true},"
+        "{\"name\":\"Out Of Range\",\"isFirstEleven\":true,"
+        "\"stats\":{\"ratings\":{\"90\":12.5}}},"
+        "{\"name\":\"Bad Key\",\"isFirstEleven\":true,"
+        "\"stats\":{\"ratings\":{\"full\":7.5,\"90\":7.08}}},"
+        "{\"name\":\"String Rating\",\"isFirstEleven\":true,"
+        "\"stats\":{\"ratings\":{\"90\":\"7.5\"}}},"
+        "{\"name\":\"Exponent Rating\",\"isFirstEleven\":true,"
+        "\"stats\":{\"ratings\":{\"90\":7.5e0}}},"
+        "{\"name\":\"Empty Ratings\",\"isFirstEleven\":true,"
+        "\"stats\":{\"ratings\":{}}}"
+        "]},"
+        "\"away\":{\"name\":\"PSG\",\"players\":["
+        "{\"name\":\"Away Rated\",\"isFirstEleven\":true,"
+        "\"stats\":{\"ratings\":{\"0\":6.0,\"90\":8.27}}},"
+        "{\"name\":\"Away Unused\",\"isFirstEleven\":false,"
+        "\"stats\":{\"ratings\":{\"90\":9.99}}}"
+        "]}}"
+        "</script>";
+    ImportedMatch match;
+    char error[512];
+    CHECK(imported_match_parse_html(html, strlen(html), &match,
+                                    error, sizeof(error)));
+    CHECK(match.home_player_count == 7);
+    CHECK(match.away_player_count == 1);
+    CHECK_NEAR(match.home_players[0].performance, 7.14, 1e-9);
+    CHECK_NEAR(match.home_players[1].performance, 6.0, 1e-9);
+    CHECK_NEAR(match.home_players[2].performance, 6.0, 1e-9);
+    CHECK_NEAR(match.home_players[3].performance, 7.08, 1e-9);
+    CHECK_NEAR(match.home_players[4].performance, 6.0, 1e-9);
+    CHECK_NEAR(match.home_players[5].performance, 7.5, 1e-9);
+    CHECK_NEAR(match.home_players[6].performance, 6.0, 1e-9);
+    CHECK_NEAR(match.away_players[0].performance, 8.27, 1e-9);
+    imported_match_free(&match);
+    return true;
+}
+
 const TestCase g_import_tests[] = {
     TEST_CASE(test_parse_match_page),
     TEST_CASE(test_parse_score_fallback_and_extra_time),
@@ -1054,6 +1100,7 @@ const TestCase g_import_tests[] = {
     TEST_CASE(test_parse_minutes_capped_at_final_whistle),
     TEST_CASE(test_parse_tolerates_long_unrelated_key),
     TEST_CASE(test_parse_longest_player_name_is_not_truncated),
+    TEST_CASE(test_parse_performance_ratings),
 };
 
 const size_t g_import_test_count =

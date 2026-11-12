@@ -9,7 +9,7 @@ The application is a dependency-free C17 Win32 program. It does not use a browse
 - Multiple clubs and squads with availability and starting ratings.
 - Player and team lists sortable by any column, with a click to sort ascending and another click to reverse the order.
 - Match recording with side-by-side home and away squads, inline player creation for any club (including clubs without players), per-player minutes and sending-off minutes, the final-whistle minute and a 1-10 individual performance input.
-- Match import from WhoScored page source copied from the browser. The scraped date, clubs, score, players, minutes, final whistle and sending-off minutes are shown in an editable preview before anything is created. Coloured cues identify new players, existing squad members, players linked to another club, and archived players; duplicate actions can be changed per player.
+- Match import from WhoScored page source copied from the browser. The scraped date, clubs, score, players, minutes, performance ratings, final whistle and sending-off minutes are shown in an editable preview before anything is created. Coloured cues identify new players, existing squad members, players linked to another club, and archived players; duplicate actions can be changed per player.
 - A date-aware live rating preview in the match form and WhoScored import preview shows both line-up scores, team performance averages and the home team's change for a one-goal win or defeat as players, minutes and performances change. Existing players use their rating immediately before the fixture date; newly created players start at 50.0.
 - Team-result movement shared by the line-up, then adjusted for playing time and individual performance.
 - Ratings replayed chronologically after edits or deletions, so history stays consistent.
@@ -72,9 +72,10 @@ source, then **Ctrl+A** and **Ctrl+C**. In ElevenLedger, open **Matches** and ch
 
 ElevenLedger parses the source locally and opens an editable preview. Nothing is
 written until **Import match** is confirmed. The preview shows each player's
-minutes and a live cue for new players, existing squad members, players linked
-to another club, and archived players. Existing players can be reused or moved,
-or a separate player can be created. It also shows the same rating summary as
+minutes and final WhoScored performance rating, and a live cue for new players,
+existing squad members, players linked to another club, and archived players.
+Existing players can be reused or moved, or a separate player can be created.
+It also shows the same rating summary as
 the match form, using each reused player's pre-match rating and the default 50.0
 for new players.
 

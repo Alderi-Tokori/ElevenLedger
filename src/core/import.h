@@ -15,6 +15,12 @@ typedef struct {
     char last_name[PERSON_NAME_MAX + 1];
     int minutes;
     int sent_off;
+    /*
+     * WhoScored's final match rating for this player, rounded to two
+     * decimals. Defaults to RATING_NEUTRAL_PERFORMANCE when the page does
+     * not provide a usable rating. The rating model accepts 1.0-10.0.
+     */
+    double performance;
 } ImportedPlayer;
 
 typedef struct {

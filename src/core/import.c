@@ -2,6 +2,7 @@
 
 #include "core/util.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -590,6 +591,60 @@ static bool json_array_next(JsonArrayIter *iter, JsonSpan *out)
     return true;
 }
 
+typedef struct {
+    const char *cursor;
+    const char *end;
+    bool first;
+} JsonObjectIter;
+
+static bool json_object_begin(JsonSpan object, JsonObjectIter *iter)
+{
+    if (object.start >= object.end || *object.start != '{') {
+        return false;
+    }
+    iter->cursor = object.start + 1;
+    iter->end = object.end;
+    iter->first = true;
+    return true;
+}
+
+static bool json_object_next(JsonObjectIter *iter, JsonSpan *key,
+                             JsonSpan *value)
+{
+    const char *p = iter->cursor;
+    json_skip_ws(&p, iter->end);
+    if (p < iter->end && *p == '}') {
+        iter->cursor = p + 1;
+        return false;
+    }
+    if (!iter->first) {
+        if (p >= iter->end || *p != ',') {
+            return false;
+        }
+        ++p;
+        json_skip_ws(&p, iter->end);
+    }
+    JsonSpan key_span;
+    if (!json_next_value(&p, iter->end, &key_span) ||
+        key_span.start >= key_span.end || *key_span.start != '"') {
+        return false;
+    }
+    json_skip_ws(&p, iter->end);
+    if (p >= iter->end || *p != ':') {
+        return false;
+    }
+    ++p;
+    JsonSpan value_span;
+    if (!json_next_value(&p, iter->end, &value_span)) {
+        return false;
+    }
+    iter->cursor = p;
+    iter->first = false;
+    *key = key_span;
+    *value = value_span;
+    return true;
+}
+
 static bool json_parse_bool(JsonSpan span, bool *out)
 {
     if ((size_t)(span.end - span.start) == 4 &&
@@ -680,6 +735,78 @@ static bool json_parse_int(JsonSpan span, int *out)
         return false;
     }
     *out = (int)value;
+    return true;
+}
+
+/*
+ * Parses a JSON number without relying on the process locale. WhoScored
+ * ratings always use a dot as the decimal separator, even on pages rendered
+ * for a locale that displays commas.
+ */
+static bool json_parse_decimal(JsonSpan span, double *out)
+{
+    const char *p = span.start;
+    const char *end = span.end;
+    bool negative = false;
+    if (p < end && *p == '-') {
+        negative = true;
+        ++p;
+    }
+    if (p >= end || *p < '0' || *p > '9') {
+        return false;
+    }
+    double value = 0.0;
+    while (p < end && *p >= '0' && *p <= '9') {
+        value = value * 10.0 + (double)(*p - '0');
+        if (!isfinite(value)) {
+            return false;
+        }
+        ++p;
+    }
+    if (p < end && *p == '.') {
+        ++p;
+        if (p >= end || *p < '0' || *p > '9') {
+            return false;
+        }
+        double scale = 0.1;
+        while (p < end && *p >= '0' && *p <= '9') {
+            value += (double)(*p - '0') * scale;
+            scale *= 0.1;
+            ++p;
+        }
+    }
+    if (p < end && (*p == 'e' || *p == 'E')) {
+        ++p;
+        bool negative_exponent = false;
+        if (p < end && (*p == '+' || *p == '-')) {
+            negative_exponent = *p == '-';
+            ++p;
+        }
+        if (p >= end || *p < '0' || *p > '9') {
+            return false;
+        }
+        int exponent = 0;
+        while (p < end && *p >= '0' && *p <= '9') {
+            if (exponent > 400) {
+                return false;
+            }
+            exponent = exponent * 10 + (*p - '0');
+            ++p;
+        }
+        for (int i = 0; i < exponent; ++i) {
+            value = negative_exponent ? value / 10.0 : value * 10.0;
+        }
+    }
+    if (p != end) {
+        return false;
+    }
+    if (negative) {
+        value = -value;
+    }
+    if (!isfinite(value)) {
+        return false;
+    }
+    *out = value;
     return true;
 }
 
@@ -1379,6 +1506,51 @@ static bool grow_imported_players(ImportedPlayer **players, size_t *capacity,
     return true;
 }
 
+/*
+ * The player's stats carry a rating history keyed by match minute. The value
+ * at the highest minute is the final rating WhoScored shows for the match.
+ * Missing, malformed or out-of-range values are ignored so a rating oddity
+ * cannot reject an otherwise valid import.
+ */
+static bool parse_player_rating(JsonSpan player, double *out)
+{
+    JsonSpan stats;
+    JsonSpan ratings;
+    if (!json_object_get(player, "stats", &stats) ||
+        !json_object_get(stats, "ratings", &ratings)) {
+        return false;
+    }
+    JsonObjectIter iter;
+    if (!json_object_begin(ratings, &iter)) {
+        return false;
+    }
+    bool found = false;
+    int best_minute = 0;
+    double best_rating = 0.0;
+    JsonSpan key;
+    JsonSpan value;
+    while (json_object_next(&iter, &key, &value)) {
+        char key_text[32];
+        int minute = 0;
+        double rating = 0.0;
+        if (!json_decode_string(key, key_text, sizeof(key_text)) ||
+            !util_parse_int(key_text, 0, 1000, &minute) ||
+            !json_parse_decimal(value, &rating)) {
+            continue;
+        }
+        if (!found || minute > best_minute) {
+            found = true;
+            best_minute = minute;
+            best_rating = rating;
+        }
+    }
+    if (!found || best_rating < 1.0 || best_rating > 10.0) {
+        return false;
+    }
+    *out = round(best_rating * 100.0) / 100.0;
+    return true;
+}
+
 static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
                                const SendingOff *sending_offs,
                                size_t sending_off_count,
@@ -1556,6 +1728,8 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
         }
         player->minutes = minutes;
         player->sent_off = off_minute;
+        player->performance = RATING_NEUTRAL_PERFORMANCE;
+        (void)parse_player_rating(item, &player->performance);
         ++count;
     }
 

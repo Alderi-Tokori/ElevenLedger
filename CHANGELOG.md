@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.18 - 2026-11-12
+
+### Added
+
+- WhoScored imports now use each player's final match rating as the performance score. The rating is read from the page source, rounded to two decimals, and remains editable in the import preview. Players without a usable rating keep the 6.00 default.
+
 ## 2.0.17 - 2026-11-12
 
 ### Fixed

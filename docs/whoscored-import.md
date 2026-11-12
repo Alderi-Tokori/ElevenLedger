@@ -46,6 +46,8 @@ The page must contain WhoScored's embedded `matchCentreData`. ElevenLedger reads
 - every player who appeared, with actual minutes derived from the starting
   line-up, substitution minutes and sending-offs, plus the sending-off minute
   when applicable. Unused substitutes are omitted.
+- each appearing player's final WhoScored match rating when the page provides
+  one.
 - the final whistle minute from the real elapsed match length.
 
 ElevenLedger uses the real elapsed match length. It reads `maxMinute` (for example
@@ -72,8 +74,15 @@ records the sending-off minute separately, so a sent-off player on a losing
 team can use the entry-to-final-whistle result share described in the rating
 model. Wins and draws use the actual minutes. Minutes are clamped to the 1-120
 range accepted by ElevenLedger, and an import plan whose minutes exceed the
-final whistle is rejected before any club or player is created. The imported
-performance defaults to 6.00 and can be edited before import.
+final whistle is rejected before any club or player is created.
+
+The imported performance is the player's final WhoScored rating. WhoScored
+stores a rating history under `stats.ratings`, keyed by match minute; ElevenLedger
+uses the value at the highest minute, rounded to two decimals. Unused
+substitutes have no rating history and are omitted anyway. If a player has no
+usable rating, or a value falls outside ElevenLedger's 1.0-10.0 performance
+range, the performance defaults to 6.00. Every imported or fallback performance
+can be edited before import.
 
 Player names are split at the first space: the first token becomes the first
 name and the remainder becomes the last name. A single-word name is stored as a
