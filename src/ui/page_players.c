@@ -323,17 +323,7 @@ static void players_rebuild_team_filter(PlayersPage *page)
     SendMessageW(page->team_filter, CB_RESETCONTENT, 0, 0);
     SendMessageW(page->team_filter, CB_ADDSTRING, 0, (LPARAM)L"All teams");
     SendMessageW(page->team_filter, CB_SETITEMDATA, 0, 0);
-    for (size_t i = 0; i < page->base.app->db.team_count; ++i) {
-        const Team *team = &page->base.app->db.teams[i];
-        wchar_t name[128];
-        ui_utf8_to_wide(team->name, name, sizeof(name) / sizeof(name[0]));
-        LRESULT index = SendMessageW(page->team_filter, CB_ADDSTRING, 0,
-                                     (LPARAM)name);
-        if (index != CB_ERR && index != CB_ERRSPACE) {
-            SendMessageW(page->team_filter, CB_SETITEMDATA,
-                         (WPARAM)index, (LPARAM)team->id);
-        }
-    }
+    ui_team_combo_add_teams(page->team_filter, &page->base.app->db);
     if (previous != 0 &&
         db_find_team(&page->base.app->db, previous) != NULL) {
         ui_combo_select_data(page->team_filter, previous);

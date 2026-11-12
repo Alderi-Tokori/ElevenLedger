@@ -490,6 +490,11 @@ try {
     if ($teamFilterCount -ne 3) {
         throw "The team filter did not list every club (got $teamFilterCount items)."
     }
+    $teamFilterItems = Read-ComboItems -Combo $teamFilter
+    if (($teamFilterItems -join "|") -ne "All teams|Northbridge FC|Riverside Athletic") {
+        throw "The team filter is not sorted by club name."
+    }
+    Write-Host "Team filter sorted OK"
     $northbridgeIndex = [ElevenLedgerSmoke]::SendMessageText(
         $teamFilter, 0x0158, [IntPtr](-1), "Northbridge FC").ToInt64()
     if ($northbridgeIndex -lt 0) {
