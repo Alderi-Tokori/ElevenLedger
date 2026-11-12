@@ -716,17 +716,29 @@ static bool reserve_array(void **array, size_t element_size, size_t *capacity,
 
 static bool parse_u64(const char *text, uint64_t *out)
 {
-    if (text == NULL || *text == '\0' || *text == '-') {
+    /*
+     * Persisted IDs are bare unsigned decimal digits. strtoull would accept
+     * leading whitespace and a negative sign and silently wrap the value, so
+     * parse the digits explicitly.
+     */
+    if (text == NULL || *text == '\0') {
         return false;
     }
-    errno = 0;
-    char *end = NULL;
-    unsigned long long value = strtoull(text, &end, 10);
-    if (errno != 0 || end == text || *end != '\0' || value == 0 ||
-        value > UINT64_MAX) {
+    uint64_t value = 0;
+    for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+        if (*cursor < '0' || *cursor > '9') {
+            return false;
+        }
+        uint64_t digit = (uint64_t)(*cursor - '0');
+        if (value > (UINT64_MAX - digit) / 10) {
+            return false;
+        }
+        value = value * 10 + digit;
+    }
+    if (value == 0) {
         return false;
     }
-    *out = (uint64_t)value;
+    *out = value;
     return true;
 }
 

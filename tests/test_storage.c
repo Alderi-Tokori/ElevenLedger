@@ -1283,6 +1283,28 @@ static bool test_oversized_primary_recovers_from_backup(void)
     return true;
 }
 
+static bool test_negative_id_is_rejected(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    /* Leading whitespace used to reach strtoull's negative-number path. */
+    CHECK(write_raw_data_file(paths.data_path,
+                              "PITCHRATE|4\nTEAM| -2|Alpha||\nEND\n"));
+    Database loaded;
+    char error[768];
+    StorageStatus status = storage_load(paths.data_path, &loaded,
+                                        error, sizeof(error));
+    if (status == STORAGE_OK) {
+        fprintf(stderr, "  loaded team ID %llu, next team ID %llu\n",
+                (unsigned long long)loaded.teams[0].id,
+                (unsigned long long)loaded.next_team_id);
+        db_free(&loaded);
+    }
+    cleanup_test_paths(&paths);
+    CHECK(status == STORAGE_CORRUPT);
+    return true;
+}
+
 const TestCase g_storage_tests[] = {
     TEST_CASE(test_roundtrip_and_recompute),
     TEST_CASE(test_neutral_venue_roundtrip),
@@ -1312,6 +1334,7 @@ const TestCase g_storage_tests[] = {
     TEST_CASE(test_ids_are_not_reused_after_reload),
     TEST_CASE(test_second_recovery_keeps_first_damaged_file),
     TEST_CASE(test_oversized_primary_recovers_from_backup),
+    TEST_CASE(test_negative_id_is_rejected),
 };
 
 const size_t g_storage_test_count =

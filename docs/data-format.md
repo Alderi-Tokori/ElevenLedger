@@ -47,6 +47,8 @@ CRC32|<8 uppercase hex digits>
 
 The `PITCHRATE|` token is retained from the application's former name so existing files remain readable. It identifies the format, not the current product name.
 
+All IDs are positive decimal integers written as bare digits. Zero, signed values, whitespace padding, non-digit characters and values above the 64-bit range are rejected.
+
 `NEXT` stores the counters used for the next team, player and match IDs. Deleted IDs stay reserved, so after deletions the counters can be greater than the highest stored ID plus one. Each counter must be greater than every stored ID of its kind. The record is required in v5 files; a missing or duplicate `NEXT` record is rejected.
 
 `neutral_venue` is `0` or `1`. `active` is `0` or `1`. `length` is the final-whistle minute, 1-120. `sent_off` is `0` when there was no removal without replacement, otherwise the sending-off minute; a non-zero value must be between that appearance's `minutes` and `length`. Performance is stored with two-decimal quantization. `starting_rating` accepts any finite number, including negative values or values above `99.0`, and is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored. Actual `minutes` are stored; the sent-off result weighting is derived during replay.
