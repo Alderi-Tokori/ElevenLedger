@@ -27,7 +27,7 @@ On first launch, when `%LOCALAPPDATA%\ElevenLedger` contains no primary or backu
 - A corrupt primary does not replace a valid backup.
 - Move operations use write-through replacement.
 - A primary file that cannot be read, or that uses an unsupported format version, is never replaced automatically.
-- On startup, a damaged primary file is preserved as `data.frc.corrupt` and replaced from the last good backup only after the backup has passed parsing and validation. If the damaged file cannot be preserved, recovery stops.
+- On startup, a damaged primary file is preserved as `data.frc.corrupt` and replaced from the last good backup only after the backup has passed parsing and validation. If `data.frc.corrupt` already exists, the damaged copy is preserved as `data.frc.corrupt.1`, then `.2`, and so on, so earlier damaged files are never overwritten. If preservation fails, recovery stops.
 - Before promoting the current primary to backup, the save path revalidates the primary and the backup copy. A corrupt primary cannot overwrite a good backup.
 - The newly written temporary file is parsed and validated before it can replace the primary.
 - The next data mutation waits for any pending background save, and closing the application waits for the pending save to finish.
@@ -70,7 +70,7 @@ The checksum line has no trailing newline. A UTF-8 byte-order mark is accepted w
 1. Try the primary file.
 2. If the primary is missing or corrupt, try `data.frc.bak`.
 3. If the primary cannot be read (I/O error) or uses an unsupported format version, stop without touching any file. Do not fall back to a potentially older backup.
-4. If the backup is valid, preserve the damaged primary as `data.frc.corrupt`, replace the primary from the good backup, and continue. If preservation fails, stop without modifying the primary.
+4. If the backup is valid, preserve the damaged primary as `data.frc.corrupt` (or the next free `data.frc.corrupt.N` when that name is taken), replace the primary from the good backup, and continue. If preservation fails, stop without modifying the primary.
 5. If both files are invalid, stop without overwriting either. This prevents silent data loss.
 
 ## Compatibility

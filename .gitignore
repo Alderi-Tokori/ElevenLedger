@@ -24,6 +24,7 @@ compile_commands.json
 *.frc.bak.tmp
 *.frc.tmp
 *.frc.corrupt
+*.frc.corrupt.*
 *.dat
 
 # Editor and OS files

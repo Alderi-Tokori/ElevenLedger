@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.15 - 2026-11-12
+
+### Fixed
+
+- A second recovery no longer overwrites the damaged data file preserved by the first recovery. Damaged copies are kept as `data.frc.corrupt`, `data.frc.corrupt.1`, `data.frc.corrupt.2` and so on.
+
 ## 2.0.14 - 2026-11-12
 
 ### Fixed

@@ -1133,6 +1133,116 @@ static bool test_ids_are_not_reused_after_reload(void)
     return true;
 }
 
+static bool overwrite_file_text(const wchar_t *path, const char *content)
+{
+    FILE *file = _wfopen(path, L"wb");
+    if (file == NULL) {
+        return false;
+    }
+    bool ok = fputs(content, file) >= 0;
+    return fclose(file) == 0 && ok;
+}
+
+/* Reports whether any file in the directory holds exactly this text. */
+static bool directory_has_file_with_text(const wchar_t *directory,
+                                         const char *content)
+{
+    wchar_t pattern[MAX_PATH];
+    if (swprintf(pattern, sizeof(pattern) / sizeof(pattern[0]), L"%ls\\*",
+                 directory) < 0) {
+        return false;
+    }
+    WIN32_FIND_DATAW entry;
+    HANDLE find = FindFirstFileW(pattern, &entry);
+    if (find == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    bool found = false;
+    size_t wanted = strlen(content);
+    do {
+        if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+            continue;
+        }
+        wchar_t path[MAX_PATH];
+        if (swprintf(path, sizeof(path) / sizeof(path[0]), L"%ls\\%ls",
+                     directory, entry.cFileName) < 0) {
+            continue;
+        }
+        FILE *file = _wfopen(path, L"rb");
+        if (file == NULL) {
+            continue;
+        }
+        char buffer[256];
+        size_t read = fread(buffer, 1, sizeof(buffer), file);
+        fclose(file);
+        if (read == wanted && memcmp(buffer, content, wanted) == 0) {
+            found = true;
+        }
+    } while (!found && FindNextFileW(find, &entry));
+    FindClose(find);
+    return found;
+}
+
+static void delete_directory_files(const wchar_t *directory)
+{
+    wchar_t pattern[MAX_PATH];
+    if (swprintf(pattern, sizeof(pattern) / sizeof(pattern[0]), L"%ls\\*",
+                 directory) < 0) {
+        return;
+    }
+    WIN32_FIND_DATAW entry;
+    HANDLE find = FindFirstFileW(pattern, &entry);
+    if (find == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    do {
+        wchar_t path[MAX_PATH];
+        if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 &&
+            swprintf(path, sizeof(path) / sizeof(path[0]), L"%ls\\%ls",
+                     directory, entry.cFileName) >= 0) {
+            DeleteFileW(path);
+        }
+    } while (FindNextFileW(find, &entry));
+    FindClose(find);
+}
+
+static bool test_second_recovery_keeps_first_damaged_file(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(add_two_teams(&db, &alpha, &beta));
+    char error[768];
+    CHECK(storage_save(paths.data_path, &db, error, sizeof(error)));
+    CHECK(storage_save(paths.data_path, &db, error, sizeof(error)));
+    db_free(&db);
+
+    const char *first_damage = "first damaged primary";
+    const char *second_damage = "second damaged primary";
+    CHECK(overwrite_file_text(paths.data_path, first_damage));
+    CHECK(storage_repair_from_backup(paths.data_path, error, sizeof(error)));
+    CHECK(directory_has_file_with_text(paths.directory, first_damage));
+
+    CHECK(overwrite_file_text(paths.data_path, second_damage));
+    bool repaired_again =
+        storage_repair_from_backup(paths.data_path, error, sizeof(error));
+    /*
+     * Refusing the second repair is acceptable. Losing the first preserved
+     * file, or the second one after a successful repair, is not.
+     */
+    bool first_kept =
+        directory_has_file_with_text(paths.directory, first_damage);
+    bool second_kept =
+        directory_has_file_with_text(paths.directory, second_damage);
+    delete_directory_files(paths.directory);
+    cleanup_test_paths(&paths);
+    CHECK(first_kept);
+    CHECK(!repaired_again || second_kept);
+    return true;
+}
+
 const TestCase g_storage_tests[] = {
     TEST_CASE(test_roundtrip_and_recompute),
     TEST_CASE(test_neutral_venue_roundtrip),
@@ -1160,6 +1270,7 @@ const TestCase g_storage_tests[] = {
     TEST_CASE(test_nested_directory_created),
     TEST_CASE(test_migrate_legacy_data),
     TEST_CASE(test_ids_are_not_reused_after_reload),
+    TEST_CASE(test_second_recovery_keeps_first_damaged_file),
 };
 
 const size_t g_storage_test_count =

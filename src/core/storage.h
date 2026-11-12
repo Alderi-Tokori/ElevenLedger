@@ -22,7 +22,8 @@ typedef enum {
  * uses an unsupported format version stops immediately and is never replaced. On
  * STORAGE_RECOVERED the database was loaded from the backup and can be repaired
  * explicitly via storage_repair_from_backup, which preserves the damaged
- * primary as ".corrupt".
+ * primary as ".corrupt", or as the next free ".corrupt.N" name when an earlier
+ * damaged copy already exists.
  */
 StorageStatus storage_load(const wchar_t *path, Database *db,
                            char *error, size_t error_size);

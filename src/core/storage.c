@@ -18,6 +18,7 @@
 #define STORAGE_MAX_FILE_BYTES (64u * 1024u * 1024u)
 #define STORAGE_MAX_FIELDS 12
 #define STORAGE_READ_BUFFER 8192
+#define STORAGE_MAX_CORRUPT_COPIES 100
 
 /*
  * The header keeps the original product token so files written before the
@@ -594,6 +595,61 @@ bool storage_save(const wchar_t *path, const Database *db,
     return true;
 }
 
+/*
+ * Copies the damaged primary next to itself without ever overwriting an
+ * earlier preserved copy. The first copy keeps the documented ".corrupt"
+ * name; later recoveries use ".corrupt.1", ".corrupt.2" and so on.
+ */
+static bool preserve_damaged_file(const wchar_t *path,
+                                  char *error, size_t error_size)
+{
+    for (unsigned copy = 0; copy <= STORAGE_MAX_CORRUPT_COPIES; ++copy) {
+        const wchar_t *suffix = L".corrupt";
+        wchar_t numbered[32];
+        if (copy > 0) {
+            if (swprintf(numbered, sizeof(numbered) / sizeof(numbered[0]),
+                         L".corrupt.%u", copy) < 0) {
+                set_error(error, error_size,
+                          "The damaged data file could not be preserved.");
+                return false;
+            }
+            suffix = numbered;
+        }
+        wchar_t *candidate = build_sibling_path(path, suffix, error,
+                                                 error_size);
+        if (candidate == NULL) {
+            return false;
+        }
+        DWORD attributes = GetFileAttributesW(candidate);
+        if (attributes != INVALID_FILE_ATTRIBUTES) {
+            bool is_directory = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            free(candidate);
+            if (copy == 0 && is_directory) {
+                set_error(error, error_size,
+                          "The damaged data file could not be preserved "
+                          "because the corrupt-copy path is a directory.");
+                return false;
+            }
+            continue;
+        }
+        if (CopyFileW(path, candidate, TRUE)) {
+            free(candidate);
+            return true;
+        }
+        DWORD code = GetLastError();
+        free(candidate);
+        if (code != ERROR_FILE_EXISTS && code != ERROR_ALREADY_EXISTS) {
+            set_windows_error(error, error_size,
+                              L"Preserving the damaged data file", code);
+            return false;
+        }
+    }
+    set_error(error, error_size,
+              "The damaged data file could not be preserved because too many "
+              "damaged copies already exist.");
+    return false;
+}
+
 bool storage_repair_from_backup(const wchar_t *path,
                                 char *error, size_t error_size)
 {
@@ -615,21 +671,10 @@ bool storage_repair_from_backup(const wchar_t *path,
     }
 
     if (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) {
-        wchar_t *corrupt_path = build_sibling_path(path, L".corrupt",
-                                                    error, error_size);
-        if (corrupt_path == NULL) {
+        if (!preserve_damaged_file(path, error, error_size)) {
             free(backup_path);
             return false;
         }
-        if (!CopyFileW(path, corrupt_path, FALSE)) {
-            DWORD code = GetLastError();
-            set_windows_error(error, error_size,
-                              L"Preserving the damaged data file", code);
-            free(corrupt_path);
-            free(backup_path);
-            return false;
-        }
-        free(corrupt_path);
     }
     if (!CopyFileW(backup_path, path, FALSE)) {
         DWORD code = GetLastError();

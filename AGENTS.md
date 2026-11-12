@@ -125,7 +125,7 @@ Never patch ratings in a page or dialog. Fix the engine.
 - Before promoting the primary to backup, validate the primary and checksum-verify the backup copy against it. A corrupt primary must not overwrite a good backup.
 - Validation-only file checks must not recompute ratings; only a database loaded for use rebuilds derived values.
 - A primary that cannot be read or uses an unsupported format version must never be silently replaced.
-- Recovery must preserve a damaged primary as `.corrupt` before restoring the backup.
+- Recovery must preserve a damaged primary as `.corrupt` before restoring the backup, and must never overwrite a previously preserved damaged copy; use the next free `.corrupt.N` name instead.
 - No silent reset. If both primary and backup fail validation, stop and report the error.
 - The default data folder is `%LOCALAPPDATA%\ElevenLedger`. When it has no primary or backup, first launch must copy the legacy `%LOCALAPPDATA%\PitchRate` primary and backup files into it without deleting or modifying the originals. The old folder, including any `.corrupt` file, is left untouched. A `--data` path is never migrated.
 - All new file validation must reject duplicates, dangling IDs, invalid ranges, invalid UTF-8 and malformed records.
