@@ -1427,6 +1427,17 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
         if (has_subbed_out && subbed_out > 0) {
             out_minute = match_minute_from_expanded(subbed_out, timing);
         }
+        /*
+         * WhoScored can report a substitution time beyond the real final
+         * whistle. Such a time cannot describe a valid appearance and would
+         * reject the whole import during plan validation, so cap it.
+         */
+        if (in_minute > timing->match_length) {
+            in_minute = timing->match_length;
+        }
+        if (out_minute > timing->match_length) {
+            out_minute = timing->match_length;
+        }
         int off_minute = 0;
         if (source_id > 0) {
             off_minute = sending_off_minute(sending_offs, sending_off_count,

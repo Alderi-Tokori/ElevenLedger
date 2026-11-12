@@ -60,7 +60,9 @@ from the expanded clock back to the real match clock before minutes are
 calculated. A substitute receives the time between their entry and the end of
 the match, or their own substitution-out time when they are replaced again.
 A substitute recorded as entering and leaving in the same minute, or who enters
-during stoppage time, is recorded with at least one minute. Straight red cards
+during stoppage time, is recorded with at least one minute. A substitution time
+reported beyond the real final whistle is capped at the final whistle so the
+appearance cannot exceed the match length. Straight red cards
 and second yellows are read from the match events and stop that player's actual
 minutes at the sending-off minute. Cards and players are matched by WhoScored's
 numeric `playerId`, whatever its size. A card recorded

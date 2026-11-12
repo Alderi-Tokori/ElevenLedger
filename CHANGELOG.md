@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.11 - 2026-11-12
+
+### Fixed
+
+- WhoScored imports now cap substitution times reported after the final whistle at the real match length. Such players previously received more minutes than the match lasted, which rejected the whole import during plan validation.
+
 ## 2.0.10 - 2026-11-12
 
 ### Fixed
