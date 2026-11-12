@@ -1331,6 +1331,14 @@ bool db_ratings_before_match(const Database *db, const char *date,
             (date_compare == 0 && match->id >= match_id)) {
             break;
         }
+        /*
+         * The match being edited may currently sit before the preview date.
+         * It is replaced by the form, so skip it here while still replaying
+         * the other fixtures that would precede its new position.
+         */
+        if (match->id == match_id) {
+            continue;
+        }
 
         size_t start = appearance_lower_bound(db, match->id);
         size_t end = start;

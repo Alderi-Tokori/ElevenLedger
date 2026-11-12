@@ -1688,6 +1688,71 @@ static bool test_incremental_replay_matches_full_recompute(void)
     return true;
 }
 
+static bool test_ratings_before_match_excludes_edited_match(void)
+{
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(setup_two_teams(&db, &alpha, &beta));
+    char error[256];
+    uint64_t players[2];
+    CHECK(db_add_player(&db, alpha, "Home", "Player", 50.0, true,
+                        &players[0], error, sizeof(error)));
+    CHECK(db_add_player(&db, beta, "Away", "Player", 50.0, true,
+                        &players[1], error, sizeof(error)));
+    MatchPlayerInput lineup[] = {
+        { players[0], 90, 6.0, 0 },
+        { players[1], 90, 6.0, 0 },
+    };
+    MatchInput input = {
+        .date = "2026-01-10",
+        .home_team_id = alpha,
+        .away_team_id = beta,
+        .home_goals = 3,
+        .away_goals = 0,
+        .length = 90,
+        .players = lineup,
+        .player_count = 2,
+    };
+    uint64_t match_id = 0;
+    CHECK(db_add_match(&db, &input, &match_id, error, sizeof(error)));
+
+    /*
+     * The edit dialog previews the match being edited at the date typed in
+     * the form. Moving the only match to a later date must still exclude the
+     * match itself from its own pre-match ratings.
+     */
+    double ratings[2] = { 0.0, 0.0 };
+    CHECK(db_ratings_before_match(&db, "2026-02-10", match_id, ratings,
+                                  error, sizeof(error)));
+    CHECK_NEAR(ratings[0], 50.0, 1e-12);
+    CHECK_NEAR(ratings[1], 50.0, 1e-12);
+
+    /*
+     * Fixtures between the old and new date still count, but they must be
+     * replayed without the edited match. The ratings captured from the
+     * preview must match the stored ratings after the edit is removed.
+     */
+    MatchInput later = input;
+    later.date = "2026-02-10";
+    later.home_goals = 1;
+    later.away_goals = 0;
+    uint64_t later_match = 0;
+    CHECK(db_add_match(&db, &later, &later_match, error, sizeof(error)));
+    CHECK(db_ratings_before_match(&db, "2026-03-10", match_id, ratings,
+                                  error, sizeof(error)));
+    CHECK(db_delete_match(&db, match_id, error, sizeof(error)));
+    const Appearance *later_home =
+        find_appearance(&db, later_match, players[0]);
+    const Appearance *later_away =
+        find_appearance(&db, later_match, players[1]);
+    CHECK(later_home != NULL && later_away != NULL);
+    CHECK_NEAR(ratings[0], later_home->rating_after, 1e-12);
+    CHECK_NEAR(ratings[1], later_away->rating_after, 1e-12);
+    db_free(&db);
+    return true;
+}
+
 static bool test_match_rejects_minutes_beyond_final_whistle(void)
 {
     Database db;
@@ -1845,6 +1910,7 @@ const TestCase g_database_tests[] = {
     TEST_CASE(test_find_player_by_name),
     TEST_CASE(test_find_active_player_by_name_in_team),
     TEST_CASE(test_team_stats_are_minutes_and_results_aware),
+    TEST_CASE(test_ratings_before_match_excludes_edited_match),
     TEST_CASE(test_match_rejects_minutes_beyond_final_whistle),
     TEST_CASE(test_validate_scales_to_several_seasons),
 };

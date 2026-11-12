@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.7 - 2026-11-12
+
+### Fixed
+
+- Editing a match and moving it to a later date no longer replays the edited fixture into its own pre-match rating preview. Other fixtures before the new date still count, matching the ratings recomputed after saving.
+
 ## 2.0.6 - 2026-11-12
 
 ### Fixed

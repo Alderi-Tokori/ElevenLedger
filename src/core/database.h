@@ -199,7 +199,10 @@ bool db_recompute_ratings(Database *db, char *error, size_t error_size);
  * Computes each player's rating immediately before the chronological match
  * slot identified by (date, match_id). Earlier dates are included, as are
  * same-date matches with a lower ID; the identified match and everything after
- * it are excluded. Pass the database's next match ID to preview a new match.
+ * it are excluded. The identified match is skipped even when its stored date
+ * is earlier than date, so editing a match previews its new position as if the
+ * old fixture were removed while every other earlier fixture still counts.
+ * Pass the database's next match ID to preview a new match.
  * The ratings array receives db->player_count values in player array order.
  * The database's matches and appearances must already be in their normal
  * chronological / match-ID order, which every database mutation guarantees.
