@@ -63,7 +63,7 @@ The legacy position values were `0` goalkeeper, `1` defender, `2` midfielder and
 
 Fields escape backslash, pipe, carriage return and newline as `\\`, `\|`, `\r` and `\n`. Player, team and city values must be valid UTF-8 and cannot contain C0 control characters.
 
-The checksum line has no trailing newline. A UTF-8 byte-order mark is accepted when reading but is not written. File size is capped at 64 MiB.
+The checksum line has no trailing newline. A UTF-8 byte-order mark is accepted when reading but is not written. File size is capped at 64 MiB; a larger primary is treated as corrupt and follows the recovery flow.
 
 ## Recovery flow
 

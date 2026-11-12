@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.16 - 2026-11-12
+
+### Fixed
+
+- A data file larger than the documented 64 MiB limit is now treated as corrupt rather than unreadable. ElevenLedger preserves the oversized primary as `data.frc.corrupt` and restores the last good backup instead of stopping at startup.
+
 ## 2.0.15 - 2026-11-12
 
 ### Fixed

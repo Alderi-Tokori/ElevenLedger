@@ -1243,6 +1243,46 @@ static bool test_second_recovery_keeps_first_damaged_file(void)
     return true;
 }
 
+static bool test_oversized_primary_recovers_from_backup(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    Database db;
+    uint64_t alpha = 0;
+    uint64_t beta = 0;
+    CHECK(add_two_teams(&db, &alpha, &beta));
+    char error[768];
+    CHECK(storage_save(paths.data_path, &db, error, sizeof(error)));
+    CHECK(storage_save(paths.data_path, &db, error, sizeof(error)));
+    db_free(&db);
+
+    /* Grow the primary past the documented 64 MiB cap with junk text. */
+    FILE *file = _wfopen(paths.data_path, L"ab");
+    CHECK(file != NULL);
+    static char chunk[1024 * 1024];
+    memset(chunk, 'x', sizeof(chunk));
+    bool wrote = true;
+    for (int i = 0; i < 65 && wrote; ++i) {
+        wrote = fwrite(chunk, 1, sizeof(chunk), file) == sizeof(chunk);
+    }
+    CHECK(fclose(file) == 0 && wrote);
+
+    Database loaded;
+    StorageStatus status = storage_load(paths.data_path, &loaded,
+                                        error, sizeof(error));
+    bool recovered = status == STORAGE_RECOVERED && loaded.team_count == 2;
+    if (status == STORAGE_RECOVERED || status == STORAGE_OK) {
+        db_free(&loaded);
+    }
+    cleanup_test_paths(&paths);
+    if (!recovered) {
+        fprintf(stderr, "  oversized primary: status %d (%s)\n", (int)status,
+                error);
+    }
+    CHECK(recovered);
+    return true;
+}
+
 const TestCase g_storage_tests[] = {
     TEST_CASE(test_roundtrip_and_recompute),
     TEST_CASE(test_neutral_venue_roundtrip),
@@ -1271,6 +1311,7 @@ const TestCase g_storage_tests[] = {
     TEST_CASE(test_migrate_legacy_data),
     TEST_CASE(test_ids_are_not_reused_after_reload),
     TEST_CASE(test_second_recovery_keeps_first_damaged_file),
+    TEST_CASE(test_oversized_primary_recovers_from_backup),
 };
 
 const size_t g_storage_test_count =

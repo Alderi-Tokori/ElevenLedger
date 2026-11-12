@@ -1250,12 +1250,12 @@ static StorageStatus read_checked_file(const wchar_t *path, char **out_buffer,
         return STORAGE_IO_ERROR;
     }
     bool read_ok = true;
+    bool oversized = false;
     const size_t read_limit = STORAGE_MAX_FILE_BYTES + 1u;
     for (;;) {
         if (length == capacity) {
             if (capacity >= read_limit) {
-                read_ok = false;
-                set_error(error, error_size, "Data file is unexpectedly large.");
+                oversized = true;
                 break;
             }
             size_t new_capacity = capacity * 2;
@@ -1287,7 +1287,7 @@ static StorageStatus read_checked_file(const wchar_t *path, char **out_buffer,
         free(buffer);
         return STORAGE_IO_ERROR;
     }
-    if (length > STORAGE_MAX_FILE_BYTES) {
+    if (oversized || length > STORAGE_MAX_FILE_BYTES) {
         set_error(error, error_size, "Data file is unexpectedly large.");
         free(buffer);
         return STORAGE_CORRUPT;
