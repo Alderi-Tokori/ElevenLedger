@@ -1005,6 +1005,30 @@ static bool test_parse_tolerates_long_unrelated_key(void)
     return true;
 }
 
+static bool test_parse_longest_player_name_is_not_truncated(void)
+{
+    /* 47 bytes + space + 47 bytes: the longest name the splitter accepts. */
+    const char *html =
+        "<script>matchCentreData: {"
+        "\"startDate\":\"2026-08-23\","
+        "\"score\":\"0 : 1\","
+        "\"home\":{\"name\":\"Rennes\",\"players\":["
+        "{\"name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        " bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"isFirstEleven\":true}]},"
+        "\"away\":{\"name\":\"PSG\",\"players\":["
+        "{\"name\":\"Away Full Match\",\"isFirstEleven\":true}]}"
+        "}</script>";
+    ImportedMatch match;
+    char error[512];
+    /* Both fields are at the documented limit; neither may lose a byte. */
+    CHECK(imported_match_parse_html(html, strlen(html), &match,
+                                    error, sizeof(error)));
+    CHECK(strlen(match.home_players[0].first_name) == 47);
+    CHECK(strlen(match.home_players[0].last_name) == 47);
+    imported_match_free(&match);
+    return true;
+}
+
 const TestCase g_import_tests[] = {
     TEST_CASE(test_parse_match_page),
     TEST_CASE(test_parse_score_fallback_and_extra_time),
@@ -1029,6 +1053,7 @@ const TestCase g_import_tests[] = {
     TEST_CASE(test_parse_large_player_id_keeps_sending_off),
     TEST_CASE(test_parse_minutes_capped_at_final_whistle),
     TEST_CASE(test_parse_tolerates_long_unrelated_key),
+    TEST_CASE(test_parse_longest_player_name_is_not_truncated),
 };
 
 const size_t g_import_test_count =

@@ -1330,8 +1330,13 @@ static bool split_player_name(const char *full_name, ImportedPlayer *player,
         return false;
     }
 
-    char first[PERSON_NAME_MAX * 2 + 1];
-    char last[PERSON_NAME_MAX * 2 + 1];
+    /*
+     * A full name can hold two PERSON_NAME_MAX components plus the space
+     * between them. The buffers need one more byte for the terminator;
+     * otherwise the last byte of a maximal name is silently dropped.
+     */
+    char first[PERSON_NAME_MAX * 2 + 2];
+    char last[PERSON_NAME_MAX * 2 + 2];
     util_str_copy(first, sizeof(first), trimmed);
     last[0] = '\0';
     char *space = strchr(first, ' ');

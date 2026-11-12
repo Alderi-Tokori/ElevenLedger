@@ -77,7 +77,10 @@ performance defaults to 6.00 and can be edited before import.
 
 Player names are split at the first space: the first token becomes the first
 name and the remainder becomes the last name. A single-word name is stored as a
-first name. Both fields are editable in the preview.
+first name. Both fields are editable in the preview. Each name field is limited
+to 47 UTF-8 bytes, so a full name can use 47 bytes for each part plus the
+separating space; a source name that does not fit is rejected rather than
+silently truncated.
 
 New players start at the default rating of 50.0. Existing players keep their
 stored name, starting rating, status and history.

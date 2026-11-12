@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.13 - 2026-11-12
+
+### Fixed
+
+- WhoScored imports no longer drop the last character of a player name when both the first and last name are at the 47-byte limit.
+
 ## 2.0.12 - 2026-11-12
 
 ### Fixed
