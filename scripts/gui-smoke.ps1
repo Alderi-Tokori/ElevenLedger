@@ -495,6 +495,14 @@ try {
         throw "The team filter is not sorted by club name."
     }
     Write-Host "Team filter sorted OK"
+    $playerListRect = New-Object ElevenLedgerSmoke+RECT
+    [ElevenLedgerSmoke]::GetWindowRect($sortList, [ref]$playerListRect) | Out-Null
+    $teamFilterDropWidth = [ElevenLedgerSmoke]::SendMessage(
+        $teamFilter, 0x015F, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($teamFilterDropWidth -lt ($playerListRect.Right - $playerListRect.Left)) {
+        throw "The team filter dropdown is narrower than the player list."
+    }
+    Write-Host "Team filter dropdown width OK"
     $northbridgeIndex = [ElevenLedgerSmoke]::SendMessageText(
         $teamFilter, 0x0158, [IntPtr](-1), "Northbridge FC").ToInt64()
     if ($northbridgeIndex -lt 0) {

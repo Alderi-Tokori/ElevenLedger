@@ -448,6 +448,16 @@ static void players_layout(Page *page, int width, int height)
     MoveWindow(players->list, list.left, list.top,
                list.right - list.left, list.bottom - list.top, TRUE);
 
+    int drop_width = list.right - list.left;
+    int min_drop_width = ui_scale(theme, PLAYER_TEAM_FILTER_DROP_WIDTH);
+    if (drop_width < min_drop_width) {
+        drop_width = min_drop_width;
+    }
+    if (players->team_filter != NULL && drop_width > 0) {
+        SendMessageW(players->team_filter, CB_SETDROPPEDWIDTH,
+                     (WPARAM)drop_width, 0);
+    }
+
     int field_height = ui_scale(theme, PLAYER_FIELD_HEIGHT);
     int field_gap = ui_scale(theme, 10);
     int field_top = page->card.top + ui_scale(theme, 12);
@@ -754,8 +764,6 @@ Page *players_page_create(App *app)
         return NULL;
     }
     ui_edit_set_cue(players->search, L"Search players...");
-    SendMessageW(players->team_filter, CB_SETDROPPEDWIDTH,
-                 (WPARAM)ui_scale(theme, PLAYER_TEAM_FILTER_DROP_WIDTH), 0);
     ui_team_combo_init(&players->team_filter_view, players->team_filter,
                        &app->db, theme);
     ui_list_add_column(players->list, 0, L"Player", 240);
