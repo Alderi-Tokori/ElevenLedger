@@ -269,7 +269,7 @@ static bool test_neutral_venue_roundtrip(void)
     char header[16] = { 0 };
     CHECK(fread(header, 1, 11, file) == 11);
     CHECK(fclose(file) == 0);
-    CHECK(memcmp(header, "PITCHRATE|4", 11) == 0);
+    CHECK(memcmp(header, "PITCHRATE|5", 11) == 0);
 
     Database loaded;
     StorageStatus status = storage_load(paths.data_path, &loaded,
@@ -827,6 +827,74 @@ static bool test_sent_off_file_validation(void)
     return true;
 }
 
+static bool test_v5_id_counters_are_required_and_valid(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    Database loaded;
+    char error[768];
+
+    const char *missing =
+        "PITCHRATE|5\n"
+        "TEAM|1|Alpha||\n"
+        "END\n";
+    CHECK(write_raw_data_file(paths.data_path, missing));
+    CHECK(storage_load(paths.data_path, &loaded, error, sizeof(error)) ==
+          STORAGE_CORRUPT);
+    CHECK(strstr(error, "ID counter") != NULL);
+
+    const char *stale =
+        "PITCHRATE|5\n"
+        "NEXT|1|1|1\n"
+        "TEAM|1|Alpha||\n"
+        "END\n";
+    CHECK(write_raw_data_file(paths.data_path, stale));
+    CHECK(storage_load(paths.data_path, &loaded, error, sizeof(error)) ==
+          STORAGE_CORRUPT);
+    CHECK(strstr(error, "ID counters") != NULL);
+
+    const char *duplicate =
+        "PITCHRATE|5\n"
+        "NEXT|2|1|1\n"
+        "NEXT|2|1|1\n"
+        "TEAM|1|Alpha||\n"
+        "END\n";
+    CHECK(write_raw_data_file(paths.data_path, duplicate));
+    CHECK(storage_load(paths.data_path, &loaded, error, sizeof(error)) ==
+          STORAGE_CORRUPT);
+    CHECK(strstr(error, "Duplicate NEXT") != NULL);
+
+    cleanup_test_paths(&paths);
+    return true;
+}
+
+static bool test_v4_file_derives_id_counters(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    const char *content =
+        "PITCHRATE|4\n"
+        "TEAM|2|Alpha||\n"
+        "TEAM|5|Beta||\n"
+        "PLAYER|3|2|A|One|70.00|1\n"
+        "PLAYER|8|5|B|Two|70.00|1\n"
+        "MATCH|4|2026-07-01|2|5|0|0|0|90\n"
+        "APP|4|3|2|90|6.00|0\n"
+        "APP|4|8|5|90|6.00|0\n"
+        "END\n";
+    CHECK(write_raw_data_file(paths.data_path, content));
+    Database loaded;
+    char error[768];
+    CHECK(storage_load(paths.data_path, &loaded, error, sizeof(error)) ==
+          STORAGE_OK);
+    CHECK(loaded.next_team_id == 6);
+    CHECK(loaded.next_player_id == 9);
+    CHECK(loaded.next_match_id == 5);
+    db_free(&loaded);
+    cleanup_test_paths(&paths);
+    return true;
+}
+
 static bool test_unknown_record_rejected(void)
 {
     TestPaths paths;
@@ -1003,6 +1071,68 @@ static bool test_migrate_legacy_data(void)
     return true;
 }
 
+static bool test_ids_are_not_reused_after_reload(void)
+{
+    TestPaths paths;
+    CHECK(make_test_paths(&paths));
+    Database db;
+    CHECK(populate_sample(&db));
+    char error[768];
+    uint64_t alpha = db.teams[0].id;
+    uint64_t deleted_team = 0;
+    uint64_t deleted_player = 0;
+    CHECK(db_add_team(&db, "Gamma Town", "GAM", "East", &deleted_team,
+                      error, sizeof(error)));
+    CHECK(db_add_player(&db, alpha, "Temp", "Player", 50.0, true,
+                        &deleted_player, error, sizeof(error)));
+    uint64_t deleted_match = db.matches[0].id;
+    CHECK(db_delete_match(&db, deleted_match, error, sizeof(error)));
+    CHECK(db_delete_player(&db, deleted_player, error, sizeof(error)));
+    CHECK(db_delete_team(&db, deleted_team, error, sizeof(error)));
+    CHECK(storage_save(paths.data_path, &db, error, sizeof(error)));
+    db_free(&db);
+
+    Database loaded;
+    CHECK(storage_load(paths.data_path, &loaded, error, sizeof(error)) ==
+          STORAGE_OK);
+    uint64_t new_team = 0;
+    uint64_t new_player = 0;
+    uint64_t new_match = 0;
+    CHECK(db_add_team(&loaded, "Delta City", "DEL", "West", &new_team,
+                      error, sizeof(error)));
+    CHECK(db_add_player(&loaded, alpha, "New", "Player", 50.0, true,
+                        &new_player, error, sizeof(error)));
+    MatchPlayerInput lineup[] = {
+        { loaded.players[0].id, 90, 6.0, 0 },
+        { loaded.players[2].id, 90, 6.0, 0 },
+    };
+    MatchInput match = {
+        .date = "2026-09-20",
+        .home_team_id = loaded.players[0].team_id,
+        .away_team_id = loaded.players[2].team_id,
+        .home_goals = 1,
+        .away_goals = 0,
+        .length = 90,
+        .players = lineup,
+        .player_count = 2,
+    };
+    CHECK(db_add_match(&loaded, &match, &new_match, error, sizeof(error)));
+    bool team_reused = new_team == deleted_team;
+    bool player_reused = new_player == deleted_player;
+    bool match_reused = new_match == deleted_match;
+    db_free(&loaded);
+    cleanup_test_paths(&paths);
+    if (team_reused || player_reused || match_reused) {
+        fprintf(stderr, "  reused after reload: team %s, player %s, match %s\n",
+                team_reused ? "yes" : "no", player_reused ? "yes" : "no",
+                match_reused ? "yes" : "no");
+    }
+    CHECK(!team_reused);
+    CHECK(!player_reused);
+    CHECK(!match_reused);
+    return true;
+}
+
 const TestCase g_storage_tests[] = {
     TEST_CASE(test_roundtrip_and_recompute),
     TEST_CASE(test_neutral_venue_roundtrip),
@@ -1023,10 +1153,13 @@ const TestCase g_storage_tests[] = {
     TEST_CASE(test_embedded_nul_is_rejected),
     TEST_CASE(test_semantically_invalid_file_rejected),
     TEST_CASE(test_sent_off_file_validation),
+    TEST_CASE(test_v5_id_counters_are_required_and_valid),
+    TEST_CASE(test_v4_file_derives_id_counters),
     TEST_CASE(test_unknown_record_rejected),
     TEST_CASE(test_relative_data_path),
     TEST_CASE(test_nested_directory_created),
     TEST_CASE(test_migrate_legacy_data),
+    TEST_CASE(test_ids_are_not_reused_after_reload),
 };
 
 const size_t g_storage_test_count =

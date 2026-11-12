@@ -82,7 +82,7 @@ Layering rules:
 1. `src/core` must not depend on Win32 UI or the `App` type. The import parser and apply engine must stay testable without a display; only `dialog_import.c` may use the clipboard and the preview controls.
 2. UI code must not write the data file directly. Use `app_tx_begin`, `app_tx_commit` and `app_tx_abort`.
 3. Derived values (current ratings, appearance before/delta/after, match summaries, player totals) are recomputed. Only source data belongs in the file.
-4. The data format is versioned. Format v3 removes player position; format v4 adds the match final-whistle minute and each appearance's sending-off minute. v1-v3 files must keep loading with their legacy position discarded, missing neutral values defaulting to false, final whistle defaulting to 90 and sending-off defaulting to none. The header remains `PITCHRATE|` after the ElevenLedger rename; keep it readable unless a format-version migration is added. Add migration tests before changing it again.
+4. The data format is versioned. Format v3 removes player position; format v4 adds the match final-whistle minute and each appearance's sending-off minute; format v5 stores the next team, player and match ID counters so deleted IDs stay reserved. v1-v4 files must keep loading, with the legacy position discarded, missing neutral values defaulting to false, final whistle defaulting to 90, sending-off defaulting to none, and ID counters derived from the highest stored ID plus one. The header remains `PITCHRATE|` after the ElevenLedger rename; keep it readable unless a format-version migration is added. Add migration tests before changing it again.
 
 ## Rating model rules
 

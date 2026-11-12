@@ -58,7 +58,7 @@ By default, data is stored at:
 %LOCALAPPDATA%\ElevenLedger\data.frc
 ```
 
-Every save writes and verifies a temporary file on a background worker, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file without blocking the window. If the primary file is damaged, ElevenLedger preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported ElevenLedger format version is never overwritten or silently downgraded. Legacy v1-v3 files are loaded safely and upgraded to v4 on the next save.
+Every save writes and verifies a temporary file on a background worker, validates the previous save before promoting it to `data.frc.bak`, and then atomically replaces the primary file without blocking the window. If the primary file is damaged, ElevenLedger preserves it as `data.frc.corrupt` and restores the last good backup before allowing edits. A file using an unsupported ElevenLedger format version is never overwritten or silently downgraded. Legacy v1-v4 files are loaded safely and upgraded to v5 on the next save. Deleted team, player and match IDs stay reserved across reloads.
 
 ### Upgrading from PitchRate
 

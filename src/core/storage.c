@@ -13,7 +13,7 @@
 #include <string.h>
 #include <windows.h>
 
-#define STORAGE_FORMAT_VERSION 4
+#define STORAGE_FORMAT_VERSION 5
 #define STORAGE_MIN_FORMAT_VERSION 1
 #define STORAGE_MAX_FILE_BYTES (64u * 1024u * 1024u)
 #define STORAGE_MAX_FIELDS 12
@@ -343,7 +343,10 @@ static bool write_appearance(FILE *file, const Appearance *appearance)
 
 static bool write_records(FILE *file, const Database *db)
 {
-    if (fprintf(file, STORAGE_MAGIC "%d\n", STORAGE_FORMAT_VERSION) < 0) {
+    if (fprintf(file, STORAGE_MAGIC "%d\n", STORAGE_FORMAT_VERSION) < 0 ||
+        fprintf(file, "NEXT|%" PRIu64 "|%" PRIu64 "|%" PRIu64 "\n",
+                db->next_team_id, db->next_player_id,
+                db->next_match_id) < 0) {
         return false;
     }
     for (size_t i = 0; i < db->team_count; ++i) {
@@ -934,13 +937,45 @@ static bool parse_appearance_record(Database *db, char **fields, size_t count,
     return true;
 }
 
+static bool parse_next_record(Database *db, char **fields, size_t count,
+                              bool *seen, char *error, size_t error_size)
+{
+    if (count != 4) {
+        set_error(error, error_size, "Invalid NEXT record.");
+        return false;
+    }
+    if (*seen) {
+        set_error(error, error_size, "Duplicate NEXT record.");
+        return false;
+    }
+    uint64_t next_team = 0;
+    uint64_t next_player = 0;
+    uint64_t next_match = 0;
+    if (!parse_u64(fields[1], &next_team) ||
+        !parse_u64(fields[2], &next_player) ||
+        !parse_u64(fields[3], &next_match)) {
+        set_error(error, error_size, "Invalid ID counter record values.");
+        return false;
+    }
+    db->next_team_id = next_team;
+    db->next_player_id = next_player;
+    db->next_match_id = next_match;
+    *seen = true;
+    return true;
+}
+
 static bool parse_records(char *data, size_t offset, size_t content_end,
                           Database *db, bool *incompatible_version,
+                          bool *out_next_ids_stored,
                           char *error, size_t error_size)
 {
     if (incompatible_version != NULL) {
         *incompatible_version = false;
     }
+    if (out_next_ids_stored != NULL) {
+        *out_next_ids_stored = false;
+    }
+    bool next_ids_stored = false;
     char *cursor = data + offset;
     char *end = data + content_end;
     size_t line_number = 0;
@@ -1022,6 +1057,16 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
         if (strcmp(fields[0], "TEAM") == 0) {
             parsed = parse_team_record(db, fields, field_count,
                                        error, error_size);
+        } else if (strcmp(fields[0], "NEXT") == 0) {
+            if (parsed_file_version < 5) {
+                set_error(error, error_size,
+                          "NEXT record requires data format version 5.");
+                parsed = false;
+            } else {
+                parsed = parse_next_record(db, fields, field_count,
+                                           &next_ids_stored,
+                                           error, error_size);
+            }
         } else if (strcmp(fields[0], "PLAYER") == 0) {
             parsed = parse_player_record(db, fields, field_count,
                                          parsed_file_version,
@@ -1048,10 +1093,19 @@ static bool parse_records(char *data, size_t offset, size_t content_end,
         set_error(error, error_size, "Data file is missing its END marker.");
         return false;
     }
+    if (parsed_file_version >= 5 && !next_ids_stored) {
+        set_error(error, error_size,
+                  "Data file is missing its ID counter record.");
+        return false;
+    }
+    if (out_next_ids_stored != NULL) {
+        *out_next_ids_stored = next_ids_stored;
+    }
     return true;
 }
 
-static bool finish_loaded_database(Database *db, bool recompute,
+static bool finish_loaded_database(Database *db, bool next_ids_stored,
+                                   bool recompute,
                                    char *error, size_t error_size)
 {
     uint64_t max_team = 0;
@@ -1072,14 +1126,31 @@ static bool finish_loaded_database(Database *db, bool recompute,
             max_match = db->matches[i].id;
         }
     }
-    if (max_team == UINT64_MAX || max_player == UINT64_MAX ||
-        max_match == UINT64_MAX) {
-        set_error(error, error_size, "Data file has exhausted its ID range.");
-        return false;
+    if (next_ids_stored) {
+        /*
+         * Stored counters may be far above the highest live ID because
+         * deleted records keep their ID reserved. They may never collide
+         * with a live record.
+         */
+        if (db->next_team_id <= max_team ||
+            db->next_player_id <= max_player ||
+            db->next_match_id <= max_match) {
+            set_error(error, error_size,
+                      "Data file contains invalid ID counters.");
+            return false;
+        }
+    } else {
+        /* Versions 1-4 did not store counters, so derive them. */
+        if (max_team == UINT64_MAX || max_player == UINT64_MAX ||
+            max_match == UINT64_MAX) {
+            set_error(error, error_size,
+                      "Data file has exhausted its ID range.");
+            return false;
+        }
+        db->next_team_id = max_team + 1;
+        db->next_player_id = max_player + 1;
+        db->next_match_id = max_match + 1;
     }
-    db->next_team_id = max_team + 1;
-    db->next_player_id = max_player + 1;
-    db->next_match_id = max_match + 1;
 
     if (recompute) {
         return db_recompute_ratings(db, error, error_size);
@@ -1275,10 +1346,13 @@ static StorageStatus load_file(const wchar_t *path, Database *db,
 
     db_init(db);
     bool incompatible_version = false;
+    bool next_ids_stored = false;
     bool parsed = parse_records(buffer, offset, footer_start, db,
-                                &incompatible_version, error, error_size);
+                                &incompatible_version, &next_ids_stored,
+                                error, error_size);
     if (parsed) {
-        parsed = finish_loaded_database(db, recompute, error, error_size);
+        parsed = finish_loaded_database(db, next_ids_stored, recompute,
+                                        error, error_size);
     }
     free(buffer);
     if (!parsed) {

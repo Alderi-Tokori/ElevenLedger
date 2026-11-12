@@ -32,10 +32,11 @@ On first launch, when `%LOCALAPPDATA%\ElevenLedger` contains no primary or backu
 - The newly written temporary file is parsed and validated before it can replace the primary.
 - The next data mutation waits for any pending background save, and closing the application waits for the pending save to finish.
 
-## Format v4
+## Format v5
 
 ```text
-PITCHRATE|4
+PITCHRATE|5
+NEXT|<next_team_id>|<next_player_id>|<next_match_id>
 TEAM|<id>|<name>|<short_name>|<city>
 PLAYER|<id>|<team_id>|<first_name>|<last_name>|<starting_rating>|<active>
 MATCH|<id>|<yyyy-mm-dd>|<home_team_id>|<away_team_id>|<home_goals>|<away_goals>|<neutral_venue>|<length>
@@ -46,14 +47,17 @@ CRC32|<8 uppercase hex digits>
 
 The `PITCHRATE|` token is retained from the application's former name so existing files remain readable. It identifies the format, not the current product name.
 
+`NEXT` stores the counters used for the next team, player and match IDs. Deleted IDs stay reserved, so after deletions the counters can be greater than the highest stored ID plus one. Each counter must be greater than every stored ID of its kind. The record is required in v5 files; a missing or duplicate `NEXT` record is rejected.
+
 `neutral_venue` is `0` or `1`. `active` is `0` or `1`. `length` is the final-whistle minute, 1-120. `sent_off` is `0` when there was no removal without replacement, otherwise the sending-off minute; a non-zero value must be between that appearance's `minutes` and `length`. Performance is stored with two-decimal quantization. `starting_rating` accepts any finite number, including negative values or values above `99.0`, and is stored with two-decimal quantization. Appearance rating snapshots are derived and are not stored. Actual `minutes` are stored; the sent-off result weighting is derived during replay.
 
-### Format v1-v3 compatibility
+### Format v1-v4 compatibility
 
 - **v1** used an eight-field `PLAYER` record with a position between last name and starting rating, and a seven-field `MATCH` record without a neutral-venue flag.
 - **v2** used the same eight-field `PLAYER` record and added the neutral-venue flag to `MATCH`.
 - **v3** removes player position. The reader still validates and discards the legacy position field from v1/v2 records.
-- V1 matches load as non-neutral. V1-v3 matches load with a final whistle of 90 and no sending-offs. Saving any loaded older database upgrades it to v4.
+- **v4** added the final-whistle minute and each appearance's sending-off minute.
+- V1 matches load as non-neutral. V1-v3 matches load with a final whistle of 90 and no sending-offs. Files before v5 do not store ID counters, so each counter is derived from the highest stored ID plus one. Saving any loaded older database upgrades it to v5.
 
 The legacy position values were `0` goalkeeper, `1` defender, `2` midfielder and `3` forward. They are not retained after loading.
 
@@ -71,7 +75,7 @@ The checksum line has no trailing newline. A UTF-8 byte-order mark is accepted w
 
 ## Compatibility
 
-The `PITCHRATE|4` header identifies schema version 4 and keeps the legacy product token for compatibility. Versions 1, 2 and 3 are still accepted for loading; any other version is rejected with a clear message rather than partially parsed, and neither the primary nor its backup is replaced. Any future format change must:
+The `PITCHRATE|5` header identifies schema version 5 and keeps the legacy product token for compatibility. Versions 1-4 are still accepted for loading; any other version is rejected with a clear message rather than partially parsed, and neither the primary nor its backup is replaced. Any future format change must:
 
 - increment the version,
 - keep old files readable or provide an explicit tested migration,

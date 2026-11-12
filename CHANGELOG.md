@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.14 - 2026-11-12
+
+### Fixed
+
+- Team, player and match IDs are no longer reused after deleting the highest-numbered record and reloading the application. The data format now stores the next ID counters; v1-v4 files load with counters derived from their highest stored IDs and are upgraded on the next save.
+
 ## 2.0.13 - 2026-11-12
 
 ### Fixed

@@ -1014,6 +1014,31 @@ bool db_validate(const Database *db, char *error, size_t error_size)
         }
     }
 
+    uint64_t max_team = 0;
+    uint64_t max_player = 0;
+    uint64_t max_match = 0;
+    for (size_t i = 0; i < db->team_count; ++i) {
+        if (db->teams[i].id > max_team) {
+            max_team = db->teams[i].id;
+        }
+    }
+    for (size_t i = 0; i < db->player_count; ++i) {
+        if (db->players[i].id > max_player) {
+            max_player = db->players[i].id;
+        }
+    }
+    for (size_t i = 0; i < db->match_count; ++i) {
+        if (db->matches[i].id > max_match) {
+            max_match = db->matches[i].id;
+        }
+    }
+    if (db->next_team_id <= max_team ||
+        db->next_player_id <= max_player ||
+        db->next_match_id <= max_match) {
+        set_error(error, error_size, "Database ID counters are invalid.");
+        return false;
+    }
+
     return validate_appearances(db, error, error_size);
 }
 
