@@ -565,6 +565,41 @@ static bool json_parse_bool(JsonSpan span, bool *out)
     return false;
 }
 
+/*
+ * WhoScored player IDs are opaque identifiers and can exceed the range of the
+ * small integers used for minutes, goals and card types. Parse them separately
+ * so a large ID still matches its player and events.
+ */
+static bool json_parse_id(JsonSpan span, uint64_t *out)
+{
+    const char *p = span.start;
+    const char *end = span.end;
+    if (p >= end || *p < '0' || *p > '9') {
+        return false;
+    }
+    uint64_t value = 0;
+    while (p < end && *p >= '0' && *p <= '9') {
+        uint64_t digit = (uint64_t)(*p - '0');
+        if (value > (UINT64_MAX - digit) / 10u) {
+            return false;
+        }
+        value = value * 10u + digit;
+        ++p;
+    }
+    if (p < end && *p == '.') {
+        ++p;
+        if (p >= end || *p != '0') {
+            return false;
+        }
+        ++p;
+    }
+    if (p != end) {
+        return false;
+    }
+    *out = value;
+    return true;
+}
+
 static bool json_parse_int(JsonSpan span, int *out)
 {
     const char *p = span.start;
@@ -1105,7 +1140,7 @@ static int match_minute_from_expanded(int expanded,
 }
 
 typedef struct {
-    int player_id;
+    uint64_t player_id;
     int minute;
 } SendingOff;
 
@@ -1150,9 +1185,9 @@ static bool qualifier_is_sending_off(JsonSpan qualifier)
 }
 
 static void add_sending_off(SendingOff *sending_offs, size_t *count,
-                            size_t capacity, int player_id, int minute)
+                            size_t capacity, uint64_t player_id, int minute)
 {
-    if (player_id <= 0 || minute <= 0) {
+    if (player_id == 0 || minute <= 0) {
         return;
     }
     for (size_t i = 0; i < *count; ++i) {
@@ -1199,10 +1234,10 @@ static void collect_sending_offs(JsonSpan root, SendingOff *sending_offs,
             continue;
         }
         JsonSpan number;
-        int player_id = 0;
+        uint64_t player_id = 0;
         int minute = 0;
         if (!json_object_get(event, "playerId", &number) ||
-            !json_parse_int(number, &player_id) ||
+            !json_parse_id(number, &player_id) ||
             !json_object_get(event, "minute", &number) ||
             !json_parse_int(number, &minute)) {
             continue;
@@ -1231,7 +1266,7 @@ static void collect_sending_offs(JsonSpan root, SendingOff *sending_offs,
 }
 
 static int sending_off_minute(const SendingOff *sending_offs, size_t count,
-                              int player_id)
+                              uint64_t player_id)
 {
     for (size_t i = 0; i < count; ++i) {
         if (sending_offs[i].player_id == player_id) {
@@ -1354,11 +1389,11 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
             }
         }
 
-        int source_id = 0;
+        uint64_t source_id = 0;
         JsonSpan number;
         if (json_object_get(item, "playerId", &number)) {
-            int value = 0;
-            if (json_parse_int(number, &value) && value > 0) {
+            uint64_t value = 0;
+            if (json_parse_id(number, &value) && value > 0) {
                 source_id = value;
             }
         }

@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.10 - 2026-11-12
+
+### Fixed
+
+- WhoScored imports now match card events for players whose WhoScored ID is larger than one million. Those players keep their sending-off minute and actual minutes instead of being credited with the whole match.
+
 ## 2.0.9 - 2026-11-12
 
 ### Fixed
