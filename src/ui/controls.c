@@ -404,7 +404,19 @@ static HWND combo_create(HWND parent, int id, int x, int y, int width,
         if (item_height > 0) {
             int pixels = control_scale(combo, item_height);
             SendMessageW(combo, CB_SETITEMHEIGHT, 0, pixels);
-            SendMessageW(combo, CB_SETITEMHEIGHT, 1, pixels);
+            SendMessageW(combo, CB_SETITEMHEIGHT, (WPARAM)-1, pixels);
+            RECT window;
+            if (GetWindowRect(combo, &window)) {
+                /* The drop-down window adds chrome around the selection
+                   field. Trim it so the closed control keeps the requested
+                   outer height while list rows stay roomy. */
+                int chrome = (window.bottom - window.top) - pixels;
+                int selection = pixels - chrome;
+                if (chrome > 0 && selection > 0) {
+                    SendMessageW(combo, CB_SETITEMHEIGHT, (WPARAM)-1,
+                                 selection);
+                }
+            }
         }
     }
     return combo;
