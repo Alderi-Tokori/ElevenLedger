@@ -1400,6 +1400,17 @@ static bool parse_team_players(JsonSpan team, const MatchTiming *timing,
         if (off_minute > timing->match_length) {
             off_minute = timing->match_length;
         }
+        /*
+         * WhoScored also records cards for players who had already left the
+         * pitch (for example a card shown on the bench). Such a card did not
+         * remove the player, and its minute can fall after the player's own
+         * substitution off, so it must not be stored as a sending-off.
+         */
+        if (off_minute > 0 &&
+            ((in_minute > 0 && off_minute < in_minute) ||
+             (out_minute > 0 && off_minute > out_minute))) {
+            off_minute = 0;
+        }
 
         int minutes = 0;
         if (in_minute > 0) {

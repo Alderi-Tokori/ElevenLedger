@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.8 - 2026-11-12
+
+### Fixed
+
+- WhoScored imports no longer treat a card shown to a player who had already left the pitch as a sending-off. Such cards previously produced an invalid sending-off minute that could reject the whole import.
+
 ## 2.0.7 - 2026-11-12
 
 ### Fixed

@@ -21,7 +21,7 @@
 #include <wchar.h>
 
 #ifndef ELEVENLEDGER_VERSION
-#define ELEVENLEDGER_VERSION "2.0.7"
+#define ELEVENLEDGER_VERSION "2.0.8"
 #endif
 
 #define MAIN_WINDOW_CLASS_NAME L"ElevenLedgerMainWindow"
