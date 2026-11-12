@@ -240,9 +240,12 @@ static LRESULT CALLBACK page_window_proc(HWND hwnd, UINT message,
     }
     case WM_COMMAND:
     case WM_NOTIFY:
+    case WM_DRAWITEM:
+    case WM_MEASUREITEM:
         if (page != NULL && page->on_message != NULL) {
             LRESULT result = page->on_message(page, message, wparam, lparam);
-            if (message == WM_NOTIFY || result != 0) {
+            if (message == WM_NOTIFY || message == WM_DRAWITEM ||
+                result != 0) {
                 return result;
             }
         }

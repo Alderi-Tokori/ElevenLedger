@@ -10,6 +10,10 @@
 #include <string.h>
 #include <wchar.h>
 #include <wctype.h>
+#include <windowsx.h>
+
+#define PLAYER_FIELD_HEIGHT 34
+#define PLAYER_TEAM_FILTER_DROP_WIDTH 260
 
 enum {
     PLAYER_LIST_ID = 1200,
@@ -65,6 +69,8 @@ typedef struct {
     size_t visible_rows;
     int sort_column;
     bool sort_ascending;
+    int team_filter_hover;
+    bool team_filter_tracking;
     PlayerRowCache *cache;
     size_t cache_count;
     bool cache_valid;
@@ -132,6 +138,81 @@ static void players_team_name(const Database *db, uint64_t team_id,
         return;
     }
     ui_utf8_to_wide(team->name, buffer, count);
+}
+
+static size_t players_team_roster_size(const Database *db, uint64_t team_id)
+{
+    if (team_id == 0) {
+        return db->player_count;
+    }
+    size_t count = 0;
+    for (size_t i = 0; i < db->player_count; ++i) {
+        if (db->players[i].team_id == team_id) {
+            count++;
+        }
+    }
+    return count;
+}
+
+static void players_team_monogram(const Team *team, wchar_t *buffer,
+                                  size_t count)
+{
+    if (buffer == NULL || count == 0) {
+        return;
+    }
+    buffer[0] = L'\0';
+    wchar_t name[128];
+    if (team == NULL ||
+        !ui_utf8_to_wide(team->name, name,
+                         sizeof(name) / sizeof(name[0]))) {
+        ui_format_wide(buffer, count, L"?");
+        return;
+    }
+    const wchar_t *word = name;
+    while (*word != L'\0' && iswspace(*word)) {
+        word++;
+    }
+    if (*word == L'\0') {
+        ui_format_wide(buffer, count, L"?");
+        return;
+    }
+    wchar_t letters[3];
+    int length = 0;
+    letters[length++] = (wchar_t)towupper(*word);
+    const wchar_t *rest = word;
+    while (*rest != L'\0' && !iswspace(*rest)) {
+        rest++;
+    }
+    while (*rest != L'\0' && iswspace(*rest)) {
+        rest++;
+    }
+    if (*rest != L'\0') {
+        letters[length++] = (wchar_t)towupper(*rest);
+    } else if (word[1] != L'\0') {
+        letters[length++] = (wchar_t)towupper(word[1]);
+    }
+    letters[length] = L'\0';
+    ui_format_wide(buffer, count, L"%ls", letters);
+}
+
+typedef struct {
+    COLORREF fill;
+    COLORREF text;
+} PlayersTeamBadgeColors;
+
+static PlayersTeamBadgeColors players_team_badge_colors(uint64_t team_id)
+{
+    static const COLORREF fills[4] = {
+        UI_COLOR_ACCENT_SOFT, UI_COLOR_BLUE_SOFT,
+        UI_COLOR_AMBER_SOFT, UI_COLOR_NEUTRAL_SOFT,
+    };
+    static const COLORREF texts[4] = {
+        UI_COLOR_ACCENT, UI_COLOR_BLUE,
+        UI_COLOR_AMBER, UI_COLOR_NEUTRAL,
+    };
+    size_t index = team_id == 0 ? 0 : (size_t)((team_id - 1) % 4);
+    PlayersTeamBadgeColors colors = { fills[index], texts[index] };
+    return colors;
 }
 
 static bool players_row_matches(const Database *db, const Player *player,
@@ -441,6 +522,250 @@ static void players_refresh(Page *page)
     InvalidateRect(page->hwnd, NULL, FALSE);
 }
 
+static void players_draw_team_grid(HDC dc, const UiTheme *theme, RECT badge,
+                                   COLORREF color)
+{
+    int cell = ui_scale(theme, 3);
+    int gap = ui_scale(theme, 2);
+    if (cell < 1) {
+        cell = 1;
+    }
+    if (gap < 1) {
+        gap = 1;
+    }
+    int size = cell * 2 + gap;
+    int left = badge.left + (badge.right - badge.left - size) / 2;
+    int top = badge.top + (badge.bottom - badge.top - size) / 2;
+    HBRUSH brush = CreateSolidBrush(color);
+    if (brush == NULL) {
+        return;
+    }
+    RECT top_left = { left, top, left + cell, top + cell };
+    RECT top_right = { left + cell + gap, top,
+                       left + cell + gap + cell, top + cell };
+    RECT bottom_left = { left, top + cell + gap,
+                         left + cell, top + cell + gap + cell };
+    RECT bottom_right = { left + cell + gap, top + cell + gap,
+                          left + cell + gap + cell,
+                          top + cell + gap + cell };
+    FillRect(dc, &top_left, brush);
+    FillRect(dc, &top_right, brush);
+    FillRect(dc, &bottom_left, brush);
+    FillRect(dc, &bottom_right, brush);
+    DeleteObject(brush);
+}
+
+static void players_draw_team_filter_item(PlayersPage *players,
+                                          DRAWITEMSTRUCT *item)
+{
+    if (players == NULL || item == NULL) {
+        return;
+    }
+    UiTheme *theme = &players->base.app->ui;
+    HWND combo = item->hwndItem;
+    const Database *db = &players->base.app->db;
+    bool closed = (item->itemState & ODS_COMBOBOXEDIT) != 0;
+    bool selected = (item->itemState & ODS_SELECTED) != 0;
+    bool disabled = (item->itemState & ODS_DISABLED) != 0 ||
+                    !IsWindowEnabled(combo);
+
+    int index = (int)item->itemID;
+    if (index < 0) {
+        index = (int)SendMessageW(combo, CB_GETCURSEL, 0, 0);
+    }
+    wchar_t label[128];
+    label[0] = L'\0';
+    uint64_t team_id = 0;
+    if (index >= 0) {
+        SendMessageW(combo, CB_GETLBTEXT, (WPARAM)index, (LPARAM)label);
+        team_id = (uint64_t)SendMessageW(combo, CB_GETITEMDATA,
+                                         (WPARAM)index, 0);
+    }
+    const Team *team = team_id != 0 ? db_find_team(db, team_id) : NULL;
+
+    RECT row = item->rcItem;
+    if (closed) {
+        COMBOBOXINFO info;
+        memset(&info, 0, sizeof(info));
+        info.cbSize = sizeof(info);
+        if (GetComboBoxInfo(combo, &info)) {
+            RECT field = info.rcItem;
+            IntersectRect(&row, &row, &field);
+        }
+    }
+    if (row.right <= row.left || row.bottom <= row.top) {
+        return;
+    }
+
+    bool hovered = !closed && !disabled && index >= 0 &&
+                   index == players->team_filter_hover;
+    COLORREF background;
+    if (disabled) {
+        background = UI_COLOR_NEUTRAL_SOFT;
+    } else if (closed) {
+        background = UI_COLOR_FIELD_BG;
+    } else if (selected) {
+        background = UI_COLOR_SELECTION;
+    } else if (hovered) {
+        background = UI_COLOR_BG;
+    } else {
+        background = UI_COLOR_CARD;
+    }
+    HBRUSH background_brush = CreateSolidBrush(background);
+    if (background_brush != NULL) {
+        FillRect(item->hDC, &row, background_brush);
+        DeleteObject(background_brush);
+    }
+
+    if (selected && !closed) {
+        int bar_width = ui_scale(theme, 3);
+        RECT bar = { row.left, row.top, row.left + bar_width, row.bottom };
+        HBRUSH accent_brush = CreateSolidBrush(UI_COLOR_ACCENT);
+        if (accent_brush != NULL && bar.right > bar.left) {
+            FillRect(item->hDC, &bar, accent_brush);
+        }
+        if (accent_brush != NULL) {
+            DeleteObject(accent_brush);
+        }
+    }
+
+    int row_height = row.bottom - row.top;
+    int badge_size = ui_scale(theme, closed ? 22 : 24);
+    int max_badge = row_height - ui_scale(theme, 6);
+    if (badge_size > max_badge) {
+        badge_size = max_badge;
+    }
+    int pad = ui_scale(theme, closed ? 8 : 10);
+    int gap = ui_scale(theme, 8);
+    int badge_left = row.left + pad;
+    int badge_top = row.top + (row_height - badge_size) / 2;
+    RECT badge = {
+        badge_left,
+        badge_top,
+        badge_left + badge_size,
+        badge_top + badge_size,
+    };
+
+    if (badge_size > 0) {
+        if (team_id == 0) {
+            ui_fill_round_rect(item->hDC, badge, badge_size / 2,
+                               disabled ? UI_COLOR_NEUTRAL_SOFT
+                                        : UI_COLOR_ACCENT_SOFT);
+            players_draw_team_grid(item->hDC, theme, badge,
+                                   disabled ? UI_COLOR_FAINT
+                                            : UI_COLOR_ACCENT);
+        } else {
+            PlayersTeamBadgeColors colors =
+                players_team_badge_colors(team_id);
+            ui_fill_round_rect(item->hDC, badge, badge_size / 2,
+                               disabled ? UI_COLOR_NEUTRAL_SOFT
+                                        : colors.fill);
+            wchar_t monogram[3];
+            players_team_monogram(team, monogram,
+                                  sizeof(monogram) / sizeof(monogram[0]));
+            ui_draw_text(item->hDC, theme->font_small_bold,
+                         disabled ? UI_COLOR_FAINT : colors.text, badge,
+                         monogram,
+                         DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
+    }
+
+    int text_left = badge_size > 0 ? badge.right + gap : row.left + pad;
+    int text_right = row.right - pad;
+    RECT count_rect = { 0, 0, 0, 0 };
+    if (!closed) {
+        int count_width = ui_scale(theme, 66);
+        int count_left = row.right - pad - count_width;
+        if (count_left > text_left + ui_scale(theme, 8)) {
+            count_rect.left = count_left;
+            count_rect.top = row.top;
+            count_rect.right = row.right - pad;
+            count_rect.bottom = row.bottom;
+            text_right = count_left - ui_scale(theme, 6);
+        }
+    }
+    if (text_left < text_right) {
+        RECT text_rect = { text_left, row.top, text_right, row.bottom };
+        ui_draw_text(item->hDC,
+                     selected && !closed ? theme->font_body_bold
+                                         : theme->font_body,
+                     disabled ? UI_COLOR_FAINT : UI_COLOR_TEXT, text_rect,
+                     label,
+                     DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    }
+    if (count_rect.right > count_rect.left) {
+        size_t roster = players_team_roster_size(db, team_id);
+        wchar_t count_text[32];
+        ui_format_wide(count_text,
+                       sizeof(count_text) / sizeof(count_text[0]),
+                       roster == 1 ? L"%zu player" : L"%zu players",
+                       roster);
+        ui_draw_text(item->hDC, theme->font_small,
+                     disabled ? UI_COLOR_FAINT
+                              : (selected ? UI_COLOR_ACCENT
+                                          : UI_COLOR_MUTED),
+                     count_rect, count_text,
+                     DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    }
+}
+
+static LRESULT CALLBACK players_team_filter_list_proc(
+    HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR id,
+    DWORD_PTR ref)
+{
+    PlayersPage *players = (PlayersPage *)ref;
+    switch (message) {
+    case WM_MOUSEMOVE:
+        if (players != NULL) {
+            LRESULT hit = SendMessageW(hwnd, LB_ITEMFROMPOINT, 0, lparam);
+            int hovered = HIWORD(hit) != 0 ? -1 : (int)LOWORD(hit);
+            if (hovered != players->team_filter_hover) {
+                players->team_filter_hover = hovered;
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+            if (!players->team_filter_tracking) {
+                TRACKMOUSEEVENT track = {
+                    .cbSize = sizeof(track),
+                    .dwFlags = TME_LEAVE,
+                    .hwndTrack = hwnd,
+                    .dwHoverTime = HOVER_DEFAULT,
+                };
+                if (TrackMouseEvent(&track)) {
+                    players->team_filter_tracking = true;
+                }
+            }
+        }
+        break;
+    case WM_MOUSELEAVE:
+        if (players != NULL) {
+            players->team_filter_tracking = false;
+            if (players->team_filter_hover != -1) {
+                players->team_filter_hover = -1;
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+        }
+        break;
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, players_team_filter_list_proc, id);
+        break;
+    default:
+        break;
+    }
+    return DefSubclassProc(hwnd, message, wparam, lparam);
+}
+
+static void players_install_team_filter_hover(PlayersPage *players)
+{
+    COMBOBOXINFO info;
+    memset(&info, 0, sizeof(info));
+    info.cbSize = sizeof(info);
+    if (GetComboBoxInfo(players->team_filter, &info) &&
+        info.hwndList != NULL) {
+        SetWindowSubclass(info.hwndList, players_team_filter_list_proc, 1,
+                          (DWORD_PTR)players);
+    }
+}
+
 static void players_layout(Page *page, int width, int height)
 {
     (void)width;
@@ -453,7 +778,7 @@ static void players_layout(Page *page, int width, int height)
     MoveWindow(players->list, list.left, list.top,
                list.right - list.left, list.bottom - list.top, TRUE);
 
-    int field_height = ui_scale(theme, 30);
+    int field_height = ui_scale(theme, PLAYER_FIELD_HEIGHT);
     int field_gap = ui_scale(theme, 10);
     int field_top = page->card.top + ui_scale(theme, 12);
     int search_width = ui_scale(theme, 250);
@@ -601,6 +926,15 @@ static LRESULT players_message(Page *page, UINT message, WPARAM wparam,
                                LPARAM lparam)
 {
     PlayersPage *players = (PlayersPage *)page;
+    if (message == WM_DRAWITEM) {
+        DRAWITEMSTRUCT *item = (DRAWITEMSTRUCT *)lparam;
+        if (item != NULL && item->CtlID == PLAYER_TEAM_FILTER_ID &&
+            item->hwndItem == players->team_filter) {
+            players_draw_team_filter_item(players, item);
+            return 1;
+        }
+        return 0;
+    }
     if (message == WM_COMMAND) {
         int command = LOWORD(wparam);
         int notification = HIWORD(wparam);
@@ -609,9 +943,16 @@ static LRESULT players_message(Page *page, UINT message, WPARAM wparam,
             players_refresh(page);
             return 0;
         }
-        if (command == PLAYER_TEAM_FILTER_ID &&
-            notification == CBN_SELCHANGE && !players->populating) {
-            players_refresh(page);
+        if (command == PLAYER_TEAM_FILTER_ID) {
+            if (notification == CBN_SELCHANGE && !players->populating) {
+                players_refresh(page);
+                return 0;
+            }
+            if (notification == CBN_DROPDOWN ||
+                notification == CBN_CLOSEUP) {
+                players->team_filter_hover = -1;
+                players->team_filter_tracking = false;
+            }
             return 0;
         }
         if (command == PLAYER_ADD_ID) {
@@ -705,6 +1046,7 @@ Page *players_page_create(App *app)
     if (players == NULL) {
         return NULL;
     }
+    players->team_filter_hover = -1;
     if (!page_create(&players->base, app, PAGE_PLAYERS,
                      L"Players",
                      L"Build squads, track playing time and manage availability.",
@@ -723,9 +1065,9 @@ Page *players_page_create(App *app)
                                    theme->row_images, true);
     players->search = ui_edit_create(players->base.hwnd, PLAYER_SEARCH_ID,
                                      L"", 0, 0, 10, 10, theme->font_body, 80);
-    players->team_filter = ui_combo_create(players->base.hwnd,
-                                           PLAYER_TEAM_FILTER_ID,
-                                           0, 0, 10, 10, theme->font_body);
+    players->team_filter = ui_combo_create_owner_draw(
+        players->base.hwnd, PLAYER_TEAM_FILTER_ID,
+        0, 0, 10, 10, theme->font_body, PLAYER_FIELD_HEIGHT);
     players->add_button = ui_button_create(
         players->base.hwnd, PLAYER_ADD_ID, L"+  Add player",
         0, 0, 10, 10, UI_BUTTON_PRIMARY, theme->font_button);
@@ -747,6 +1089,9 @@ Page *players_page_create(App *app)
         return NULL;
     }
     ui_edit_set_cue(players->search, L"Search players...");
+    SendMessageW(players->team_filter, CB_SETDROPPEDWIDTH,
+                 (WPARAM)ui_scale(theme, PLAYER_TEAM_FILTER_DROP_WIDTH), 0);
+    players_install_team_filter_hover(players);
     ui_list_add_column(players->list, 0, L"Player", 240);
     ui_list_add_column(players->list, 1, L"Team", 210);
     ui_list_add_column(players->list, 2, L"Rating", 80);

@@ -388,18 +388,43 @@ void ui_edit_get_wide(HWND edit, wchar_t *buffer, size_t buffer_size)
     GetWindowTextW(edit, buffer, (int)buffer_size);
 }
 
-HWND ui_combo_create(HWND parent, int id, int x, int y, int width, int height,
-                     HFONT font)
+static HWND combo_create(HWND parent, int id, int x, int y, int width,
+                         int height, HFONT font, DWORD extra_style,
+                         int item_height)
 {
     HWND combo = CreateWindowExW(
         0, L"COMBOBOX", L"",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
-            CBS_DROPDOWNLIST,
+            CBS_DROPDOWNLIST | extra_style,
         x, y, width, height, parent, (HMENU)(INT_PTR)id,
         g_control_instance, NULL);
     if (combo != NULL) {
         SendMessageW(combo, WM_SETFONT, (WPARAM)font, TRUE);
         SendMessageW(combo, CB_SETMINVISIBLE, 10, 0);
+        if (item_height > 0) {
+            int pixels = control_scale(combo, item_height);
+            SendMessageW(combo, CB_SETITEMHEIGHT, 0, pixels);
+            SendMessageW(combo, CB_SETITEMHEIGHT, 1, pixels);
+        }
+    }
+    return combo;
+}
+
+HWND ui_combo_create(HWND parent, int id, int x, int y, int width, int height,
+                     HFONT font)
+{
+    return combo_create(parent, id, x, y, width, height, font, 0, 0);
+}
+
+HWND ui_combo_create_owner_draw(HWND parent, int id, int x, int y,
+                                int width, int height, HFONT font,
+                                int item_height)
+{
+    HWND combo = combo_create(parent, id, x, y, width, height, font,
+                              CBS_OWNERDRAWFIXED | CBS_HASSTRINGS,
+                              item_height);
+    if (combo != NULL) {
+        SetWindowTheme(combo, L"Explorer", NULL);
     }
     return combo;
 }

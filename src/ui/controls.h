@@ -32,6 +32,10 @@ void ui_edit_get_wide(HWND edit, wchar_t *buffer, size_t buffer_size);
 
 HWND ui_combo_create(HWND parent, int id, int x, int y, int width, int height,
                      HFONT font);
+/* Creates a fixed-owner-draw combo. The parent receives WM_DRAWITEM. */
+HWND ui_combo_create_owner_draw(HWND parent, int id, int x, int y,
+                                int width, int height, HFONT font,
+                                int item_height);
 int ui_combo_add_utf8(HWND combo, const char *text, uint64_t data);
 int ui_combo_add_wide(HWND combo, const wchar_t *text, uint64_t data);
 void ui_combo_select_data(HWND combo, uint64_t data);

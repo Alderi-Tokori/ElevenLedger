@@ -481,6 +481,40 @@ try {
     }
     Write-Host "Player header sorting OK"
 
+    $teamFilter = [ElevenLedgerSmoke]::FindChildById($sortPage, 1202)
+    if ($teamFilter -eq [IntPtr]::Zero) {
+        throw "The players page is missing its team filter."
+    }
+    $teamFilterCount = [ElevenLedgerSmoke]::SendMessage(
+        $teamFilter, 0x0146, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
+    if ($teamFilterCount -ne 3) {
+        throw "The team filter did not list every club (got $teamFilterCount items)."
+    }
+    $northbridgeIndex = [ElevenLedgerSmoke]::SendMessageText(
+        $teamFilter, 0x0158, [IntPtr](-1), "Northbridge FC").ToInt64()
+    if ($northbridgeIndex -lt 0) {
+        throw "The team filter is missing Northbridge FC."
+    }
+    [ElevenLedgerSmoke]::SendMessage(
+        $teamFilter, 0x014E, [IntPtr]$northbridgeIndex, [IntPtr]::Zero) | Out-Null
+    [ElevenLedgerSmoke]::PostMessage(
+        $sortPage, 0x0111,
+        [IntPtr](1202 -bor (1 -shl 16)), $teamFilter) | Out-Null
+    Wait-Until -Description "the Northbridge team filter" -Condition {
+        return ([ElevenLedgerSmoke]::SendMessage(
+            $sortList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -eq 11)
+    }
+    [ElevenLedgerSmoke]::SendMessage(
+        $teamFilter, 0x014E, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    [ElevenLedgerSmoke]::PostMessage(
+        $sortPage, 0x0111,
+        [IntPtr](1202 -bor (1 -shl 16)), $teamFilter) | Out-Null
+    Wait-Until -Description "the cleared team filter" -Condition {
+        return ([ElevenLedgerSmoke]::SendMessage(
+            $sortList, 0x1004, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64() -eq 22)
+    }
+    Write-Host "Team filter OK"
+
     [ElevenLedgerSmoke]::PostMessage($main, 0x0111, [IntPtr]40003, [IntPtr]::Zero) | Out-Null
     Wait-Until -Description "the Teams page for sorting" -Condition {
         $candidate = [ElevenLedgerSmoke]::FindChildByClass($main, "ElevenLedgerPage", $true)
