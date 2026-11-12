@@ -55,6 +55,8 @@ void ui_list_set_row(HWND list, int index, const char **utf8_columns,
 uint64_t ui_list_hash_columns(const char *const *utf8_columns,
                               int column_count);
 LRESULT ui_list_custom_draw(NMLVCUSTOMDRAW *custom_draw, HIMAGELIST row_images);
+LRESULT ui_list_custom_draw_rating(NMLVCUSTOMDRAW *custom_draw,
+                                   const UiTheme *theme, int rating_column);
 bool ui_list_selected_data(HWND list, LPARAM *out_data);
 void ui_list_set_sort_indicator(HWND list, int column, bool ascending);
 int ui_text_compare(const wchar_t *left, const wchar_t *right);

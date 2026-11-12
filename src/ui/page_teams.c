@@ -479,8 +479,9 @@ static LRESULT teams_message(Page *page, UINT message, WPARAM wparam,
         }
         switch (header->code) {
         case NM_CUSTOMDRAW:
-            return ui_list_custom_draw((NMLVCUSTOMDRAW *)lparam,
-                                       page->app->ui.row_images);
+            return ui_list_custom_draw_rating((NMLVCUSTOMDRAW *)lparam,
+                                              &page->app->ui,
+                                              TEAM_COLUMN_RATING);
         case LVN_ITEMCHANGED:
             if (!teams->populating) {
                 teams_update_buttons(teams);

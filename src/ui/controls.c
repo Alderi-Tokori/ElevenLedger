@@ -3,6 +3,7 @@
 #include "ui/theme.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <uxtheme.h>
 #include <wchar.h>
@@ -861,42 +862,137 @@ bool ui_list_selected_data(HWND list, LPARAM *out_data)
     return true;
 }
 
-LRESULT ui_list_custom_draw(NMLVCUSTOMDRAW *custom_draw, HIMAGELIST row_images)
+static COLORREF list_row_background(HWND list, int index)
 {
-    (void)row_images;
+    bool selected = (ListView_GetItemState(list, index, LVIS_SELECTED) &
+                     LVIS_SELECTED) != 0;
+    if (selected) {
+        return UI_COLOR_SELECTION;
+    }
+    return (index % 2) != 0 ? UI_COLOR_ROW_ALT : UI_COLOR_CARD;
+}
+
+static void draw_list_rating_badge(HDC dc, const UiTheme *theme,
+                                   const RECT *cell, double rating)
+{
+    int inset_x = ui_scale(theme, 4);
+    int inset_y = ui_scale(theme, 4);
+    int width = ui_scale(theme, 46);
+    int available_width = (cell->right - cell->left) - inset_x * 2;
+    if (available_width < 0) {
+        available_width = 0;
+    }
+    if (width > available_width) {
+        width = available_width;
+    }
+    int height = (cell->bottom - cell->top) - inset_y * 2;
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    RECT badge = {
+        cell->left + inset_x,
+        cell->top + inset_y,
+        cell->left + inset_x + width,
+        cell->top + inset_y + height,
+    };
+    ui_draw_rating_badge(dc, theme, badge, rating);
+}
+
+static bool list_rating_value(HWND list, int index, int column,
+                              double *rating)
+{
+    wchar_t text[32];
+    text[0] = L'\0';
+    ListView_GetItemText(list, index, column, text,
+                         (int)(sizeof(text) / sizeof(text[0])));
+    wchar_t *end = NULL;
+    double value = wcstod(text, &end);
+    if (end == text || *end != L'\0') {
+        return false;
+    }
+    *rating = value;
+    return true;
+}
+
+static void draw_list_rating_cell(NMLVCUSTOMDRAW *custom_draw,
+                                  const UiTheme *theme, int rating_column)
+{
+    int index = (int)custom_draw->nmcd.dwItemSpec;
+    int column = custom_draw->iSubItem;
+    if (theme == NULL || rating_column < 0 || column != rating_column) {
+        return;
+    }
+    double rating = 0.0;
+    if (!list_rating_value((HWND)custom_draw->nmcd.hdr.hwndFrom, index,
+                           column, &rating)) {
+        return;
+    }
+    RECT cell;
+    if (!ListView_GetSubItemRect((HWND)custom_draw->nmcd.hdr.hwndFrom, index,
+                                 column, LVIR_BOUNDS, &cell)) {
+        return;
+    }
+    draw_list_rating_badge(custom_draw->nmcd.hdc, theme, &cell, rating);
+}
+
+/* Shared list custom draw. A non-negative rating column requests subitem
+   painting so numeric cells can use the same badge as the dashboard. The
+   badge is drawn after the row has painted, so selection and striping keep
+   the same background as every other cell. */
+static LRESULT list_custom_draw(NMLVCUSTOMDRAW *custom_draw,
+                                const UiTheme *theme, int rating_column)
+{
     if (custom_draw == NULL) {
         return CDRF_DODEFAULT;
     }
+    HWND list = (HWND)custom_draw->nmcd.hdr.hwndFrom;
     switch (custom_draw->nmcd.dwDrawStage) {
     case CDDS_PREPAINT:
         return CDRF_NOTIFYITEMDRAW;
     case CDDS_ITEMPREPAINT: {
-        LRESULT index = (LRESULT)custom_draw->nmcd.dwItemSpec;
-        bool selected = (ListView_GetItemState(
-                             (HWND)custom_draw->nmcd.hdr.hwndFrom,
-                             (int)index, LVIS_SELECTED) &
-                         LVIS_SELECTED) != 0;
+        int index = (int)custom_draw->nmcd.dwItemSpec;
         custom_draw->clrText = UI_COLOR_TEXT;
-        custom_draw->clrTextBk = selected
-            ? UI_COLOR_SELECTION
-            : ((index % 2) != 0 ? UI_COLOR_ROW_ALT : UI_COLOR_CARD);
-        return CDRF_NEWFONT;
+        custom_draw->clrTextBk = list_row_background(list, index);
+        if (theme == NULL || rating_column < 0) {
+            return CDRF_NEWFONT;
+        }
+        return CDRF_NEWFONT | CDRF_NOTIFYSUBITEMDRAW;
     }
     case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
         int index = (int)custom_draw->nmcd.dwItemSpec;
-        bool selected = (ListView_GetItemState(
-                             (HWND)custom_draw->nmcd.hdr.hwndFrom,
-                             index, LVIS_SELECTED) &
-                         LVIS_SELECTED) != 0;
+        int column = custom_draw->iSubItem;
+        COLORREF background = list_row_background(list, index);
         custom_draw->clrText = UI_COLOR_TEXT;
-        custom_draw->clrTextBk = selected
-            ? UI_COLOR_SELECTION
-            : ((index % 2) != 0 ? UI_COLOR_ROW_ALT : UI_COLOR_CARD);
-        return CDRF_NEWFONT;
+        custom_draw->clrTextBk = background;
+        if (theme == NULL || rating_column < 0 || column != rating_column) {
+            return CDRF_NEWFONT;
+        }
+        double rating = 0.0;
+        if (!list_rating_value(list, index, column, &rating)) {
+            custom_draw->clrText = UI_COLOR_MUTED;
+            return CDRF_NEWFONT;
+        }
+        custom_draw->clrText = ui_rating_soft_color(rating);
+        return CDRF_NEWFONT | CDRF_NOTIFYPOSTPAINT;
     }
+    case CDDS_ITEMPOSTPAINT | CDDS_SUBITEM:
+        draw_list_rating_cell(custom_draw, theme, rating_column);
+        return CDRF_DODEFAULT;
     default:
         return CDRF_DODEFAULT;
     }
+}
+
+LRESULT ui_list_custom_draw(NMLVCUSTOMDRAW *custom_draw, HIMAGELIST row_images)
+{
+    (void)row_images;
+    return list_custom_draw(custom_draw, NULL, -1);
+}
+
+LRESULT ui_list_custom_draw_rating(NMLVCUSTOMDRAW *custom_draw,
+                                   const UiTheme *theme, int rating_column)
+{
+    return list_custom_draw(custom_draw, theme, rating_column);
 }
 
 void ui_center_window(HWND window, HWND owner)

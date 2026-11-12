@@ -132,7 +132,7 @@ Ratings are long-term player ratings with no fixed upper or lower bound. New pla
 
 Matches are always replayed in date order from each player's starting rating. Deleting a match or changing a starting rating therefore updates the whole subsequent career, rather than leaving an inconsistent ledger.
 
-Rating badges use five bands centred on the zero-sum average of 50.0: green from 65.0, blue from 55.0, neutral grey from 45.0, amber from 35.0, and red below 35.0.
+Rating badges use five bands centred on the zero-sum average of 50.0: green from 65.0, blue from 55.0, neutral grey from 45.0, amber from 35.0, and red below 35.0. The dashboard and the Players and Teams lists use the same badges.
 
 Full formulas, a worked example and calibration notes are in [docs/rating-model.md](docs/rating-model.md).
 
