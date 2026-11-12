@@ -590,6 +590,11 @@ try {
     if ($playerTeamCombo -eq [IntPtr]::Zero) {
         throw "The player dialog is missing its team control."
     }
+    $playerTeamItems = Read-ComboItems -Combo $playerTeamCombo
+    if (($playerTeamItems -join "|") -ne "Northbridge FC|Riverside Athletic") {
+        throw "The player dialog team list is not sorted by club name."
+    }
+    Write-Host "Player dialog team list sorted OK"
     $selectedTeamIndex = [ElevenLedgerSmoke]::SendMessage(
         $playerTeamCombo, 0x0147, [IntPtr]::Zero, [IntPtr]::Zero).ToInt64()
     if ($selectedTeamIndex -ne 1) {

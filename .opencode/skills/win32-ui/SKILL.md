@@ -43,7 +43,7 @@ ElevenLedger uses native Win32 with GDI drawing. There is no web runtime or thir
 
 - Use `ui_button_create` styles for primary/secondary/danger/ghost/soft actions.
 - Use the custom checkbox for themed consistent checkboxes.
-- Club selectors use `ui_combo_create_owner_draw` plus `ui_team_combo_init`; forward `WM_DRAWITEM` to `ui_team_combo_draw_item` so every team dropdown shares the badge, count and hover rendering.
+- Club selectors use `ui_combo_create_owner_draw` plus `ui_team_combo_init`; forward `WM_DRAWITEM` to `ui_team_combo_draw_item` so every team dropdown shares the badge, count and hover rendering. Populate a full club list with `ui_team_combo_add_teams` so entries stay alphabetical.
 - Use `ui_list_create` and `ui_list_custom_draw` for tables; keep row image height for readable rows.
 - Import previews use `dialog_import.c` as the reference for row-level cue colours keyed by `LVIF_PARAM`, inline name/minute/performance editors and in-place row text updates.
 - Sortable lists use `LVM_SORTITEMS` with a per-refresh sort context and show `HDF_SORTUP`/`HDF_SORTDOWN` through `ui_list_set_sort_indicator`. Players and Teams default to name ascending; the first header click sorts ascending and the next click reverses it.

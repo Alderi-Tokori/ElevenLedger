@@ -2,6 +2,12 @@
 
 All notable changes to ElevenLedger are documented here. Entries before 2.0.0 use the application's former name, PitchRate. The project follows a simple versioned schema and local release process.
 
+## 2.0.22 - 2026-11-12
+
+### Changed
+
+- The team dropdown in the add and edit player dialogs is now sorted alphabetically by club name.
+
 ## 2.0.21 - 2026-11-12
 
 ### Changed

@@ -1,6 +1,8 @@
 #include "ui/team_combo.h"
+#include "ui/controls.h"
 
 #include <commctrl.h>
+#include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
 #include <wctype.h>
@@ -348,4 +350,47 @@ void ui_team_combo_reset_hover(UiTeamCombo *view)
     }
     view->hover_index = -1;
     view->tracking = false;
+}
+
+static int compare_teams_by_name(const void *left, const void *right)
+{
+    const Team *a = *(const Team *const *)left;
+    const Team *b = *(const Team *const *)right;
+    wchar_t a_name[TEAM_NAME_MAX + 1] = L"";
+    wchar_t b_name[TEAM_NAME_MAX + 1] = L"";
+    ui_utf8_to_wide(a->name, a_name, sizeof(a_name) / sizeof(a_name[0]));
+    ui_utf8_to_wide(b->name, b_name, sizeof(b_name) / sizeof(b_name[0]));
+    int result = ui_text_compare(a_name, b_name);
+    if (result != 0) {
+        return result;
+    }
+    if (a->id < b->id) {
+        return -1;
+    }
+    if (a->id > b->id) {
+        return 1;
+    }
+    return 0;
+}
+
+void ui_team_combo_add_teams(HWND combo, const Database *db)
+{
+    if (combo == NULL || db == NULL || db->team_count == 0) {
+        return;
+    }
+    const Team **teams = malloc(db->team_count * sizeof(*teams));
+    if (teams == NULL) {
+        for (size_t i = 0; i < db->team_count; ++i) {
+            ui_combo_add_utf8(combo, db->teams[i].name, db->teams[i].id);
+        }
+        return;
+    }
+    for (size_t i = 0; i < db->team_count; ++i) {
+        teams[i] = &db->teams[i];
+    }
+    qsort(teams, db->team_count, sizeof(*teams), compare_teams_by_name);
+    for (size_t i = 0; i < db->team_count; ++i) {
+        ui_combo_add_utf8(combo, teams[i]->name, teams[i]->id);
+    }
+    free(teams);
 }

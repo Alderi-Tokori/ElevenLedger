@@ -1103,10 +1103,7 @@ static uint64_t player_dialog_run(App *app, HWND owner, uint64_t player_id,
     }
     ui_team_combo_init(&state.team_view, state.team, &app->db, theme);
 
-    for (size_t i = 0; i < app->db.team_count; ++i) {
-        ui_combo_add_utf8(state.team, app->db.teams[i].name,
-                          app->db.teams[i].id);
-    }
+    ui_team_combo_add_teams(state.team, &app->db);
     ui_checkbox_set_checked(state.active, true);
 
     const Player *player = db_find_player(&app->db, player_id);

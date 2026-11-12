@@ -24,4 +24,7 @@ void ui_team_combo_init(UiTeamCombo *view, HWND combo, const Database *db,
 bool ui_team_combo_draw_item(UiTeamCombo *view, DRAWITEMSTRUCT *item);
 void ui_team_combo_reset_hover(UiTeamCombo *view);
 
+/* Adds every club in the database to the combo, sorted by name. */
+void ui_team_combo_add_teams(HWND combo, const Database *db);
+
 #endif
